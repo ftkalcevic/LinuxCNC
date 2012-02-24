@@ -18,6 +18,7 @@ import rs274.OpenGLTk, Tkinter, signal
 from minigl import *
 from math import *
 import glnav
+import sys
 
 class Collection(object):
     def __init__(self, parts):
@@ -994,6 +995,8 @@ class AsciiOBJ:
 def main(model, tool, work, size=10, hud=0, rotation_vectors=None, lat=0, lon=0):
     app = Tkinter.Tk()
 
+    for setting in sys.argv[1:]: exec setting in locals(),globals()
+
     t = O(app, double=1, depth=1)
     # set which axes to rotate around
     if rotation_vectors: t.rotation_vectors = rotation_vectors
@@ -1031,7 +1034,7 @@ def main(model, tool, work, size=10, hud=0, rotation_vectors=None, lat=0, lon=0)
     update()
 
     def quit(*args):
-	raise SystemExit
+	app.quit()
 
     signal.signal(signal.SIGTERM, quit)
     signal.signal(signal.SIGINT, quit)
