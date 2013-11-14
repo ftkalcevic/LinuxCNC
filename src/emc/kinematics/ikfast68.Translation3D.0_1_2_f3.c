@@ -14,7 +14,7 @@
 /// See the License for the specific language governing permissions and
 /// limitations under the License.
 ///
-/// ikfast version 68 generated on 2013-11-13 19:52:57.568050
+/// ikfast version 68 generated on 2013-11-14 12:24:01.653165
 /// To compile with gcc:
 ///     gcc ik.c -lm
 /// To compile without any main function as a shared object (might need -llapack):
@@ -277,8 +277,8 @@ IKFAST_API int GetIkRealSize() { return sizeof(IkReal); }
 IKFAST_API int GetIkType() { return 0x33000003; }
 
 bool ComputeIk(const IkReal* eetrans, const IkReal* eerot, const IkReal* pfree, IkSolutionList * solutions) {
-IkReal j0,cj0,sj0,htj0,j0mul,j1,cj1,sj1,htj1,j1mul,j2,cj2,sj2,htj2,j2mul,j3,cj3,sj3,htj3,new_px,px,npx,new_py,py,npy,new_pz,pz,npz,pp;
-unsigned char _ij0[2], _nj0,_ij1[2], _nj1,_ij2[2], _nj2,_ij3[2], _nj3;
+static IkReal j0,cj0,sj0,htj0,j0mul,j1,cj1,sj1,htj1,j1mul,j2,cj2,sj2,htj2,j2mul,j3,cj3,sj3,htj3,new_px,px,npx,new_py,py,npy,new_pz,pz,npz,pp;
+static unsigned char _ij0[2], _nj0,_ij1[2], _nj1,_ij2[2], _nj2,_ij3[2], _nj3;
 
 j0=FP_NAN; _ij0[0] = -1; _ij0[1] = -1; _nj0 = -1; j1=FP_NAN; _ij1[0] = -1; _ij1[1] = -1; _nj1 = -1; j2=FP_NAN; _ij2[0] = -1; _ij2[1] = -1; _nj2 = -1;  _ij3[0] = -1; _ij3[1] = -1; _nj3 = 0; 
 int dummyiter;

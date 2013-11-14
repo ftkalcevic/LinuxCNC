@@ -124,7 +124,7 @@ inline const int* GetFree(IkSolution *sol) {
     return sol->_vfree;
 }
 inline const int GetDOF() {
-    return 4;
+    return IKFAST_NUM_DOF;
 }
 
 /*

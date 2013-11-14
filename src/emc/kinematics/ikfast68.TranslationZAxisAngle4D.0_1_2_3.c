@@ -14,7 +14,7 @@
 /// See the License for the specific language governing permissions and
 /// limitations under the License.
 ///
-/// ikfast version 68 generated on 2013-11-14 10:45:59.434939
+/// ikfast version 68 generated on 2013-11-14 13:06:54.380140
 /// To compile with gcc:
 ///     gcc ik.c -lm
 /// To compile without any main function as a shared object (might need -llapack):
@@ -705,7 +705,7 @@ int numsolutions = 0;
 int ij1;
 for(ij1 = 0; ij1 < numroots; ij1 += 3)
 {
-static IkReal htj1 = zeror[ij1+0], htj2 = zeror[ij1+1], htj3 = zeror[ij1+2];
+IkReal htj1 = zeror[ij1+0], htj2 = zeror[ij1+1], htj3 = zeror[ij1+2];
 if(isnan(htj1)||isnan(htj2)||isnan(htj3)){
 continue;
 }
