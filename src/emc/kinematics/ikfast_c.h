@@ -33,8 +33,8 @@
 //#include <vector>
 //#include <list>
 //#include <stdexcept>
-#include <math.h>
-#include <stdlib.h>
+//#include <math.h>
+//#include <stdlib.h>
 #include <stddef.h>
 
 #ifndef IKFAST_HEADER_COMMON
@@ -51,9 +51,7 @@ typedef IKFAST_REAL IkReal;
 typedef double IkReal;
 #endif
 
-typedef int bool;
-const int true = 1;
-const int false = 0;
+#include <linux/types.h>
 
 /// \brief holds the solution for a single dof
 struct IkSingleDOFSolution
@@ -236,6 +234,8 @@ inline void IkSolutionList_Clear( IkSolutionList *list )
 #else
 #define IKFAST_API
 #endif
+/// \brief Computes the end effector coordinates given the joint values. This function is used to double check ik.
+IKFAST_API void ComputeFk(const IkReal* joints, IkReal* eetrans, IkReal* eerot);
 
 /** \brief Computes all IK solutions given a end effector coordinates and the free joints.
 
@@ -248,10 +248,7 @@ inline void IkSolutionList_Clear( IkSolutionList *list )
  */
 IKFAST_API int ComputeIk(const IkReal* eetrans, const IkReal* eerot, const IkReal* pfree, IkSolutionList* solutions);
 
-/// \brief Computes the end effector coordinates given the joint values. This function is used to double check ik.
-IKFAST_API void ComputeFk(const IkReal* joints, IkReal* eetrans, IkReal* eerot);
-
-/// \brief returns the number of free parameters users has to set apriori
+// \brief returns the number of free parameters users has to set apriori
 IKFAST_API int GetNumFreeParameters();
 
 /// \brief the indices of the free parameters indexed by the chain joints
@@ -272,8 +269,5 @@ IKFAST_API int GetIkType();
 /// \brief a hash of all the chain values used for double checking that the correct IK is used.
 IKFAST_API const char* GetKinematicsHash();
 
-#ifdef IKFAST_NAMESPACE
-}
-#endif
 
 #endif // IKFAST_HAS_LIBRARY

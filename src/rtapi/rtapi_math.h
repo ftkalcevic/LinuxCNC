@@ -14,6 +14,8 @@ extern double atan2(double, double);
 extern double asin(double);
 extern double acos(double);
 extern double pow(double, double);
+extern double log(double);
+extern double fmod(double,double);
 
 extern double round(double);
 extern double ceil(double);
@@ -22,6 +24,10 @@ extern double floor(double);
 #define frexp(p,q) __builtin_frexp((p),(q))
 #define isnan(x) __builtin_isnan((x))
 #define signbit(x) __builtin_signbit((x))
+
+#define NAN    (__builtin_nanf (""))
+
+#define complex __complex__
 
 #define M_PIl		3.1415926535897932384626433832795029L  /* pi */
 #ifndef M_PI

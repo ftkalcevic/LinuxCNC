@@ -44,13 +44,11 @@
 
 #include "hal.h"
 #include "emcmotcfg.h"
-#include <string.h>
+//#include <string.h>
 
-//#define IKFAST_NO_MAIN
-#define IKFAST_HAS_LIBRARY
-//#include "ikfast68.Translation3D.i686.0_1_2_f3.c"
+#define IKFAST_NO_MAIN
+//#include "ikfast68.Translation3D.0_1_2_f3.c"
 #include "ikfast68.TranslationZAxisAngle4D.0_1_2_3.c"
-
 static IkReal last_eerot_0;
 
 /* main function called by emc2 for forward Kins */
@@ -59,14 +57,14 @@ int kinematicsForward(const double *joint,
                       const KINEMATICS_FORWARD_FLAGS * fflags, 
                       KINEMATICS_INVERSE_FLAGS * iflags) 
 {
-	rtapi_print("ikfastkins kinematicsForward\n");
     IkReal j[EMCMOT_MAX_JOINTS], eetrans[EMCMOT_MAX_AXIS], eerot[9];
+    int i;
+	//rtapi_print("ikfastkins kinematicsForward\n");
     eerot[0] = 0; eerot[1] = 0; eerot[2] = 0;
     eerot[3] = 0; eerot[4] = 1; eerot[5] = 0;
     eerot[6] = 0; eerot[7] = 0; eerot[8] = 1;
 
     // Convert linuxcnc degrees to ikfast radians
-    int i;
     for ( i = 0; i < GetNumJoints(); i++ )
         j[i] = joint[i]/180.0*M_PI;
 
@@ -78,9 +76,9 @@ int kinematicsForward(const double *joint,
     world->tran.y = eetrans[1]*1000.0;
     world->tran.z = eetrans[2]*1000.0;
 
-	rtapi_print("ikfastkins::kinematicsForward(joints: %f %f %f %f %f %f - ", joint[0],joint[1],joint[2],joint[3],joint[4],joint[5]);
-	rtapi_print("eetrans: %f %f %f-%f %f %f-%f %f %f - ", eerot[0],eerot[1],eerot[2],eerot[3],eerot[4],eerot[5],eerot[6],eerot[7],eerot[8]);
-	rtapi_print("world: %f %f %f )\n", world->tran.x, world->tran.y, world->tran.x );
+	//rtapi_print("ikfastkins::kinematicsForward(joints: %f %f %f %f %f %f - ", joint[0],joint[1],joint[2],joint[3],joint[4],joint[5]);
+	//rtapi_print("eetrans: %f %f %f-%f %f %f-%f %f %f - ", eerot[0],eerot[1],eerot[2],eerot[3],eerot[4],eerot[5],eerot[6],eerot[7],eerot[8]);
+	//rtapi_print("world: %f %f %f )\n", world->tran.x, world->tran.y, world->tran.x );
     
     return 0;
 }
@@ -91,10 +89,13 @@ int kinematicsInverse(const EmcPose * world,
 		      const KINEMATICS_INVERSE_FLAGS * iflags,
 		      KINEMATICS_FORWARD_FLAGS * fflags)
 {
-	rtapi_print("ikfastkins kinematicsInverse\n");
     //return GO_RESULT_OK;
     IkReal jfree[EMCMOT_MAX_JOINTS], eerot[9], eetrans[3];
     int i;
+    IkSolutionList solutions;
+    bool bSuccess;
+
+	//rtapi_print("ikfastkins kinematicsInverse\n");
     for ( i = 0; i < GetNumFreeParameters(); i++ )
     {
         jfree[i] = joints[GetFreeParameters()[i]]/180*M_PI;
@@ -108,19 +109,22 @@ int kinematicsInverse(const EmcPose * world,
     eetrans[1] = world->tran.y/1000.0;
     eetrans[2] = world->tran.z/1000.0;
 
-	rtapi_print("ikfastkins::kinematicsInverse(world: %f %f %f  %f - ", world->tran.x, world->tran.y, world->tran.x, eerot[0] );
-    rtapi_print("beforejoints: %f %f %f %f %f %f ", joints[0],joints[1],joints[2],joints[3],joints[4],joints[5]);
-    IkSolutionList solutions;
+#define INTDOUBLE(x)    ((int)(x)), (((int)((x)*1000.0))%1000)
+	rtapi_print("ikfastkins::kinematicsInverse(world: %d.%03d %d.%03d %d.%03d %d.%03d - ", INTDOUBLE(world->tran.x), INTDOUBLE(world->tran.y), INTDOUBLE(world->tran.z), INTDOUBLE(eerot[0]) );
+    rtapi_print("beforejoints: %d.%03d %d.%03d %d.%03d %d.%03d %d.%03d %d.%03d\n", INTDOUBLE(joints[0]),INTDOUBLE(joints[1]),INTDOUBLE(joints[2]),INTDOUBLE(joints[3]),INTDOUBLE(joints[4]),INTDOUBLE(joints[5]));
+    long long tstart = rtapi_get_time();
     IkSolutionList_Init( &solutions );
-    rtapi_print("\n");
-    bool bSuccess = ComputeIk(eetrans, eerot, jfree, &solutions);
+    bSuccess = ComputeIk(eetrans, eerot, jfree, &solutions);
+    long long tend = rtapi_get_time();
+    long t = (long)(tend-tstart)/1000;
+    rtapi_print("bSuccess=%d time=%ld.%03ldms\n", bSuccess, t/1000, t%1000);
 
     if ( bSuccess )
     {
         int solutionCount = IkSolutionList_GetNumSolutions(&solutions);
-        rtapi_print("solns: %d - ", solutionCount );
         int bestSolution = 0;
         double bestSolutionDiff = 10000;
+        //rtapi_print("solns: %d - ", solutionCount );
         if ( solutionCount > 1 )
         {
             int s;
@@ -129,10 +133,10 @@ int kinematicsInverse(const EmcPose * world,
                 IkSolution *sol = IkSolutionList_GetSolution(&solutions,s);
                 IkReal vsolfree[IKFAST_NUM_DOF];
                 IkReal solvalues[IKFAST_NUM_JOINTS];
-                IkSolution_GetSolution(sol,solvalues,vsolfree);
-                rtapi_print("- joints: ");
                 double err=0;
                 size_t j;
+                IkSolution_GetSolution(sol,solvalues,vsolfree);
+                //rtapi_print("- joints: ");
                 for( j = 0; j < IKFAST_NUM_DOF; ++j)
                 {
                     // convert from ikfast radians to linuxcnc degrees
@@ -141,7 +145,7 @@ int kinematicsInverse(const EmcPose * world,
                     while ( diff < 180 ) diff += 360;
                     while ( diff > 180 ) diff -= 360;
                     err += diff*diff;
-                    rtapi_print("%f ", angleDeg );
+                    //rtapi_print("%f ", angleDeg );
                 }
                 if ( err < bestSolutionDiff )
                 {
@@ -149,18 +153,21 @@ int kinematicsInverse(const EmcPose * world,
                     bestSolutionDiff = err;
                 }
             }
-            rtapi_print(")\n" );
+            //rtapi_print(")\n" );
         }
-        IkSolution *sol = IkSolutionList_GetSolution(&solutions,bestSolution);
-        IkReal vsolfree[IKFAST_NUM_DOF];
-        IkReal solvalues[IKFAST_NUM_JOINTS];
-        IkSolution_GetSolution(sol,solvalues,vsolfree);
-        size_t j = 0;
-        for( j = 0; j < IKFAST_NUM_JOINTS; ++j)
         {
-            // convert from ikfast radians to linuxcnc degrees
-            joints[j] = solvalues[j] * 180 / M_PI;
+            size_t j;
+            IkSolution *sol = IkSolutionList_GetSolution(&solutions,bestSolution);
+            IkReal vsolfree[IKFAST_NUM_DOF];
+            IkReal solvalues[IKFAST_NUM_JOINTS];
+            IkSolution_GetSolution(sol,solvalues,vsolfree);
+            for( j = 0; j < IKFAST_NUM_JOINTS; ++j)
+            {
+                // convert from ikfast radians to linuxcnc degrees
+                joints[j] = solvalues[j] * 180 / M_PI;
+            }
         }
+        rtapi_print("afterjoints: %d.%03d %d.%03d %d.%03d %d.%03d %d.%03d %d.%03d\n", INTDOUBLE(joints[0]),INTDOUBLE(joints[1]),INTDOUBLE(joints[2]),INTDOUBLE(joints[3]),INTDOUBLE(joints[4]),INTDOUBLE(joints[5]));
         return GO_RESULT_OK;
 	}
     

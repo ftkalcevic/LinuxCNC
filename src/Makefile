@@ -815,6 +815,8 @@ obj-m += ikfastkins.o
 ikfastkins-objs := emc/kinematics/ikfastkins.o
 ikfastkins-objs += libnml/posemath/_posemath.o
 ikfastkins-objs += libnml/posemath/sincos.o $(MATHSTUB)
+#ikfastkins-objs += emc/kinematics/lapack/lapack/blas/daxpy.o emc/kinematics/lapack/lapack/blas/dcopy.o emc/kinematics/lapack/lapack/blas/ddot.o emc/kinematics/lapack/lapack/blas/dgemv.o emc/kinematics/lapack/lapack/blas/dger.o emc/kinematics/lapack/lapack/blas/dnrm2.o emc/kinematics/lapack/lapack/blas/drot.o emc/kinematics/lapack/lapack/blas/dscal.o emc/kinematics/lapack/lapack/blas/dswap.o emc/kinematics/lapack/lapack/blas/dtrmm.o emc/kinematics/lapack/lapack/blas/dtrmv.o emc/kinematics/lapack/lapack/blas/dtrsm.o emc/kinematics/lapack/lapack/blas/idamax.o emc/kinematics/lapack/lapack/double/dgebak.o emc/kinematics/lapack/lapack/double/dgebal.o emc/kinematics/lapack/lapack/double/dgeev.o emc/kinematics/lapack/lapack/double/dgehd2.o emc/kinematics/lapack/lapack/double/dgehrd.o emc/kinematics/lapack/lapack/double/dgetf2.o emc/kinematics/lapack/lapack/double/dgetrf.o emc/kinematics/lapack/lapack/double/dgetrs.o emc/kinematics/lapack/lapack/double/dhseqr.o emc/kinematics/lapack/lapack/double/disnan.o emc/kinematics/lapack/lapack/double/dlabad.o emc/kinematics/lapack/lapack/double/dlacpy.o emc/kinematics/lapack/lapack/double/dladiv.o emc/kinematics/lapack/lapack/double/dlaexc.o emc/kinematics/lapack/lapack/double/dlahqr.o emc/kinematics/lapack/lapack/double/dlahr2.o emc/kinematics/lapack/lapack/double/dlaisnan.o emc/kinematics/lapack/lapack/double/dlaln2.o emc/kinematics/lapack/lapack/double/dlange.o emc/kinematics/lapack/lapack/double/dlanv2.o emc/kinematics/lapack/lapack/double/dlapy2.o emc/kinematics/lapack/lapack/double/dlaqr0.o emc/kinematics/lapack/lapack/double/dlaqr1.o emc/kinematics/lapack/lapack/double/dlaqr2.o emc/kinematics/lapack/lapack/double/dlaqr3.o emc/kinematics/lapack/lapack/double/dlaqr4.o emc/kinematics/lapack/lapack/double/dlaqr5.o emc/kinematics/lapack/lapack/double/dlarfb.o emc/kinematics/lapack/lapack/double/dlarfg.o emc/kinematics/lapack/lapack/double/dlarf.o emc/kinematics/lapack/lapack/double/dlarft.o emc/kinematics/lapack/lapack/double/dlarfx.o emc/kinematics/lapack/lapack/double/dlartg.o emc/kinematics/lapack/lapack/double/dlascl.o emc/kinematics/lapack/lapack/double/dlaset.o emc/kinematics/lapack/lapack/double/dlassq.o emc/kinematics/lapack/lapack/double/dlaswp.o emc/kinematics/lapack/lapack/double/dlasy2.o emc/kinematics/lapack/lapack/double/dorg2r.o emc/kinematics/lapack/lapack/double/dorghr.o emc/kinematics/lapack/lapack/double/dorgqr.o emc/kinematics/lapack/lapack/double/dorm2r.o emc/kinematics/lapack/lapack/double/dormhr.o emc/kinematics/lapack/lapack/double/dormqr.o emc/kinematics/lapack/lapack/double/dtrevc.o emc/kinematics/lapack/lapack/double/dtrexc.o emc/kinematics/lapack/lapack/lapack_routine/dlamch.o emc/kinematics/lapack/lapack/lapack_routine/ieeeck.o emc/kinematics/lapack/lapack/lapack_routine/iladlc.o emc/kinematics/lapack/lapack/lapack_routine/iladlr.o emc/kinematics/lapack/lapack/lapack_routine/ilaenv.o emc/kinematics/lapack/lapack/lapack_routine/iparmq.o emc/kinematics/lapack/lapack/lapack_routine/lsame.o emc/kinematics/lapack/lapack/lapack_routine/xerbla.o emc/kinematics/lapack/lapack/blas/dgemm.o emc/kinematics/lapack/lapack/gfortranlib/string_intrinsics.o emc/kinematics/lapack/lapack/gfortranlib/stop.o emc/kinematics/lapack/lapack/gfortranlib/others.o
+
 
 obj-m += pumakins.o
 pumakins-objs := emc/kinematics/pumakins.o
@@ -842,6 +844,7 @@ motmod-objs += libnml/posemath/_posemath.o
 motmod-objs += libnml/posemath/sincos.o $(MATHSTUB)
 
 TORTOBJS = $(foreach file,$($(patsubst %.o,%,$(1))-objs), objects/rt$(file))
+
 ifeq ($(BUILD_SYS),sim)
 EXTRA_CFLAGS += -fPIC -Os
 RTOBJS := $(sort $(foreach mod,$(obj-m),$(call TORTOBJS,$(mod))))
@@ -875,6 +878,7 @@ $(sort $(RTOBJS)) : objects/rt%.o : %.c
 	$(Q)$(CC) -c $(OPT) $(DEBUG) -DSIM -DSIMULATOR -DRTAPI $(EXTRA_CFLAGS) $< -o $@
 endif
 
+
 ifeq ($(BUILD_SYS),normal)
 modules: $(patsubst %,../rtlib/%,$(obj-m))
 RTOBJS := $(sort $(foreach mod,$(obj-m),$(call TORTOBJS,$(mod))))
@@ -886,11 +890,14 @@ $(sort $(RTDEPS)): depends/rt%.d: %.c
 	$(Q)$(call DEP,$(CC),$@ $(patsubst depends/%.d,objects/%.o,$@),$@,$(EXTRA_CFLAGS) $<)
 
 
+
+
 # Rules to make .o (object) files
 $(sort $(RTOBJS)) : objects/rt%.o : %.c
 	$(ECHO) Compiling realtime $<
 	@mkdir -p $(dir $@)
 	$(Q)$(CC) -c -DRTAPI -nostdinc -isystem $(shell $(CC) -print-file-name=include) -I$(KERNELDIR)/include $(EXTRA_CFLAGS) $< -o $@
+
 
 ../rtlib/%.o:
 	$(ECHO) Linking $@
@@ -1007,3 +1014,4 @@ objects/var-%: Makefile $(wildcard $(SUBMAKEFILES)) Makefile.inc
 	ln -sf $(notdir $<) $@
 
 # vim:ts=8:sts=8:sw=8:noet:
+
