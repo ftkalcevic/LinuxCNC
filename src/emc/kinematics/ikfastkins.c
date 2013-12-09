@@ -31,25 +31,51 @@
     * add HAL pins for ULAPI compiled version
 */
 
+// generated code uses variables j0, j1 which clash with std math.h
+// library functions j0() and j1().  We don't use the functions so we
+// just rename the std lib functions.
+#define j0 math_j0
+#define j1 math_j1
+
 #include "rtapi_math.h"
+#ifdef SIM
+#include <complex.h>
+#include <string.h>
+#endif
 #include "gotypes.h"		/* go_result, go_integer */
 #include "gomath.h"		/* go_pose */
 #include "posemath.h"
 #include "kinematics.h"
+
+#undef j0
+#undef j1
 
 #ifdef RTAPI
 #include "rtapi.h"
 #include "rtapi_app.h"
 #endif
 
+//#define RTAPI_PRINT_DEBUG
+#ifndef RTAPI_PRINT_DEBUG
+#define rtapi_print if (0) rtapi_print
+#endif
+
 #include "hal.h"
 #include "emcmotcfg.h"
-//#include <string.h>
 
 #define IKFAST_NO_MAIN
-//#include "ikfast68.Translation3D.0_1_2_f3.c"
-#include "ikfast68.TranslationZAxisAngle4D.0_1_2_3.c"
-static IkReal last_eerot_0;
+#define IKFAST_HAS_LIBRARY
+//#include "ikfast68.Translation3D.i686.0_1_2_f3.c"
+//#include "ikfast68.TranslationZAxisAngle4D.0_1_2_3.c"
+//#include "ikfast68.TranslationDirection5D.0_1_2_3_4.c"
+#include "ikfast68.Transform6D.0_1_3_4_5_6_f2.c"
+//#include "ikfast68.Translation3D.0_1_2_f3_4.c"
+
+
+static IkReal last_eerot[9];
+#define ABS(x)          ((x)>=0?(x):(-(x)))
+#define INTDOUBLE(x)    (x)<0?"-":"", ((int)(ABS(x))), (((int)((ABS(x))*1000))%1000)
+#define DFMT            "%s%d.%03d"
 
 /* main function called by emc2 for forward Kins */
 int kinematicsForward(const double *joint, 
@@ -57,28 +83,26 @@ int kinematicsForward(const double *joint,
                       const KINEMATICS_FORWARD_FLAGS * fflags, 
                       KINEMATICS_INVERSE_FLAGS * iflags) 
 {
-    IkReal j[EMCMOT_MAX_JOINTS], eetrans[EMCMOT_MAX_AXIS], eerot[9];
+    IkReal j[IKFAST_NUM_JOINTS], eetrans[3], eerot[9];
     int i;
-	//rtapi_print("ikfastkins kinematicsForward\n");
-    eerot[0] = 0; eerot[1] = 0; eerot[2] = 0;
-    eerot[3] = 0; eerot[4] = 1; eerot[5] = 0;
-    eerot[6] = 0; eerot[7] = 0; eerot[8] = 1;
 
     // Convert linuxcnc degrees to ikfast radians
-    for ( i = 0; i < GetNumJoints(); i++ )
+    for ( i = 0; i < IKFAST_NUM_JOINTS; i++ )
         j[i] = joint[i]/180.0*M_PI;
 
     ComputeFk(j, eetrans, eerot);
 
-    last_eerot_0 = eerot[0];
+    memcpy( last_eerot, eerot, sizeof(last_eerot) );
     // Convert from ikfast m to linuxcnc mm
     world->tran.x = eetrans[0]*1000.0;
     world->tran.y = eetrans[1]*1000.0;
     world->tran.z = eetrans[2]*1000.0;
 
-	//rtapi_print("ikfastkins::kinematicsForward(joints: %f %f %f %f %f %f - ", joint[0],joint[1],joint[2],joint[3],joint[4],joint[5]);
-	//rtapi_print("eetrans: %f %f %f-%f %f %f-%f %f %f - ", eerot[0],eerot[1],eerot[2],eerot[3],eerot[4],eerot[5],eerot[6],eerot[7],eerot[8]);
-	//rtapi_print("world: %f %f %f )\n", world->tran.x, world->tran.y, world->tran.x );
+
+    rtapi_print("ikfastkins::kinematicsForward(joints: " ); for ( i = 0; i < IKFAST_NUM_JOINTS; i++ ) rtapi_print(""DFMT" ", INTDOUBLE(joint[i]) ); rtapi_print("\n");
+    rtapi_print("eerot: " ); for ( i = 0; i < 9; i++ ) rtapi_print(""DFMT" ", INTDOUBLE(eerot[i]) ); rtapi_print("\n");
+    rtapi_print("eetrans: " ); for ( i = 0; i < 3; i++ ) rtapi_print(""DFMT" ", INTDOUBLE(eetrans[i]) ); rtapi_print("\n");
+	rtapi_print("world: "DFMT" "DFMT" "DFMT" )\n", INTDOUBLE(world->tran.x), INTDOUBLE(world->tran.y), INTDOUBLE(world->tran.z) );
     
     return 0;
 }
@@ -92,7 +116,7 @@ int kinematicsInverse(const EmcPose * world,
     //return GO_RESULT_OK;
     IkReal jfree[EMCMOT_MAX_JOINTS], eerot[9], eetrans[3];
     int i;
-    IkSolutionList solutions;
+    static IkSolutionList solutions;
     bool bSuccess;
 
 	//rtapi_print("ikfastkins kinematicsInverse\n");
@@ -100,18 +124,20 @@ int kinematicsInverse(const EmcPose * world,
     {
         jfree[i] = joints[GetFreeParameters()[i]]/180*M_PI;
     }
-    eerot[0] = last_eerot_0; eerot[1] = 0; eerot[2] = 0;
-    eerot[3] = 0; eerot[4] = 1; eerot[5] = 0;
-    eerot[6] = 0; eerot[7] = 0; eerot[8] = 1;
+    memcpy( eerot, last_eerot, sizeof(last_eerot) );
+    //eerot[0] = 1; eerot[1] = 0; eerot[2] = 0;
+    //eerot[3] = 0; eerot[4] = 1; eerot[5] = 0;
+    //eerot[6] = 0; eerot[7] = 0; eerot[8] = 1;
 
     // convert linuxcnc mm to ikfast m
     eetrans[0] = world->tran.x/1000.0;
     eetrans[1] = world->tran.y/1000.0;
     eetrans[2] = world->tran.z/1000.0;
 
-#define INTDOUBLE(x)    ((int)(x)), (((int)((x)*1000.0))%1000)
-	rtapi_print("ikfastkins::kinematicsInverse(world: %d.%03d %d.%03d %d.%03d %d.%03d - ", INTDOUBLE(world->tran.x), INTDOUBLE(world->tran.y), INTDOUBLE(world->tran.z), INTDOUBLE(eerot[0]) );
-    rtapi_print("beforejoints: %d.%03d %d.%03d %d.%03d %d.%03d %d.%03d %d.%03d\n", INTDOUBLE(joints[0]),INTDOUBLE(joints[1]),INTDOUBLE(joints[2]),INTDOUBLE(joints[3]),INTDOUBLE(joints[4]),INTDOUBLE(joints[5]));
+
+	rtapi_print("ikfastkins::kinematicsInverse(world: "DFMT" "DFMT" "DFMT" "DFMT"\n", INTDOUBLE(world->tran.x), INTDOUBLE(world->tran.y), INTDOUBLE(world->tran.z), INTDOUBLE(world->a) );
+    rtapi_print("beforejoints: " ); for ( i = 0; i < IKFAST_NUM_JOINTS; i++ ) rtapi_print(""DFMT" ", INTDOUBLE(joints[i]) ); rtapi_print("\n");
+
     long long tstart = rtapi_get_time();
     IkSolutionList_Init( &solutions );
     bSuccess = ComputeIk(eetrans, eerot, jfree, &solutions);
@@ -122,56 +148,72 @@ int kinematicsInverse(const EmcPose * world,
     if ( bSuccess )
     {
         int solutionCount = IkSolutionList_GetNumSolutions(&solutions);
-        int bestSolution = 0;
-        double bestSolutionDiff = 10000;
-        //rtapi_print("solns: %d - ", solutionCount );
-        if ( solutionCount > 1 )
+        int bestSolution = -1;
+        double bestSolutionDiff = DBL_MAX;
+        rtapi_print("solns: %d - ", solutionCount );
         {
             int s;
             for ( s = 0; s < solutionCount; s++ )
             {
+                bool outOfRange = false;
                 IkSolution *sol = IkSolutionList_GetSolution(&solutions,s);
-                IkReal vsolfree[IKFAST_NUM_DOF];
                 IkReal solvalues[IKFAST_NUM_JOINTS];
                 double err=0;
                 size_t j;
-                IkSolution_GetSolution(sol,solvalues,vsolfree);
-                //rtapi_print("- joints: ");
-                for( j = 0; j < IKFAST_NUM_DOF; ++j)
+                int solvalues_count;
+                IkSolution_GetSolution(sol,solvalues,&solvalues_count,jfree);
+                rtapi_print("- joints: ");
+                for( j = 0; j < solvalues_count; ++j)
                 {
                     // convert from ikfast radians to linuxcnc degrees
-                    double angleDeg = solvalues[j] * 180 / M_PI;
-                    double diff = joints[j] - angleDeg;
-                    while ( diff < 180 ) diff += 360;
-                    while ( diff > 180 ) diff -= 360;
-                    err += diff*diff;
-                    //rtapi_print("%f ", angleDeg );
+                    solvalues[j] *= 180 / M_PI;
+                    // Check joint ranges
+                    if ( solvalues[j] < JointInfo[j].limitMin ||
+                         solvalues[j] > JointInfo[j].limitMax )
+                    {
+                        outOfRange = true;
+                        rtapi_print("*" );
+                    }
+                    else
+                    {
+                        double diff = joints[j] - solvalues[j];
+                        while ( diff < 180 ) diff += 360;
+                        while ( diff > 180 ) diff -= 360;
+                        err += diff*diff;
+                    }
+                    rtapi_print(""DFMT" ", INTDOUBLE(solvalues[j]) );
                 }
-                if ( err < bestSolutionDiff )
+                if ( !outOfRange && err < bestSolutionDiff )
                 {
                     bestSolution = s;
                     bestSolutionDiff = err;
                 }
             }
-            //rtapi_print(")\n" );
+            rtapi_print(")\n" );
         }
+        if ( bestSolution >= 0 )
         {
             size_t j;
             IkSolution *sol = IkSolutionList_GetSolution(&solutions,bestSolution);
-            IkReal vsolfree[IKFAST_NUM_DOF];
             IkReal solvalues[IKFAST_NUM_JOINTS];
-            IkSolution_GetSolution(sol,solvalues,vsolfree);
-            for( j = 0; j < IKFAST_NUM_JOINTS; ++j)
+            int solvalues_count;
+            rtapi_print( "bestSolutionDiff = "DFMT"\n", INTDOUBLE(bestSolutionDiff) );
+            IkSolution_GetSolution(sol,solvalues, &solvalues_count, jfree);
+            for( j = 0; j < solvalues_count; ++j)
             {
-                // convert from ikfast radians to linuxcnc degrees
                 joints[j] = solvalues[j] * 180 / M_PI;
             }
+            rtapi_print("afterjoints:  " ); for ( i = 0; i < IKFAST_NUM_JOINTS; i++ ) rtapi_print(""DFMT" ", INTDOUBLE(joints[i]) ); rtapi_print("\n");
+            return GO_RESULT_OK;
         }
-        rtapi_print("afterjoints: %d.%03d %d.%03d %d.%03d %d.%03d %d.%03d %d.%03d\n", INTDOUBLE(joints[0]),INTDOUBLE(joints[1]),INTDOUBLE(joints[2]),INTDOUBLE(joints[3]),INTDOUBLE(joints[4]),INTDOUBLE(joints[5]));
-        return GO_RESULT_OK;
+        else
+        {
+            rtapi_print("All solutions exceed joint limits\n");
+            return GO_RESULT_ERROR;
+        }
 	}
     
-	rtapi_print("no solution)\n");
+	rtapi_print("no solution\n");
     return GO_RESULT_ERROR;
 }
 
