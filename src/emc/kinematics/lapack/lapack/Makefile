@@ -25,18 +25,14 @@ DOBJS= double/dgebak.o double/dgebal.o double/dgeev.o double/dgehd2.o double/dge
 LOBJS= lapack_routine/dlamch.o lapack_routine/ieeeck.o lapack_routine/iladlc.o lapack_routine/iladlr.o lapack_routine/ilaenv.o lapack_routine/iparmq.o lapack_routine/lsame.o lapack_routine/xerbla.o
 BOBJS= blas/daxpy.o blas/dcopy.o blas/ddot.o blas/dgemv.o blas/dger.o blas/dnrm2.o blas/drot.o blas/dscal.o blas/dswap.o blas/dtrmm.o blas/dtrmv.o blas/dtrsm.o blas/idamax.o blas/dgemm.o
 GOBJS=gfortranlib/stop.o gfortranlib/string_intrinsics.o gfortranlib/others.o
-#GOBJS=gfortranlib/stop.o gfortranlib/string_intrinsics.o gfortranlib/transfer.o
 
 FOBJS=$(DOBJS) $(LOBJS) $(BOBJS)
 ALLOBJS=$(FOBJS) $(GOBJS)
 
 FSRC=$(FOBJS:.o=.f)
-CSRC=$(FOBJS:.o=.c)
 
 %.o: %.f 
-
-%.c: %.f 
-	f2c $< -d$(<D)
+	$(FORTRAN) -c $< -o $@
 
 ../../liblapack.a:	$(ALLOBJS) 
 	$(ARCH) $(ARCHFLAGS) $@ $(ALLOBJS)

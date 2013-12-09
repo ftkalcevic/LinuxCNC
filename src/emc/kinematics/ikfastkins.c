@@ -65,10 +65,10 @@
 
 #define IKFAST_NO_MAIN
 #define IKFAST_HAS_LIBRARY
-//#include "ikfast68.Translation3D.i686.0_1_2_f3.c"
-//#include "ikfast68.TranslationZAxisAngle4D.0_1_2_3.c"
+#include "ikfast68.Translation3D.0_1_2_f3_4.c"
+//#include "ikfast68.TranslationZAxisAngle4D.0_1_2_3_f4.c"
 //#include "ikfast68.TranslationDirection5D.0_1_2_3_4.c"
-#include "ikfast68.Transform6D.0_1_3_4_5_6_f2.c"
+//#include "ikfast68.Transform6D.0_1_3_4_5_6_f2.c"
 //#include "ikfast68.Translation3D.0_1_2_f3_4.c"
 
 
