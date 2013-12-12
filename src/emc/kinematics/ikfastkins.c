@@ -66,8 +66,8 @@
 #define IKFAST_NO_MAIN
 #define IKFAST_HAS_LIBRARY
 // simple.robot.xml
-//#include "ikfast62.Translation3D.0_1_2_f3_4.inc"
-#include "ikfast62.TranslationZAxisAngle4D.0_1_2_3_f4.inc"
+#include "ikfast62.Translation3D.0_1_2_f3_4.inc"
+//#include "ikfast62.TranslationZAxisAngle4D.0_1_2_3_f4.inc"
 /// barretwam.robot.xml
 //#include "ikfast62.Transform6D.0_1_3_4_5_6_f2.inc"
 
