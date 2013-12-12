@@ -65,21 +65,34 @@
 
 #define IKFAST_NO_MAIN
 #define IKFAST_HAS_LIBRARY
+// simple.robot.xml
+//#include "ikfast62.Translation3D.0_1_2_f3_4.inc"
 #include "ikfast62.TranslationZAxisAngle4D.0_1_2_3_f4.inc"
-//#include "ikfast62.TranslationZAxisAngle4D.0_2_3_4_f1.inc"
-//#include "ikfast68.Translation3D.0_1_2_f3_4.inc"
-
-//#include "ikfast68.Translation3D.0_1_2_f3_4.inc"
-//#include "ikfast68.TranslationZAxisAngle4D.0_1_2_3_f4.c"
-//#include "ikfast68.TranslationDirection5D.0_1_2_3_4.c"
-//#include "ikfast68.Transform6D.0_1_3_4_5_6_f2.c"
-//#include "ikfast68.Translation3D.0_1_2_f3_4.c"
+/// barretwam.robot.xml
+//#include "ikfast62.Transform6D.0_1_3_4_5_6_f2.inc"
 
 
 static IkReal last_eerot[9];
-#define ABS(x)          ((x)>=0?(x):(-(x)))
-#define INTDOUBLE(x)    (x)<0?"-":"", ((int)(ABS(x))), (((int)((ABS(x))*1000))%1000)
-#define DFMT            "%s%d.%03d"
+#ifdef __KERNEL__
+    #define ABS(x)          ((x)>=0?(x):(-(x)))
+    #define INTDOUBLE(x)    (x)<0?"-":"", ((int)(ABS(x))), (((int)((ABS(x))*1000))%1000)
+    #define DFMT            "%s%d.%03d"
+#else
+    #define INTDOUBLE(x)    x
+    #define DFMT            "%f"
+#endif
+
+static struct _haldata
+{
+    hal_float_t *time_min;
+    hal_float_t *time_max;
+    hal_float_t *time_avg;
+    hal_float_t *time_last;
+} *haldata;
+static bool bfirst;
+static double time_sum;
+static unsigned long time_count;
+
 
 /* main function called by emc2 for forward Kins */
 int kinematicsForward(const double *joint, 
@@ -102,7 +115,25 @@ int kinematicsForward(const double *joint,
     world->tran.y = eetrans[1]*1000.0;
     world->tran.z = eetrans[2]*1000.0;
 
-
+#if IKFAST_NUM_FREE_VARS > 0
+    world->a = joint[GetFreeParameters()[0]];
+#endif
+#if IKFAST_NUM_FREE_VARS > 1
+    world->b = joint[GetFreeParameters()[1]];
+#endif
+#if IKFAST_NUM_FREE_VARS > 2
+    world->c = joint[GetFreeParameters()[2]];
+#endif
+#if IKFAST_NUM_FREE_VARS > 3
+    world->u = joint[GetFreeParameters()[3]];
+#endif
+#if IKFAST_NUM_FREE_VARS > 4
+    world->v = joint[GetFreeParameters()[4]];
+#endif
+#if IKFAST_NUM_FREE_VARS > 5
+    world->w = joint[GetFreeParameters()[5]];
+#endif
+  
     rtapi_print("ikfastkins::kinematicsForward(joints: " ); for ( i = 0; i < IKFAST_NUM_JOINTS; i++ ) rtapi_print(""DFMT" ", INTDOUBLE(joint[i]) ); rtapi_print("\n");
     rtapi_print("eerot: " ); for ( i = 0; i < 9; i++ ) rtapi_print(""DFMT" ", INTDOUBLE(eerot[i]) ); rtapi_print("\n");
     rtapi_print("eetrans: " ); for ( i = 0; i < 3; i++ ) rtapi_print(""DFMT" ", INTDOUBLE(eetrans[i]) ); rtapi_print("\n");
@@ -118,20 +149,33 @@ int kinematicsInverse(const EmcPose * world,
 		      KINEMATICS_FORWARD_FLAGS * fflags)
 {
     //return GO_RESULT_OK;
-    IkReal jfree[EMCMOT_MAX_JOINTS], eerot[9], eetrans[3];
+    IkReal jfree[IKFAST_NUM_FREE_VARS], eerot[9], eetrans[3];
     int i;
     static IkSolutionList solutions;
     bool bSuccess;
 
-	//rtapi_print("ikfastkins kinematicsInverse\n");
-    for ( i = 0; i < GetNumFreeParameters(); i++ )
-    {
-        jfree[i] = joints[GetFreeParameters()[i]]/180*M_PI;
-    }
+	// map free joints to axis a->
+#if IKFAST_NUM_FREE_VARS > 0
+    jfree[0] = world->a/180*M_PI;
+#endif
+#if IKFAST_NUM_FREE_VARS > 1
+    jfree[1] = world->b/180*M_PI;
+#endif
+#if IKFAST_NUM_FREE_VARS > 2
+    jfree[2] = world->c/180*M_PI;
+#endif
+#if IKFAST_NUM_FREE_VARS > 3
+    jfree[3] = world->u/180*M_PI;
+#endif
+#if IKFAST_NUM_FREE_VARS > 4
+    jfree[4] = world->v/180*M_PI;
+#endif
+#if IKFAST_NUM_FREE_VARS > 5
+    jfree[5] = world->w/180*M_PI;
+#endif
+
+    // Use the last value eerot
     memcpy( eerot, last_eerot, sizeof(last_eerot) );
-    //eerot[0] = 1; eerot[1] = 0; eerot[2] = 0;
-    //eerot[3] = 0; eerot[4] = 1; eerot[5] = 0;
-    //eerot[6] = 0; eerot[7] = 0; eerot[8] = 1;
 
     // convert linuxcnc mm to ikfast m
     eetrans[0] = world->tran.x/1000.0;
@@ -141,13 +185,22 @@ int kinematicsInverse(const EmcPose * world,
 
 	rtapi_print("ikfastkins::kinematicsInverse(world: "DFMT" "DFMT" "DFMT" "DFMT"\n", INTDOUBLE(world->tran.x), INTDOUBLE(world->tran.y), INTDOUBLE(world->tran.z), INTDOUBLE(world->a) );
     rtapi_print("beforejoints: " ); for ( i = 0; i < IKFAST_NUM_JOINTS; i++ ) rtapi_print(""DFMT" ", INTDOUBLE(joints[i]) ); rtapi_print("\n");
+    rtapi_print("eetrans: " ); for ( i = 0; i < 3; i++ ) rtapi_print(""DFMT" ", INTDOUBLE(eetrans[i]) ); rtapi_print("\n");
+    rtapi_print("eerot: " ); for ( i = 0; i < 9; i++ ) rtapi_print(""DFMT" ", INTDOUBLE(eerot[i]) ); rtapi_print("\n");
 
     long long tstart = rtapi_get_time();
     IkSolutionList_Init( &solutions );
     bSuccess = ComputeIk(eetrans, eerot, jfree, &solutions);
     long long tend = rtapi_get_time();
-    long t = (long)(tend-tstart)/1000;
-    rtapi_print("bSuccess=%d time=%ld.%03ldms\n", bSuccess, t/1000, t%1000);
+    double t = (tend-tstart)/1000.0;
+    rtapi_print("bSuccess=%d time="DFMT"ms\n", bSuccess, INTDOUBLE(t));
+    *(haldata->time_last) = t;
+    time_sum += t;
+    time_count++;
+    *(haldata->time_avg) = time_sum / time_count;
+    if ( bfirst || t < *(haldata->time_min) ) *(haldata->time_min) = t;
+    if ( bfirst || t > *(haldata->time_max) ) *(haldata->time_max) = t;
+    bfirst = false;
 
     if ( bSuccess )
     {
@@ -248,9 +301,36 @@ int comp_id;
 int rtapi_app_main(void)
 {
 	rtapi_print("Starting ikfastkins\n");
-    comp_id = hal_init("ikfastkins");
+#define COMPONENT_NAME "ikfastkins"
+    comp_id = hal_init(COMPONENT_NAME);
     if (comp_id < 0)
 	    return comp_id;
+
+    //if ( GetNumFreeParameters() > 0 )
+    //{
+    //    int i;
+    //    haldata = hal_malloc(sizeof(hal_float_t *)*GetNumFreeParameters());
+    //    
+    //    // Create parameters to feed the free joints
+    //    for ( i = 0; i < GetNumFreeParameters(); i++ )
+    //    {
+    //        int index = GetFreeParameters()[i];
+    //        int result = hal_pin_float_newf( HAL_IO, haldata+i, comp_id,
+    //                                         "%s.joint%d", COMPONENT_NAME, index );
+    //    }
+    //}
+    haldata = (struct _haldata *)hal_malloc(sizeof(struct _haldata));
+    hal_pin_float_newf( HAL_OUT, &haldata->time_min, comp_id, "%s.time-min", COMPONENT_NAME );
+    hal_pin_float_newf( HAL_OUT, &haldata->time_max, comp_id, "%s.time-max", COMPONENT_NAME );
+    hal_pin_float_newf( HAL_OUT, &haldata->time_avg, comp_id, "%s.time-avg", COMPONENT_NAME );
+    hal_pin_float_newf( HAL_OUT, &haldata->time_last, comp_id, "%s.time-last", COMPONENT_NAME );
+    *(haldata->time_min) = 0;
+    *(haldata->time_max) = 0;
+    *(haldata->time_avg) = 0;
+    *(haldata->time_last) = 0;
+    bfirst = true;
+    time_sum = 0;
+    time_count = 0;
 
     hal_ready(comp_id);
 	rtapi_print("ikfastkins ready\n");
