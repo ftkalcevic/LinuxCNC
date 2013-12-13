@@ -1,0 +1,10 @@
+There are 2 configurations in this directory - my simple robot and the 
+barretwam robot.  
+
+To change configurations the correct inverse kinematics module must be 
+compiled.  See the README in src/emc/kinematics.  The default is the 
+simple robot.
+
+The openrave package needs to be installed to display the robot model.  The
+latest version will do, but if you want to generate your own ikfast modules
+you will need the custom branch that can generate linuxcnc rtai c code.

@@ -1,0 +1,129 @@
+#!/usr/bin/python
+
+from openravepy import *
+import sys,time
+from types import ModuleType
+from numpy import *
+import hal
+from optparse import OptionParser
+
+MAX_POINTS = 1000
+POINT_DIST = 0.01
+
+def ParseCommandLine():
+    parser = OptionParser(description="LinuxCNC openrave display", 
+                          version=__version__)
+    parser.add_option('--robot', action='store', type='string', dest='robot',
+                      default=None,
+                      help='robot file (COLLADA or OpenRAVE XML)')
+    parser.add_option('--refreshrate', action='store', type='float', dest='refreshrate',
+                      default=60.0,
+                      help='Display update rate in update per second. Default=%default')
+    parser.add_option('--showtrail', action='store_true', dest='showtrail',
+                      default=False,
+                      help='Display the path the end effector travels. Default=%default')
+    (options, args) = parser.parse_args()
+    if options.robot is None:
+        print('robot file required')
+        return None
+
+    return options
+
+def CreateHalInterface(options, robot):
+    global c
+    c = hal.component("openravedisplay")
+
+    joints=robot.GetJoints()
+    for i in range(len(joints)):
+        c.newpin("joint%d"%i, hal.HAL_FLOAT, hal.HAL_IN)
+    c.ready()
+
+
+def LoadRobot( options ):
+    global env
+    env = Environment() # create openrave environment
+    viewer = env.SetViewer('qtcoin') # attach viewer (optional)
+    env.Load(options.robot) # load a simple scene
+    robot = env.GetRobots()[0] # get the first robot
+    env.Add(robot,True)
+    return robot
+
+def degToRad(deg):
+    return deg / 180 * 3.14159
+
+# From emcmodule.cc
+def colinear( points ):
+    epsilon = 1e-4 # 1-cos(1 deg) ~= 1e-4
+    tiny = 1e-10
+    xa = points[0]
+    ya = points[1]
+    za = points[2]
+    xb = points[3]
+    yb = points[4]
+    zb = points[5]
+    xc = points[6]
+    yc = points[7]
+    zc = points[8]
+    dx1 = xa-xb
+    dx2 = xb-xc
+    dy1 = ya-yb
+    dy2 = yb-yc
+    dz1 = za-zb
+    dz2 = zb-zc
+    dp = sqrt(dx1*dx1 + dy1*dy1 + dz1*dz1)
+    dq = sqrt(dx2*dx2 + dy2*dy2 + dz2*dz2)
+    if fabs(dp) < tiny or fabs(dq) < tiny:
+        return True;
+    dot = (dx1*dx2 + dy1*dy2 + dz1*dz2) / dp / dq
+    if fabs(1-dot) < epsilon:
+        return True;
+    return False;
+
+def UpdateTrail( env, points, transform, oldtrail ):
+    point = [ transform[0][3], transform[1][3], transform[2][3] ]
+    if len(points) == 0 or \
+       (point[0]-points[0])**2 + (point[1]-points[1])**2 + (point[2]-points[2])**2 > POINT_DIST:
+        points[len(points):len(points)+2] = [ transform[0][3], transform[1][3], transform[2][3] ]
+
+        if len(points) >= 3*3:
+            if colinear(points[len(points)-3*3:len(points)]):
+                del points[len(points)-3*2:len(points)-3]
+        if len(points) > 3*MAX_POINTS:
+            del points[0:3]
+        #return env.plot3( points, 3 )
+        return env.drawlinestrip( points, 3 )
+    else:
+        return oldtrail
+    
+def main():
+
+    options = ParseCommandLine()
+    if options is None:
+        sys.exit(1)
+    robot = LoadRobot( options )
+    CreateHalInterface( options, robot )
+
+    endEffector = robot.GetActiveManipulator().GetEndEffector()
+    lastGoal = []
+    goalJoints = []
+    points = []
+    joints=robot.GetJoints()
+    for i in range(len(joints)):
+        goalJoints.append( i )
+
+    sleepTime = 1.0/options.refreshrate
+    trail = None
+    while True:
+        goal =[]
+        for i in range(len(joints)):
+            goal.append( degToRad(c["joint%d"%i]) )
+        if goal != lastGoal:
+            robot.SetDOFValues(goal,goalJoints) 
+            lastGoal = goal
+            if options.showtrail:
+                with env:
+                    trail = UpdateTrail( env, points, endEffector.GetTransform(), trail )
+        time.sleep(sleepTime)
+
+
+main()

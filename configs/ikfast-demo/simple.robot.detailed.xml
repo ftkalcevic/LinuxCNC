@@ -1,0 +1,169 @@
+<Robot name="3DOFRobot">
+  <KinBody>
+    <!-- Create the base body, it should never move-->
+    <!-- Note that all translations and rotations are with respect to this base-->
+    <!-- For example, the robot at the identity transformation is equivalent to the identity transformation of the first body.-->
+    <Body name="Base" type="dynamic">
+      <Translation>0.0  0.0  0.0</Translation>
+      <Geom type="trimesh" modifiable="false">
+        <render>base.dae 0.001</render>
+        <RotationAxis>1 0 0 180 </RotationAxis>
+        <Translation>0.0  0.0  0.01</Translation>
+      </Geom>
+      <!-- <Geom type="box">
+        <diffusecolor>.6 .25 0</diffusecolor>
+        <Extents>0.0875 0.0875 0.00625</Extents>
+        <Translation>0 0 0.00625</Translation>
+        <transparency>0.3 </transparency>
+      </Geom> -->
+    </Body>
+
+     <!-- the first movable link-->
+    <Body name="Shoulder" type="dynamic">
+      <!-- Offset from is a fast way of specifying that the translation and rotation of this-->
+      <!-- body should be relative to another link-->
+      <offsetfrom>Base</offsetfrom>
+      <!-- Translation relative to Base-->
+      <Translation>0 0 0.0125</Translation>
+      <!-- <Geom type="box">
+        <Extents>0.045 0.066 0.0895</Extents>
+        <Translation>0 0 0.0895</Translation>
+        <diffusecolor>0 .4 0</diffusecolor>
+        <transparency>0.3 </transparency>
+      </Geom> -->
+      <Geom type="trimesh" modifiable="false">
+        <render>Shoulder.dae 0.001</render>
+        <RotationAxis>1 0 0 180 </RotationAxis>
+        <Translation>0.0  0.0  0.0</Translation>
+      </Geom>
+    </Body>
+    <Joint name="Shoulder" type="hinge">
+      <Body>Base</Body>
+      <Body>Shoulder</Body>
+      <offsetfrom>Shoulder</offsetfrom>
+      <weight>4</weight>
+      <limitsdeg>-180 180</limitsdeg>
+      <axis>0 0 1</axis>
+      <maxvel>10</maxvel>
+      <resolution>1</resolution>
+    </Joint>
+    
+    <!-- the second movable link-->
+    <Body name="UpperArm" type="dynamic">
+      <offsetfrom>Shoulder</offsetfrom>
+      <Translation>0 0 0.1574</Translation>
+      <!-- <Geom type="box">
+        <Extents>0.027 0.055 0.110</Extents>
+        <Translation>0 0 0.027</Translation>
+        <diffusecolor>.8 .1 .3</diffusecolor>
+        <transparency>0.3 </transparency>
+      </Geom> -->
+      <Geom type="trimesh" modifiable="false">
+        <render>UpperArm.dae 0.001</render>
+        <RotationAxis>1 0 0 180 </RotationAxis>
+        <Translation>0.0  -0.053  -0.005</Translation>
+      </Geom>
+     </Body>
+    <Joint name="UpperArm" type="hinge">
+      <Body>Shoulder</Body>
+      <Body>UpperArm</Body>
+      <offsetfrom>UpperArm</offsetfrom>
+      <weight>3</weight>
+      <limitsdeg>-130 136</limitsdeg>
+      <axis>0 1 0</axis>
+      <maxvel>10</maxvel>
+      <resolution>1</resolution>
+    </Joint>
+    
+    <!-- the third movable link-->
+    <Body name="ForeArm" type="dynamic">
+      <offsetfrom>UpperArm</offsetfrom>
+      <Translation>0. 0 0.120</Translation>
+      <!-- <Geom type="box">
+        <Extents>0.020 0.044 0.0775</Extents>
+        <Translation>0 0 0.0575</Translation>
+        <diffusecolor>.25 .4 .8</diffusecolor>
+        <transparency>0.3 </transparency>
+      </Geom> -->
+      <Geom type="trimesh" modifiable="false">
+        <render>ForeArm.dae 0.001</render>
+        <RotationAxis>0 0 1 -90</RotationAxis>
+        <Translation>0.0  -0.043  -0.005</Translation>
+      </Geom>
+     </Body>
+    <Joint name="ForeArm" type="hinge">
+      <Body>UpperArm</Body>
+      <Body>ForeArm</Body>
+      <offsetfrom>ForeArm</offsetfrom>
+      <weight>3</weight>
+      <limitsdeg>-126 156</limitsdeg>
+      <axis>0 1 0</axis>
+      <maxvel>10</maxvel>
+      <resolution>2</resolution>
+    </Joint>
+    
+    
+    <!-- the fourth movable link-->
+    <Body name="Wrist" type="dynamic">
+      <offsetfrom>ForeArm</offsetfrom>
+      <Translation>0 0 0.120</Translation>
+      <!-- <Geom type="box">
+        <Extents>0.015 0.033 0.0325</Extents>
+        <Translation>0 0 0.01625</Translation>
+        <diffusecolor>.8 .8 0</diffusecolor>
+        <transparency>0.3 </transparency>
+      </Geom> -->
+      <Geom type="trimesh" modifiable="false">
+        <render>wrist.dae 0.0001</render>
+        <RotationAxis>0 0 1 -90 </RotationAxis>
+        <RotationAxis>1 0 0 180 </RotationAxis>
+        <Translation>0.0  0.028  -0.005</Translation>
+      </Geom>
+     </Body>
+    <Joint name="Wrist" type="hinge">
+      <Body>ForeArm</Body>
+      <Body>Wrist</Body>
+      <offsetfrom>Wrist</offsetfrom>
+      <weight>3</weight>
+      <limitsdeg>-130 157</limitsdeg>
+      <axis>0 1 0</axis>
+      <maxvel>10</maxvel>
+      <resolution>2</resolution>
+    </Joint>
+  
+    <Body name="WristR" type="dynamic">
+      <offsetfrom>Wrist</offsetfrom>
+      <Translation>0 0 0.070</Translation>
+      <Geom type="box">
+        <Extents>0.0025 0.025 0.0325</Extents>
+        <Translation>0 0 0.01625</Translation>
+        <diffusecolor>.8 .4 .4</diffusecolor>
+        <transparency>0.3 </transparency>
+      </Geom>
+    </Body>
+    <Joint name="WristR" type="hinge">
+      <Body>Wrist</Body>
+      <Body>WristR</Body>
+      <offsetfrom>WristR</offsetfrom>
+      <weight>3</weight>
+      <limitsdeg>-180 180</limitsdeg>
+      <axis>0 0 1</axis>
+      <maxvel>.2</maxvel>
+      <resolution>2</resolution>
+    </Joint>
+   </KinBody>
+  <!-- Specifying the manipulator structure-->
+  <Manipulator name="arm">
+    <effector>WristR</effector>   <!-- last link where end effector is attached-->
+    <base>Base</base>           <!-- base link-->
+    <!-- the id of the inverse kinematics solver, it is not necessary to-->
+    <!-- specify an ik solver for every robot. But if there is one,-->
+    <!-- use iksolver field to identity it.-->
+    <!-- <iksolver>MyTriDOFSolver</iksolver> -->
+    <!-- joint values of the closed and opened positions-->
+    <closingdirection>1 1</closingdirection>
+    <direction>0 0 1</direction>
+    <!-- grasp goal with respect to the effector-->
+    <Translation>0 0 0</Translation>
+  </Manipulator>
+</Robot>

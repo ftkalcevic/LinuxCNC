@@ -1,0 +1,46 @@
+The ikfastkins module is used to interface with the openrave generated 
+inverse kinematics modules.
+
+ikfastkins.c used a #include to read in the generated ikfast source.  Note that
+it is renamed to *.inc - the build system gets confused when .c depends on .c.
+
+ikfast solutions often have "free" joints - joints that are not needed to
+generate an ik solution. The ikfastkins.c module automatically maps the
+unused world mode axis ABCUVW to the free joints.
+
+In most cases, ikfast returns more than 1 solution for the ik calculation.
+ikfastkins.c attempts to find the solution that is closest to the current 
+position.  However, it is posible that an inappropriate solution is selected
+causing a joint to flip -  test first in the simulator.
+
+There are 3 example files...
+
+ikfast62.Translation3D.0_1_2_f3_4.inc 
+    - simple robot 3d translation.  This is a closed form solution, that is
+      it is mathematical expression that can be computed quickly (<10us).
+      Because only the first 3 joints are needed to compute the position, the
+      last 2 joints are "free".  This can be seen in the file name.  The
+      ikfastkins.c module automatically maps axis A, B to the free joints.
+
+ikfast62.TranslationZAxisAngle4D.0_1_2_3_f4.inc 
+    - simple robot 3d translation with end effector fixed at an angle to the
+      Z axis.  There is no closed form solution for this robot.  The generated
+      ikfast code uses the lapack math library's numerical methods to solve
+      the IK equations.  This takes around 4ms to compute, so it isn't
+      useful outside of the simulator.
+
+      To build and link the src/Makefile must be edited to enable the -llapack
+      linking for the simulator, or the very long ikfast-obj= line for a
+      real time build.  Also a patch file for ubuntu 10.04 kernel makefile
+      must be applied - ikfast_fortran_kernel_header.patch.   This is applied
+      to /usr/src/linux-headers-2.6.32-122-rtai.  Note - only this version
+      has been tested.
+
+      The patch adds build rules for the lapack fortran code.
+
+ikfast62.Transform6D.0_1_3_4_5_6_f2.inc
+    - This is a full 6DoF soluton for the Barret WAM 7DoF robot arm.  It
+      is a closed form solution, that executes quickly, but is enormous (1.3M).
+      It takes a long time for ikfast to generate the source, and a large
+      amount of memory to compile it.
+

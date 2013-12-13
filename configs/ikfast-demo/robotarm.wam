@@ -1,0 +1,5 @@
+export EMC_HOME=/home/frankt/linuxcnc-dev/ikfast/
+. $EMC_HOME/scripts/rip-environment
+linuxcnc robotarm.wam.ini
+#linuxcnc ~/linuxcnc/robotarm/robotarm_sim.ini
+#/home/frankt/emc2.core/emc2-2.3.4/scripts/emc /home/frankt/emc2/config/sim/lathe.ini
