@@ -1425,13 +1425,6 @@ static int sendTeleopJogCont()
 
 	emc_set_teleop_vector_jog.serial_number = ++emcCommandSerialNumber;
 	emcCommandBuffer->write(emc_set_teleop_vector_jog);
-    rtapi_print( "teleopjog %f %f %f %f %f %f\n",
-                emc_set_teleop_vector_jog.vector.tran.x,
-                emc_set_teleop_vector_jog.vector.tran.y,
-                emc_set_teleop_vector_jog.vector.tran.z,
-                emc_set_teleop_vector_jog.vector.a,
-                emc_set_teleop_vector_jog.vector.b,
-                emc_set_teleop_vector_jog.vector.c );
 
     return emcCommandWaitReceived(emcCommandSerialNumber);
 }
