@@ -1,6 +1,6 @@
 /********************************************************************
-* Description: genserkins.c
-*   Kinematics for a generalised serial kinematics machine
+* Description: ikfastkins
+*   Kinematics for an ikfast IK module (see wiki for details)
 *
 *   Derived from a work by Fred Proctor,
 *   changed to work with emc2 and HAL
@@ -57,7 +57,7 @@
 
 //#define RTAPI_PRINT_DEBUG
 #ifndef RTAPI_PRINT_DEBUG
-#define rtapi_print if (0) rtapi_print
+#define RTAPI_PRINT if (0) rtapi_print
 #endif
 
 #include "hal.h"
@@ -73,6 +73,8 @@
 
 
 static IkReal last_eerot[9];
+static int no_result_count;
+
 #ifdef __KERNEL__
     #define ABS(x)          ((x)>=0?(x):(-(x)))
     #define INTDOUBLE(x)    (x)<0?"-":"", ((int)(ABS(x))), (((int)((ABS(x))*1000))%1000)
@@ -134,10 +136,10 @@ int kinematicsForward(const double *joint,
     world->w = joint[GetFreeParameters()[5]];
 #endif
   
-    rtapi_print("ikfastkins::kinematicsForward(joints: " ); for ( i = 0; i < IKFAST_NUM_JOINTS; i++ ) rtapi_print(""DFMT" ", INTDOUBLE(joint[i]) ); rtapi_print("\n");
-    rtapi_print("eerot: " ); for ( i = 0; i < 9; i++ ) rtapi_print(""DFMT" ", INTDOUBLE(eerot[i]) ); rtapi_print("\n");
-    rtapi_print("eetrans: " ); for ( i = 0; i < 3; i++ ) rtapi_print(""DFMT" ", INTDOUBLE(eetrans[i]) ); rtapi_print("\n");
-	rtapi_print("world: "DFMT" "DFMT" "DFMT" )\n", INTDOUBLE(world->tran.x), INTDOUBLE(world->tran.y), INTDOUBLE(world->tran.z) );
+    RTAPI_PRINT("ikfastkins::kinematicsForward(joints: " ); for ( i = 0; i < IKFAST_NUM_JOINTS; i++ ) RTAPI_PRINT(""DFMT" ", INTDOUBLE(joint[i]) ); RTAPI_PRINT("\n");
+    RTAPI_PRINT("eerot: " ); for ( i = 0; i < 9; i++ ) RTAPI_PRINT(""DFMT" ", INTDOUBLE(eerot[i]) ); RTAPI_PRINT("\n");
+    RTAPI_PRINT("eetrans: " ); for ( i = 0; i < 3; i++ ) RTAPI_PRINT(""DFMT" ", INTDOUBLE(eetrans[i]) ); RTAPI_PRINT("\n");
+	RTAPI_PRINT("world: "DFMT" "DFMT" "DFMT" )\n", INTDOUBLE(world->tran.x), INTDOUBLE(world->tran.y), INTDOUBLE(world->tran.z) );
     
     return 0;
 }
@@ -183,17 +185,17 @@ int kinematicsInverse(const EmcPose * world,
     eetrans[2] = world->tran.z/1000.0;
 
 
-	rtapi_print("ikfastkins::kinematicsInverse(world: "DFMT" "DFMT" "DFMT" "DFMT"\n", INTDOUBLE(world->tran.x), INTDOUBLE(world->tran.y), INTDOUBLE(world->tran.z), INTDOUBLE(world->a) );
-    rtapi_print("beforejoints: " ); for ( i = 0; i < IKFAST_NUM_JOINTS; i++ ) rtapi_print(""DFMT" ", INTDOUBLE(joints[i]) ); rtapi_print("\n");
-    rtapi_print("eetrans: " ); for ( i = 0; i < 3; i++ ) rtapi_print(""DFMT" ", INTDOUBLE(eetrans[i]) ); rtapi_print("\n");
-    rtapi_print("eerot: " ); for ( i = 0; i < 9; i++ ) rtapi_print(""DFMT" ", INTDOUBLE(eerot[i]) ); rtapi_print("\n");
+	RTAPI_PRINT("ikfastkins::kinematicsInverse(world: "DFMT" "DFMT" "DFMT" "DFMT"\n", INTDOUBLE(world->tran.x), INTDOUBLE(world->tran.y), INTDOUBLE(world->tran.z), INTDOUBLE(world->a) );
+    RTAPI_PRINT("beforejoints: " ); for ( i = 0; i < IKFAST_NUM_JOINTS; i++ ) RTAPI_PRINT(""DFMT" ", INTDOUBLE(joints[i]) ); RTAPI_PRINT("\n");
+    RTAPI_PRINT("eetrans: " ); for ( i = 0; i < 3; i++ ) RTAPI_PRINT(""DFMT" ", INTDOUBLE(eetrans[i]) ); RTAPI_PRINT("\n");
+    RTAPI_PRINT("eerot: " ); for ( i = 0; i < 9; i++ ) RTAPI_PRINT(""DFMT" ", INTDOUBLE(eerot[i]) ); RTAPI_PRINT("\n");
 
     long long tstart = rtapi_get_time();
     IkSolutionList_Init( &solutions );
     bSuccess = ComputeIk(eetrans, eerot, jfree, &solutions);
     long long tend = rtapi_get_time();
     double t = (tend-tstart)/1000.0;
-    rtapi_print("bSuccess=%d time="DFMT"ms\n", bSuccess, INTDOUBLE(t));
+    RTAPI_PRINT("bSuccess=%d time="DFMT"ms\n", bSuccess, INTDOUBLE(t));
     *(haldata->time_last) = t;
     time_sum += t;
     time_count++;
@@ -207,7 +209,7 @@ int kinematicsInverse(const EmcPose * world,
         int solutionCount = IkSolutionList_GetNumSolutions(&solutions);
         int bestSolution = -1;
         double bestSolutionDiff = DBL_MAX;
-        rtapi_print("solns: %d - ", solutionCount );
+        RTAPI_PRINT("solns: %d - ", solutionCount );
         {
             int s;
             for ( s = 0; s < solutionCount; s++ )
@@ -219,7 +221,7 @@ int kinematicsInverse(const EmcPose * world,
                 size_t j;
                 int solvalues_count;
                 IkSolution_GetSolution(sol,solvalues,&solvalues_count,jfree);
-                rtapi_print("- joints: ");
+                RTAPI_PRINT("- joints: ");
                 for( j = 0; j < solvalues_count; ++j)
                 {
                     // convert from ikfast radians to linuxcnc degrees
@@ -229,7 +231,7 @@ int kinematicsInverse(const EmcPose * world,
                          solvalues[j] > JointInfo[j].limitMax )
                     {
                         outOfRange = true;
-                        rtapi_print("*" );
+                        RTAPI_PRINT("*" );
                     }
                     else
                     {
@@ -238,7 +240,7 @@ int kinematicsInverse(const EmcPose * world,
                         while ( diff > 180 ) diff -= 360;
                         err += diff*diff;
                     }
-                    rtapi_print(""DFMT" ", INTDOUBLE(solvalues[j]) );
+                    RTAPI_PRINT(""DFMT" ", INTDOUBLE(solvalues[j]) );
                 }
                 if ( !outOfRange && err < bestSolutionDiff )
                 {
@@ -246,7 +248,7 @@ int kinematicsInverse(const EmcPose * world,
                     bestSolutionDiff = err;
                 }
             }
-            rtapi_print(")\n" );
+            RTAPI_PRINT(")\n" );
         }
         if ( bestSolution >= 0 )
         {
@@ -254,23 +256,32 @@ int kinematicsInverse(const EmcPose * world,
             IkSolution *sol = IkSolutionList_GetSolution(&solutions,bestSolution);
             IkReal solvalues[IKFAST_NUM_JOINTS];
             int solvalues_count;
-            rtapi_print( "bestSolutionDiff = "DFMT"\n", INTDOUBLE(bestSolutionDiff) );
+            RTAPI_PRINT( "bestSolutionDiff = "DFMT"\n", INTDOUBLE(bestSolutionDiff) );
             IkSolution_GetSolution(sol,solvalues, &solvalues_count, jfree);
             for( j = 0; j < solvalues_count; ++j)
             {
                 joints[j] = solvalues[j] * 180 / M_PI;
             }
-            rtapi_print("afterjoints:  " ); for ( i = 0; i < IKFAST_NUM_JOINTS; i++ ) rtapi_print(""DFMT" ", INTDOUBLE(joints[i]) ); rtapi_print("\n");
+            RTAPI_PRINT("afterjoints:  " ); for ( i = 0; i < IKFAST_NUM_JOINTS; i++ ) RTAPI_PRINT(""DFMT" ", INTDOUBLE(joints[i]) ); RTAPI_PRINT("\n");
+            no_result_count = 0;
             return GO_RESULT_OK;
         }
         else
         {
-            rtapi_print("All solutions exceed joint limits\n");
+            if ( no_result_count == 0 )
+            {
+                rtapi_print("ikfastkins: All solutions exceed joint limits\n");
+            }
+            no_result_count++;
             return GO_RESULT_ERROR;
         }
 	}
     
-	rtapi_print("no solution\n");
+	if ( no_result_count == 0 )
+    {
+        rtapi_print("ikfastkins: no solution\n");
+    }
+    no_result_count++;
     return GO_RESULT_ERROR;
 }
 
@@ -300,7 +311,7 @@ int comp_id;
 
 int rtapi_app_main(void)
 {
-	rtapi_print("Starting ikfastkins\n");
+	RTAPI_PRINT("Starting ikfastkins\n");
 #define COMPONENT_NAME "ikfastkins"
     comp_id = hal_init(COMPONENT_NAME);
     if (comp_id < 0)
@@ -331,9 +342,10 @@ int rtapi_app_main(void)
     bfirst = true;
     time_sum = 0;
     time_count = 0;
+    no_result_count = 0;
 
     hal_ready(comp_id);
-	rtapi_print("ikfastkins ready\n");
+	RTAPI_PRINT("ikfastkins ready\n");
     return 0;
 }
 
