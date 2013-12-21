@@ -1888,7 +1888,6 @@ static void check_hal_changes()
     }
 
    
-    initTeleopJogCont();
     for (joint=0; joint < num_axes; joint++) {
 	if (check_bit_changed(new_halui_data.joint_home[joint], old_halui_data.joint_home[joint]) != 0)
 	    sendHome(joint);
@@ -1914,6 +1913,7 @@ static void check_hal_changes()
 	    old_halui_data.jog_plus[joint] = bit;
 	}
 
+    // Handle teleop analog jog later
     if (emcStatus->motion.traj.mode != EMC_TRAJ_MODE_TELEOP) {
         floatt = new_halui_data.jog_analog[joint];
         bit = (fabs(floatt) > new_halui_data.jog_deadband);
@@ -1951,23 +1951,25 @@ static void check_hal_changes()
 	}
     }
 
-    if (emcStatus->motion.traj.mode == EMC_TRAJ_MODE_TELEOP) 
-    {
+    // Handle teleop analog jog here so we only send one message
+    // with potentially multiple axis.
+    if (emcStatus->motion.traj.mode == EMC_TRAJ_MODE_TELEOP) {
+        initTeleopJogCont();
+
         bool change = false;
-        for (joint=0; joint < num_axes; joint++) 
-        {
+        for (joint=0; joint < num_axes; joint++) {
             floatt = new_halui_data.jog_analog[joint];
             bit = (fabs(floatt) > new_halui_data.jog_deadband);
             if ((floatt != old_halui_data.jog_analog[joint]) || 
-                (bit && jog_speed_changed)) 
-            {
+                (bit && jog_speed_changed)) {
                 change = true;
             }
             sendJogCont(joint,(new_halui_data.jog_speed) * (new_halui_data.jog_analog[joint]));
             old_halui_data.jog_analog[joint] = floatt;
         }
-        if ( change )
+        if ( change ) {
             sendTeleopJogCont();
+        }
     }
 
  
