@@ -420,7 +420,7 @@ static int emcTaskNmlGet()
     // try to connect to EMC cmd
     if (emcCommandBuffer == 0) {
 	emcCommandBuffer =
-	    new RCS_CMD_CHANNEL(emcFormat, "emcCommand", "xemc",
+	    new RCS_CMD_CHANNEL(emcFormat, "emcCommand", "halui",
 				emc_nmlfile);
 	if (!emcCommandBuffer->valid()) {
 	    delete emcCommandBuffer;
@@ -431,7 +431,7 @@ static int emcTaskNmlGet()
     // try to connect to EMC status
     if (emcStatusBuffer == 0) {
 	emcStatusBuffer =
-	    new RCS_STAT_CHANNEL(emcFormat, "emcStatus", "xemc",
+	    new RCS_STAT_CHANNEL(emcFormat, "emcStatus", "halui",
 				 emc_nmlfile);
 	if (!emcStatusBuffer->valid()) {
 	    delete emcStatusBuffer;
@@ -452,7 +452,7 @@ static int emcErrorNmlGet()
 
     if (emcErrorBuffer == 0) {
 	emcErrorBuffer =
-	    new NML(nmlErrorFormat, "emcError", "xemc", emc_nmlfile);
+	    new NML(nmlErrorFormat, "emcError", "halui", emc_nmlfile);
 	if (!emcErrorBuffer->valid()) {
 	    delete emcErrorBuffer;
 	    emcErrorBuffer = 0;
