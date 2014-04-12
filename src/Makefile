@@ -108,7 +108,6 @@ SUBDIRS := \
     emc/usr_intf/gremlin \
     emc/usr_intf emc/nml_intf emc/task emc/iotask emc/kinematics emc/canterp \
     emc/motion emc/ini emc/rs274ngc emc/sai emc emc/pythonplugin \
-    \
     module_helper \
     \
     po \
@@ -171,7 +170,7 @@ INCLUDE += -I$(INCLUDEPY)
 endif
 
 # Compilation options.	Perhaps some of these should come from Makefile.inc?
-OPT := -Os
+OPT := -O0
 DEBUG := -g -Wall
 CFLAGS := $(INCLUDE) $(OPT) $(DEBUG) -DULAPI $(call cc-option, -Wdeclaration-after-statement) $(BITOPS_DEFINE)
 CXXFLAGS := $(INCLUDE) $(OPT) $(DEBUG) -DULAPI $(BITOPS_DEFINE)
@@ -284,6 +283,7 @@ HEADERS := \
     emc/nml_intf/debugflags.h \
     emc/rs274ngc/interp_internal.hh \
     emc/rs274ngc/rs274ngc.hh \
+    emc/rs274ngc/interpbase.hh \
     hal/hal.h \
     hal/hal_parport.h \
     libnml/buffer/locmem.hh \

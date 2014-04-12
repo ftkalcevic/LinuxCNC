@@ -1,0 +1,22 @@
+<RCC>
+    <qresource prefix="/images">
+        <file alias="accept">resources/accept.png</file>
+        <file alias="conversational">resources/conversational.png</file>
+        <file alias="copy">resources/copy.png</file>
+        <file alias="cut">resources/cut.png</file>
+        <file alias="default">resources/default.png</file>
+        <file alias="down">resources/down.png</file>
+        <file alias="edit">resources/edit.png</file>
+        <file alias="exit">resources/exit.png</file>
+        <file alias="insertblank">resources/insertblank.png</file>
+        <file alias="insertwiz">resources/insertwiz.png</file>
+        <file alias="new">resources/new.png</file>
+        <file alias="open">resources/open.png</file>
+        <file alias="paste">resources/paste.png</file>
+        <file alias="reject">resources/reject.png</file>
+        <file alias="save">resources/save.png</file>
+        <file alias="splash">resources/splash.png</file>
+        <file alias="up">resources/up.png</file>
+        <file alias="wizicon">resources/wizicon.png</file>
+    </qresource>
+</RCC>
