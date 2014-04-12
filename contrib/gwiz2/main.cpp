@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "mainwindow.h"
 #include <QApplication>
+#include <iostream>
 
 #include "gwizard.h"
 
@@ -17,7 +18,14 @@ int main(int argc, char *argv[])
     GWizard gwiz;
     gwiz.ParseCommandLine();
     gwiz.Init();
-            
+
+    if ( QFileInfo(a.arguments()[0]).baseName() == "wiz2gcode" )
+    {
+        QString sData = gwiz.MakeGCode(false);
+        std::cout << sData.toLocal8Bit().constData();
+        return 0;
+    }
+    
     g_pAppSettings = new ApplicationSettings( gwiz.GetWizIniFile(), &a );
     
     MainWindow w(gwiz);

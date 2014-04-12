@@ -23,9 +23,9 @@ TEMPLATE = app
 
 PRECOMPILED_HEADER = stdafx.h
 
-INCLUDEPATH += $(EMC_SOURCE)/include
+INCLUDEPATH += ../../include
 
-LIBS += -L $(EMC_SOURCE)/lib $(EMC_SOURCE)/lib/libinterpbase.so -lGL -lGLU
+LIBS += -L ../../lib ../../lib/libinterpbase.so -lGL -lGLU
 
 SOURCES += main.cpp\
         mainwindow.cpp \
