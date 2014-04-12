@@ -12,18 +12,24 @@ CONFIG += precompile_header
 
 debug {
     DEFINES += DEBUG
+    MOC_DIR = ./generatedfiles/debug
+    OBJECTS_DIR = debug
 }
 release {
     DEFINES += NDEBUG
     DEFINES += QT_NO_DEBUG_OUTPUT
     DEFINES += QT_NO_WARNING_OUTPUT
+    MOC_DIR = ./generatedfiles/release
+    OBJECTS_DIR = release
 }
+UI_DIR = ./generatedfiles
+RCC_DIR = ./generatedfiles
 TARGET = gwiz2
 TEMPLATE = app
 
 PRECOMPILED_HEADER = stdafx.h
 
-INCLUDEPATH += ../../include
+INCLUDEPATH += ../../include ./generatedfiles
 
 LIBS += -L ../../lib ../../lib/libinterpbase.so -lGL -lGLU
 
