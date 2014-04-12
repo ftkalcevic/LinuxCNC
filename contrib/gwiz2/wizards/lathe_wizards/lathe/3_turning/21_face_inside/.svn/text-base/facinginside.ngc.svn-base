@@ -1,0 +1,59 @@
+O<facinginside> sub (inside facing on the lathe)
+    #<startX> = #1
+    #<endX> = #2
+    #<startZ> = #3
+    #<endZ> = #4
+    #<plungeRate> = #5
+    #<roughRate> = #6
+    #<roughDepth> = #7
+    #<finishRate> = #8
+    #<finishDepth> = #9
+    #<clearance> = #10
+
+    (verify parameters)
+
+    #<zPos> = 1
+    (save start position)
+    G30.1
+    M3
+
+    (compute the first cut point backwards, allowing for a full finishing cut)
+    o10 if [#<finishDepth> EQ 0]
+    	#<zFinish> = #<endZ>
+        #<zFinishCount> = 0
+    o10 else
+    	#<zFinish> = [#<endZ> + #<finishDepth>]
+        #<zFinishCount> = 1
+    o10 endif
+
+    #<zRoughCount> = fix[[#<startZ> - #<zFinish>] / #<roughDepth>]
+    #<zFirst> = [#<zRoughCount> * #<roughDepth> + #<zFinish>]
+
+    (MSG, first=#<zFirst>, finish=#<zFinish> )
+
+    (do the loop)
+    #<zPos> = #<zFirst>
+    o20 repeat [ #<zRoughCount> ]
+        G0 X[#<startX> - #<clearance>]
+        G0 Z[#<zPos>+#<clearance>]
+        G1 X#<startX> Z#<zPos> F#<plungeRate>
+        G1 X#<endX> F#<roughRate>
+        G0 X[#<endX> - #<clearance>] Z[#<zPos>+#<clearance>]
+        
+	#<zPos> = [#<zPos> - #<roughDepth>]
+    o20 endrepeat
+
+
+    o30 if [ #<zFinishCount> NE 0 ]
+        #<zPos> = #<endZ>
+        G0 X[#<startX> - #<clearance>]
+        G0 Z[#<zPos>+#<clearance>]
+        G1 X#<startX> Z#<zPos> F#<plungeRate>
+        G1 X#<endX> F#<finishRate>
+        G0 X[#<endX> - #<clearance>] Z[#<zPos>+#<clearance>]
+    o30 endif
+
+    (return to start position)
+    G30
+O<facinginside> endsub
+

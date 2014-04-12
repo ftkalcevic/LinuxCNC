@@ -1,0 +1,144 @@
+10
+
+dir
+6
+https://mainpc:8443/svn/config/emc2/trunk/gwizards/lathe/3_turning
+https://mainpc:8443/svn/config
+
+
+
+2011-01-30T04:36:40.672951Z
+4
+frankt
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+316cca3c-b75e-f444-8c2f-3d86584a7d12
+
+10_turn
+dir
+
+230_drill
+dir
+
+21_face_inside
+dir
+
+20_face_outside
+dir
+
+231_centerdrill
+dir
+
+25_bore
+dir
+
+71_ballgroove_inside
+dir
+
+12_turn_rough
+dir
+
+11_turn_shoulder
+dir
+
+41_chamfer_outside
+dir
+
+config
+file
+
+
+
+
+2011-08-15T09:37:14.659024Z
+f3e459bd0d0d89e595746355adfffe57
+2011-01-30T04:36:40.672951Z
+4
+frankt
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+19
+
+70_ballend
+dir
+
+30_part
+dir
+
+60_taper_outside
+dir
+
+40_chamfer_turn_outside
+dir
+
+52_threading_external
+dir
+
+50_threading_external_stock
+dir
+
+desc
+file
+
+
+
+
+2011-08-15T09:37:14.659024Z
+0ac289f1847595da0f0c1150680e30dd
+2011-01-30T04:36:40.672951Z
+4
+frankt
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+23
+

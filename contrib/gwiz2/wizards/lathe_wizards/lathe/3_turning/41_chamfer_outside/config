@@ -1,0 +1,8 @@
+Chamfer Outside
+S|X|X Position|5
+S|Z|Z Position|0
+U|Tool Offset|Distance to offset tool|-1.0
+U|Depth|Depth of chamfer|0.25
+U|Feed rate|Feed rate for roughing pass|100.0
+U|Clearance|Relative distance to approach and retract X|2
+

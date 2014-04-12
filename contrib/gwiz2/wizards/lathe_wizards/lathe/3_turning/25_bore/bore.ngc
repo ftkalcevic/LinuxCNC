@@ -1,0 +1,113 @@
+O<bore> sub (Internal Boring)
+    #<startX> = #1
+    #<endX> = #2
+    #<startZ> = #3
+    #<endZ> = #4
+    #<roughFeed> = #5
+    #<roughDepth> = #6
+    #<finishPasses> = #7
+    #<finishFeed> = #8
+    #<finishDepth> = #9
+    #<springPasses> = #10
+    #<sfm> = #11
+    #<max_rpm> = #12
+    #<clearance> = #13
+
+    (verify parameters)
+    o5 if [ #<endX> LT #<startX> ]
+        ! endX coordinate must be greater than or equal to startX
+    o5 endif
+    o6 if [ #<endZ> GE #<startZ> ]
+        ! endZ coordinate must be less than to startZ
+    o6 endif
+
+    (CSS mode)
+    #<mpm> = [#<sfm> * 12 * 25.4/1000]
+    G96 D#<max_rpm> S#<mpm>
+
+    (Todo - how do we determine plunge speeds from SFM)
+    F50
+
+    (save start position)
+    G30.1
+
+    (Make sure spindle is on)
+    M3
+
+    (compute the first cut point backwards, allowing for a full finishing cuts)
+    o10 if [#<finishDepth> EQ 0 OR #<finishPasses> EQ 0]
+    	#<xRoughFinish> = #<endX>
+        #<xFinishCount> = 0
+    o10 else
+    	#<xRoughFinish> = [#<endX> - #<finishPasses> * #<finishDepth>]
+        #<xFinishCount> = #<finishPasses>
+    o10 endif
+
+    #<xRoughCount> = fup[[#<xRoughFinish> - #<startX> ] / #<roughDepth>]
+    o12 if [#<xRoughCount> LT 0 ]
+        #<xRoughCount> = 0
+    o12 endif
+    #<xFirst> = [#<xRoughFinish> - [#<xRoughCount>-1] * #<roughDepth>]
+
+    (rough loop)
+    G0 X[#<startX>-#<clearance>]
+    G0 Z#<startZ>
+    #<xPos> = #<xFirst>
+    o20 repeat [ #<xRoughCount> ]
+        o<bore_do_pass> call [#<xPos>] [#<startZ>] [#<endZ>] [#<mpm>] [#<max_rpm>] [#<roughFeed>] [#<clearance>]
+	#<xPos> = [#<xPos> + #<roughDepth>]
+    o20 endrepeat
+
+    (finish loop)
+    #<xPos> = [ #<endX> - #<finishDepth> * [#<xFinishCount>-1] ]
+    o30 repeat [ #<xFinishCount> ]
+	o<bore_do_pass> call [#<xPos>] [#<startZ>] [#<endZ>] [#<mpm>] [#<max_rpm>] [#<finishFeed>] [#<clearance>]
+	#<xPos> = [#<xPos> + #<finishDepth>]
+    o30 endrepeat
+
+    (spring passes loop)
+    o40 repeat [ #<springPasses> ]
+	o<bore_do_pass> call [#<endX>] [#<startZ>] [#<endZ>] [#<mpm>] [#<max_rpm>] [#<finishFeed>] [#<clearance>]
+    o40 endrepeat
+
+
+    G0 X[#<startX>-#<clearance>]
+    G0 Z[#<startZ>+#<clearance>]
+
+    (return to start position)
+    G30
+O<bore> endsub
+
+
+o<bore_do_pass> sub
+    #<xPos> = #1
+    #<startZ> = #2
+    #<endZ> = #3
+    #<mpm> = #4
+    #<max_rpm> = #5
+    #<FeedRate> = #6
+    #<clearance> = #7
+
+    #<css_rpm> = [ [#<mpm> * 1000 ] / [#<xPos> * 3.14159 ] ]
+
+    o21 if [ #<css_rpm> LT 0 ]
+	#<css_rpm> = [ -1 * #<css_rpm> ]
+    o21 endif
+    o22 if [ #<css_rpm> GT #<max_rpm> ]
+	#<css_rpm> = #<max_rpm>
+    o22 endif
+
+    #<feed> = [ #<FeedRate> * #<css_rpm> ]
+
+    G0 Z[#<startZ>+#<clearance>]
+    G1 X#<xPos> F[#<feed>]
+    G1 Z#<endZ> F[#<feed>]
+  
+    ( Dwell to cut a complete revolution) 
+    G4 P[1/[#<css_rpm>/60]] 
+
+    (Retract)
+    G0 Z[#<endZ>+#<clearance>] X[#<xPos>-#<clearance>]
+
+o<bore_do_pass> endsub
+

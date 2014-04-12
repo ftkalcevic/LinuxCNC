@@ -1,0 +1,10 @@
+Chamfer Outside Turn
+S|X|X coordinate of corner to be chamfered|10
+S|Z|Z coordinate of corner to be chamfered|0.0
+U|dX|Size of chamfer in the X direction|0.5
+S|dZ|Size of chamfer in the Z direction|0.5
+U|Depth of Cut|Depth of cut for each pass|0.25
+U|Feed rate|Feed rate for the cuttin pass|100.0
+U|Overrun|Extra distance to travel on the chamfer to ensure the tool radius doesn't leave a radiused dent|1
+U|Clearance|Relative distance to retract Z and X for rapid traverse for next pass|2
+

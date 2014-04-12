@@ -1,0 +1,11 @@
+External Thread - Stock Threads
+L|Thread|Select stock thread type|1|Metric Course M1.6x0.35|2|Metric Course M2x0.4|3|Metric Course M2.5x0.45|4|Metric Course M3x0.5|5|Metric Course M3.5x0.6|6|Metric Course M4x0.7|7|Metric Course M5x0.8|8|Metric Course M6x1.0|9|Metric Course M8x1.25|10|Metric Course M10x1.5|11|Metric Course M12x1.75|12|Metric Course M14x2|13|Metric Course M16x2|14|Metric Course M20x2.5
+S|Z Start|Start Z coordinate of facing travel|0
+S|Z End|End Z coordinate of facing travel|-10.0
+U|Initial Depth of Cut|Initial Depth of Cut|0.1
+L|Depth Degression|Amount of material to remove on each pass|1|Constant Depth|2|Constant Area|2
+U|Spring Passes|Spring passes|2
+U|Spindle Speed|Spindle speed|300
+L|Taper|Apply a taper to the start/end of the thread|0|No Taper|1|Entry Taper|2|Exit Taper|3|Both Entry & Exit Taper|2
+U|Taper Distance|Z distance of the thread to taper (in revolutions)|1
+

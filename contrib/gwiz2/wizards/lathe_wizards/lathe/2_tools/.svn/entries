@@ -1,0 +1,169 @@
+10
+
+dir
+6
+https://mainpc:8443/svn/config/emc2/trunk/gwizards/lathe/2_tools
+https://mainpc:8443/svn/config
+
+
+
+2011-01-30T04:36:40.672951Z
+4
+frankt
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+316cca3c-b75e-f444-8c2f-3d86584a7d12
+
+screen.png
+file
+
+
+
+
+2011-08-15T09:37:13.815030Z
+bddbedf369099f469623ef27abb6f78c
+2011-01-30T04:36:40.672951Z
+4
+frankt
+has-props
+
+
+svn:special
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+28
+
+t00
+dir
+
+t01
+dir
+
+config
+file
+
+
+
+
+2011-08-15T09:37:13.815030Z
+a894ce7cc019156ec3610917c1081ef8
+2011-01-30T04:36:40.672951Z
+4
+frankt
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+12
+
+t20
+dir
+
+t02
+dir
+
+t30
+dir
+
+t21
+dir
+
+t03
+dir
+
+t40
+dir
+
+t22
+dir
+
+t04
+dir
+
+t41
+dir
+
+t05
+dir
+
+t06
+dir
+
+desc
+file
+
+
+
+
+2011-08-15T09:37:13.815030Z
+b145b08121f86abbaddca8f8b828ce14
+2011-01-30T04:36:40.672951Z
+4
+frankt
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+14
+

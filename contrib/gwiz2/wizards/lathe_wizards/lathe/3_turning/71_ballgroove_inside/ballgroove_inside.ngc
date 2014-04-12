@@ -1,0 +1,105 @@
+O<ballgroove_inside> sub (turn ball end)
+    #<Zs> = #1
+    #<Zc> = #2
+    #<Xs> = #3
+    #<Xc> = #4
+    #<BallDia> = #5
+    #<roughFeed> = #6
+    #<roughDepth> = #7
+    #<finishPasses> = #8
+    #<finishFeed> = #9
+    #<finishDepth> = #10
+    #<sfm> = #11
+    #<max_rpm> = #12
+    #<clearance> = #13
+
+    (print, ballgroove_inside)
+    (print, Zs=#<Zs>)
+    (verify parameters)
+    (We can only do half circles or less)
+    (o5 if [ #<endX> GT #<startX> ])
+        (! endX coordinate must be less than or equal to startX)
+    (o5 endif)
+
+    (save start position)
+    G30.1
+
+    (Make sure spindle is on)
+    M3
+
+    (CSS mode)
+    #<mpm> = [#<sfm> * 12 * 25.4/1000]
+    G96 D#<max_rpm> S#<mpm>
+
+    #<startDia> = [ #<Xs> - #<Xc>]
+    #<roughFinishDia> = [#<ballDia> - [ #<finishPasses> * #<finishDepth>] ]
+    #<roughPassCount> = FUP[[#<roughFinishDia> - #<startDia>] / #<roughDepth>]
+    o10 if [#<roughPassCount> LT 0 ]
+        #<roughPassCount> = 0
+    o10 endif
+    #<diaFirst> = [#<roughFinishDia> - [#<roughPassCount>-1] * #<roughDepth> ]
+
+	(print, startDia=#<startDia>, roughFinishDia=#<roughFinishDia>, roughPassCount=#<roughPassCount>, diaFirst=#<diaFirst>)
+
+    (do the roughing passes)
+    #<dia> = #<diaFirst>
+    o20 repeat [#<roughPassCount>]
+    (print, rough pass)
+        o<ballgroove_inside_do_pass> call [#<dia>] [#<Xc>] [#<Zc>] [#<Xs>] [#<mpm>] [#<max_rpm>] [#<roughFeed>] [#<clearance>]
+	#<dia> = [#<dia> + #<roughDepth>]
+    o20 endrepeat
+
+
+    (do the finishing passes)
+    #<dia> = #<roughFinishDia>
+    o30 repeat [#<finishPasses>]
+    (print, finish pass)
+	#<dia> = [#<dia> + #<finishDepth>]
+        o<ballgroove_inside_do_pass> call [#<dia>] [#<Xc>] [#<Zc>] [#<Xs>] [#<mpm>] [#<max_rpm>] [#<finishFeed>] [#<clearance>]
+    o30 endrepeat
+
+    (return to start position)
+    G30
+O<ballgroove_inside> endsub
+
+
+o<ballgroove_inside_do_pass> sub
+    #<dia> = #1
+    #<Xc> = #2
+    #<Zc> = #3
+    #<Xs> = #4
+    #<mpm> = #5
+    #<max_rpm> = #6
+    #<FeedRate> = #7 (mm/rev)
+    #<clearance> = #8
+
+    #<rad> = [#<dia>/2]
+
+    #<arcStartX> = [#<Xs>]
+    #<arcStartZ> = [#<Zc> + SQRT[ #<rad>*#<rad> - [#<Xc>-#<Xs>]*[#<Xc>-#<Xs>]/4 ]]
+    G0 X#<arcStartX> Z#<arcStartZ>
+    (print, G0 X#<arcStartX> Z#<arcStartZ> )
+
+
+    (Estimate the rpm so we can calculate the feedrate)
+    #<css_rpm> = [ [#<mpm> * 1000 ] / [#<arcStartX> * 3.14159 ] ]
+    o21 if [ #<css_rpm> LT 0 ]
+	#<css_rpm> = [ -1 * #<css_rpm> ]
+    o21 endif
+    o22 if [ #<css_rpm> GT #<max_rpm> ]
+	#<css_rpm> = #<max_rpm>
+    o22 endif
+    #<feed> = [ #<FeedRate> * #<css_rpm> ]
+
+
+    #<arcEndX> = [#<Xs>] 
+    #<arcEndZ> = [#<Zc> - SQRT[ #<rad>*#<rad> - [#<Xc>-#<Xs>]*[#<Xc>-#<Xs>]/4 ]]
+    #<arcCenterX> = [-1*[#<Xs>-#<Xc>]] 
+    #<arcCenterZ> = [-1 * SQRT[ #<rad>*#<rad> - [#<Xc>-#<Xs>]*[#<Xc>-#<Xs>]/4 ]]
+    G3 X#<arcEndX> Z#<arcEndZ> I#<arcCenterX> K#<arcCenterZ> F#<feed>
+    (print,G2 X#<arcEndX> Z#<arcEndZ> I#<arcCenterX> K#<arcCenterZ> F#<feed>)
+
+    G0 X[#<arcStartX> - #<clearance>] Z#<arcStartZ>
+
+o<ballgroove_inside_do_pass> endsub
+

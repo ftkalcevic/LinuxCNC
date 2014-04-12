@@ -1,0 +1,74 @@
+O<drill> sub (drill from the saddle)
+    #<drillDia> = #1
+    #<startZ> = #2
+    #<endZ> = #3
+    #<peckType> = #4
+    #<peckdepth> = #5
+    #<dwellTime> = #6
+    #<feedRate> = #7	(mm/rev)
+    #<sfm> = #8
+    #<max_rpm> = #9
+    #<clearance> = #10
+
+    (constants)
+    #<peckClearance> = 0.5	(gap when rapiding back after a peck)
+
+    (verify parameters)
+
+    (save start position)
+    G30.1
+
+    (Calculate rpm and feed rate)
+    #<mpm> = [#<sfm> * 12 * 25.4/1000]
+    #<rpm> = [#<mpm> * 1000 / [#<drillDia> * 3.14159] ]
+    (print, Desired rpm=#<rpm> )
+    o5 if [ #<rpm> GT #<max_rpm> ]
+        #<rpm> = #<max_rpm>
+    o5 endif
+    #<feedMMpMin> = [#<feedRate> * #<rpm>]
+    
+    (print Drill rpm=#<rpm> feed=#<feedMMpMin> mm/min)
+    S#<rpm>
+    F#<feedMMpMin>
+
+    (Make sure spindle is on)
+    M3
+
+    G0 X0 Z[#<startZ>+#<clearance>]
+
+    #<Z> = #<startZ>
+    o10 do
+        o11 if [#<peckType>] NE 0 ]
+	    #<nextZ> = [#<Z> - #<peckDepth>]
+	    o12 if [ #<nextZ> LT #<endZ> ]
+	    	#<nextZ> = #<endZ>
+	    o12 endif
+	o11 else
+	    #<nextZ> = #<endZ>
+	o11 endif
+
+        G1 Z#<nextZ>
+
+   	o13 if [ #<nextZ> NE #<endZ> ] 
+	    o14 if [ #<peckType> EQ 1 ] 	(full retract)
+	        G0 Z[#<startZ> + #<clearance>]
+	        G0 Z[#<nextZ> + #<peckClearance>]
+	    o14 else if [ #<peckType> EQ 2 ] 	(chip breaker)
+	        G0 Z[#<nextZ> + #<peckClearance>]
+	    o14 endif
+	o13 endif
+
+        #<Z> = #<nextZ>
+
+    o10 while [ #<nextZ> GT #<endZ> ]
+
+    o20 if [ #<dwellTime> GT 0 ]
+        G4 P#<dwellTime>
+    o20 endif
+
+    (rapid retract)
+    G0 Z[#<startZ> + #<clearance>]
+
+    (return to start position)
+    G30
+O<drill> endsub

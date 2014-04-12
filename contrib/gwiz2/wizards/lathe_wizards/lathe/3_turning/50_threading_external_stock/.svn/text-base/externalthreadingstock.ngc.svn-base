@@ -1,0 +1,79 @@
+O<threadingexternalstock> sub (Threading External - Stock)
+    #<stockThread> = #1
+
+    (verify parameters)
+
+    o10 if [ #<stockThread> EQ 1 ] ( 1|Metric Course M1.6x0.35| )
+        O<ThreadingExternalStock_DoMetric> Call [1.6] [0.35] [29.5] [#2] [#3] [#4] [#5] [#6] [#7] [#8] [#9]
+    o10 endif
+    o11 if [ #<stockThread> EQ 2 ] ( 2|Metric Course M2x0.4| )
+        O<ThreadingExternalStock_DoMetric> Call [2] [0.4] [29.5] [#2] [#3] [#4] [#5] [#6] [#7] [#8] [#9]
+    o11 endif
+    o12 if [ #<stockThread> EQ 3 ] ( 3|Metric Course M2.5x0.45| )
+        O<ThreadingExternalStock_DoMetric> Call [2.5] [0.45] [29.5] [#2] [#3] [#4] [#5] [#6] [#7] [#8] [#9]
+    o12 endif
+    o13 if [ #<stockThread> EQ 4 ] ( 4|Metric Course M3x0.5| )
+        O<ThreadingExternalStock_DoMetric> Call [3] [0.5] [29.5] [#2] [#3] [#4] [#5] [#6] [#7] [#8] [#9]
+    o13 endif
+    o14 if [ #<stockThread> EQ 5 ] ( 5|Metric Course M3.5x0.6| )
+        O<ThreadingExternalStock_DoMetric> Call [3.5] [0.6] [29.5] [#2] [#3] [#4] [#5] [#6] [#7] [#8] [#9]
+    o14 endif
+    o15 if [ #<stockThread> EQ 6 ] ( 6|Metric Course M4x0.7| )
+        O<ThreadingExternalStock_DoMetric> Call [4] [0.7] [29.5] [#2] [#3] [#4] [#5] [#6] [#7] [#8] [#9]
+    o15 endif
+    o16 if [ #<stockThread> EQ 7 ] ( 7|Metric Course M5x0.8| )
+        O<ThreadingExternalStock_DoMetric> Call [5] [0.8] [29.5] [#2] [#3] [#4] [#5] [#6] [#7] [#8] [#9]
+    o16 endif
+    o17 if [ #<stockThread> EQ 8 ] ( 8|Metric Course M6x1.0| )
+        O<ThreadingExternalStock_DoMetric> Call [6] [0.8] [29.5] [#2] [#3] [#4] [#5] [#6] [#7] [#8] [#9]
+    o17 endif
+    o18 if [ #<stockThread> EQ 9 ] ( 9|Metric Course M8x1.25| )
+        O<ThreadingExternalStock_DoMetric> Call [8] [1.25] [29.5] [#2] [#3] [#4] [#5] [#6] [#7] [#8] [#9]
+    o18 endif
+    o19 if [ #<stockThread> EQ 10 ] ( 10|Metric Course M10x1.5| )
+        O<ThreadingExternalStock_DoMetric> Call [10] [1.5] [29.5] [#2] [#3] [#4] [#5] [#6] [#7] [#8] [#9]
+    o19 endif
+    o20 if [ #<stockThread> EQ 11 ] ( 11|Metric Course M12x1.75| )
+        O<ThreadingExternalStock_DoMetric> Call [12] [1.75] [29.5] [#2] [#3] [#4] [#5] [#6] [#7] [#8] [#9]
+    o20 endif
+    o21 if [ #<stockThread> EQ 12 ] ( 12|Metric Course M14x2| )
+        O<ThreadingExternalStock_DoMetric> Call [14] [2] [29.5] [#2] [#3] [#4] [#5] [#6] [#7] [#8] [#9]
+    o21 endif
+    o22 if [ #<stockThread> EQ 13 ] ( 13|Metric Course M16x2| )
+        O<ThreadingExternalStock_DoMetric> Call [16] [2] [29.5] [#2] [#3] [#4] [#5] [#6] [#7] [#8] [#9]
+    o22 endif
+    o23 if [ #<stockThread> EQ 14 ] ( 14|Metric Course M20x2.5 )
+        O<ThreadingExternalStock_DoMetric> Call [20] [2.5] [29.5] [#2] [#3] [#4] [#5] [#6] [#7] [#8] [#9]
+    o23 endif
+
+O<ThreadingExternalStock> endsub
+
+O<ThreadingExternalStock_DoMetric> sub
+    #<majorDiameter> = #1
+    #<pitch> = #2
+    #<angle> = #3
+    #<startZ> = #4
+    #<endZ> = #5
+    #<initialCutDepth> = #6
+    #<depthRegression> = #7
+    #<springPasses> = #8
+    #<spindleSpeed> = #9
+    #<taper> = #10
+    #<taperDistance> = #11
+
+    #<minorDiameter> = [ #<majorDiameter> - #<pitch> ]
+    #<driveLine> = [ #<majorDiameter> + #<pitch> ]
+    #<threadPeak> = [-1 * #<pitch>]
+
+    o10 if [ #<initialCutDepth> LE 0 ]
+        !Error - Invalid initialCutDepth.  Must be > 0)
+    o10 endif
+
+    S#<spindleSpeed>
+    M3
+    G0 X#<driveLine>    
+    G0 Z#<startZ>    
+    G76 P#<pitch> Z#<endZ> I#<threadPeak> J#<initialCutDepth> K#<pitch> R2.0 Q#<angle> H#<springPasses> E[#<pitch> * #<taperDistance>] L#<taper>
+
+O<ThreadingExternalStock_DoMetric> endsub
+

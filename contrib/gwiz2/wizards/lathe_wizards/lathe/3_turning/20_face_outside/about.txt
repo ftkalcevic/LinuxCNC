@@ -1,0 +1,3 @@
+<p><b>Outside facing</b></p>
+
+<p>Outside facing wizard to face the end of stock in the lathe<p>

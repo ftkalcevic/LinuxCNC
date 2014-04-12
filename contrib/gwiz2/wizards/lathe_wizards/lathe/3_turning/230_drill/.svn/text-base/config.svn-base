@@ -1,0 +1,12 @@
+Drilling
+U|Drill Diameter|Drill Diameter|6.0
+S|Z Start|Z coordinate start|0.0
+S|Z End|Z coordinate end|-1.0
+L|Peck Type|Drill cycle peck type|0|None|1|Full Retract|2|Chip Breaker Retract
+U|Peck distance|How far to drill between pecks |2
+U|Dwell Time|Dwell time in seconds to hold at full depth|1
+U|Feed rate (mm/rev)|How far to advance the drill per revolution|0.03
+U|SFM|SFM value for this material and cutter|100
+U|Max RPM|Max RPM when computing RPM based on diameter and SFM|1200
+U|X Clearance|Releative distance to retract X when complete|2
+

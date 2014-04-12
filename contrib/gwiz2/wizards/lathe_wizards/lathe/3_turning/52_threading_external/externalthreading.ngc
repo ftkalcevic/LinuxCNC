@@ -1,0 +1,25 @@
+O<ThreadingExternal> sub
+    #<startZ> = #1
+    #<endZ> = #2
+    #<startX> = #3
+    #<pitch> = #4
+    #<initialCutDepth> = #5
+    #<finalDepth> = #6
+    #<angle> = #7
+    #<depthDegression> = #8
+    #<clearance> = #9
+    #<springPasses> = #10
+    #<taper> = #11
+    #<taperDistance> = #12
+    #<spindleSpeed> = #13
+
+    #<driveLine> = [ #<startX> + #<clearance> ]
+
+    S#<spindleSpeed>
+    M3
+    G0 X#<driveLine>    
+    G0 Z#<startZ>    
+    G76 P#<pitch> Z#<endZ> I[-1*#<clearance>] J#<initialCutDepth> K#<finalDepth> R#<depthDegression> Q#<angle> H#<springPasses> E#<taperDistance> L#<taper>
+
+O<ThreadingExternal> endsub
+

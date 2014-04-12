@@ -1,0 +1,7 @@
+O<SelectTool01> sub
+    M6 T01 G43
+    #<InsertAngle> = 55
+    #<LeftAngle> = 93
+    #<RightAngle> = 135
+    #<ToolFactor> = 3
+O<SelectTool01> endsub

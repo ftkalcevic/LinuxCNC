@@ -1,0 +1,77 @@
+O<TurnShoulder> sub (outside shoulder turning)
+    #<startX> = #1
+    #<endX> = #2
+    #<startZ> = #3
+    #<endZ> = #4
+    #<roughFeed> = #5
+    #<roughDepth> = #6
+    #<finishPasses> = #7
+    #<finishFeed> = #8
+    #<finishDepth> = #9
+    #<sfm> = #10
+    #<max_rpm> = #11
+    #<clearance> = #12
+
+    (save start position)
+    G28.1
+    G0 X[#<startX> + #<clearance>]
+
+    (adjust start/end z to allow for finishing, then call <turn> )
+    o11 if [#<startZ> GE #<endZ>]
+        #<direction> = -1
+    o11 else
+        #<direction> = 1
+    o11 endif
+
+    #<zClearance> = [#<direction> * #<clearance>]
+    #<startRoughZ> = [#<startZ>]
+    #<endRoughZ> = [#<endZ> - #<direction>*#<finishDepth>*#<finishPasses>]
+    #<startRoughX> = #<startX>
+    #<endRoughX> = [#<endX> + #<finishDepth>*#<finishPasses>]
+
+    G0 X[#<startX>+#<clearance>] Z[#<startZ> + #<zClearance>]
+    
+    O<turn> Call [#<startRoughX>] [#<endRoughX>] [#<startRoughZ>] [#<endRoughZ>] [#<roughFeed>] [#<roughDepth>] [0] [0] [0] [#<sfm>] [#<max_rpm>] [#<clearance>]
+
+    (finish the shoulder)
+
+    (CSS mode)
+    #<mpm> = [#<sfm> * 12 * 25.4/1000]
+    G96 D#<max_rpm> S#<mpm>
+
+
+    o20 while [#<finishPasses> GT 0 ]
+        #<finishPasses> = [#<finishPasses> - 1]
+
+        (Move to the start of the cut)
+        G0 X[#<startX> + #<clearance>]
+        G0 Z#<startZ>
+        G0 X[#<endX> + #<finishPasses> * #<finishDepth> + #<clearance>]
+
+        #<xPos> = [#<endX> + #<finishPasses> * #<finishDepth>] 
+        #<css_rpm> = [ [#<mpm> * 1000 ] / [#<xPos> * 3.14159 ] ]
+        o21 if [ #<css_rpm> LT 0 ]
+	    #<css_rpm> = [ -1 * #<css_rpm> ]
+        o21 endif
+        o22 if [ #<css_rpm> GT #<max_rpm> ]
+	    #<css_rpm> = #<max_rpm>
+        o22 endif
+
+        #<feed> = [ #<finishFeed> * #<css_rpm> ]
+
+	(Plunge)
+        G1 X[#<xPos>] F#<feed>
+
+	(Cut along the length)
+        G1 Z[#<endZ> - #<direction> * #<finishPasses> * #<finishDepth>] F#<feed>
+
+        ( Dwell in the corner to cut a complete revolution) 
+        G4 P[1/[#<css_rpm>/60]] 
+
+	(face the shoulder)
+        G33 X[#<startX> + #<clearance>] K#<finishFeed>
+    o20 endwhile
+
+    (return to start position)
+    G28
+O<TurnShoulder> endsub

@@ -1,0 +1,55 @@
+O<ChamferOutsideTurn> sub (Chamfer Outside with chamfering tool)
+    #<X> = #1
+    #<Z> = #2
+    #<dX> = #3
+    #<dZ> = #4
+    #<depthOfCut> = #5
+    #<feedRate> = #6
+    #<overrun> = #7
+    #<clearance> = #8
+
+    o5 if [ #<dX> LE 0 ]
+        ! dX must be > 0
+    o5 endif
+
+    o6 if [ #<dZ> LE 0 ]
+        ! dZ must be > 0
+    o6 endif
+
+    ( we working in diameter mode)
+    #<dX> = [ 2 * #<dX> ]
+    #<depthOfCut> = [2 * #<depthOfCut> ]
+
+    ( Save position )
+    G30.1
+
+    #<X> = [ #<X> + #<overrun> ]
+    #<Z> = [ #<Z> + #<overrun> ]
+    #<ratio> = [#<dX> / #<dZ> ]
+    #<dX> = [ #<dX> + #<overrun> + #<overrun> * #<ratio> ]
+    #<dZ> = [ #<dZ> + #<overrun> + #<overrun> / #<ratio> ]
+
+    (compute the first cut point backwards, allowing for a full finishing cut)
+    #<xCount> = fup[#<dX> / #<depthOfCut>]
+    #<xFirst> = [ #<X> - #<dX> + [#<xCount>-1] * #<depthOfCut> ]
+
+    G0 X[#<xFirst>+#<clearance>]
+    G0 Z#<Z>
+
+    (do the loop)
+    #<xPos> = [#<X> - #<xFirst>]
+    O100 Repeat [ #<xCount> ]
+    
+        G1 X[#<X> - #<xPos>] F#<feedRate>
+	G1 X#<X> Z[#<Z> - #<xPos> / #<ratio>]
+
+        G0 X[#<X> + #<clearance>]
+	G0 Z#<Z>
+
+        #<xPos> = [ #<xPos> + #<depthOfCut> ]
+    O100 EndRepeat
+
+    (Restore position)
+    G30
+
+O<ChamferOutsideTurn> endsub

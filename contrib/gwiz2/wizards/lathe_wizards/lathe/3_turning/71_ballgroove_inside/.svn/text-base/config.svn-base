@@ -1,0 +1,15 @@
+Ball Groove - Inside
+S|Zs|Z Start machining point|1.0
+S|Zc|Z Ball Center|-5.0
+S|Xs|X Start machinging point|3.0
+S|Xc|X Ball Center|3.0
+S|Ball Diameter|Ball Diameter|5.0
+U|Rough Feed rate (mm/rev)|Feed rate for roughing pass|0.2
+U|Rough Cut Depth (mm)|Roughing depth of cut per pass|0.5
+U|Finish Passes|Number of finishing passes|1
+U|Finish Feed rate (mm/rev)|Feed rate for the Finishing pass|0.1
+U|Finish Cut Depth|Depth of cut for the Finishing pass|0.25
+U|Surface Feet per Minute|SFM cutting speed|100
+U|Maximum RPM|Maximum RPM to use when calculating based on SFM and diameter|1200
+U|Clearance|Relative distance to retract Z and X for rapid traverse for next pass|1
+

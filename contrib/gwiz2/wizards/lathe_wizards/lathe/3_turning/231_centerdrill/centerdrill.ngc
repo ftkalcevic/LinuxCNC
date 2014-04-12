@@ -1,0 +1,61 @@
+O<centerdrill> sub (center drill from the saddle)
+    #<startZ> = #1
+    #<drillNo> = #2
+    #<depthPercent> = #3
+    #<feed> = #4
+    #<sfm> = #5
+    #<max_rpm> = #6
+    #<clearance> = #7
+
+    (verify parameters)
+    o10 if [#<drillNo> EQ 20]
+    	#<cdA> = [1/8  *25.4]
+        #<cdD> = [0.025*25.4]
+        #<cdC> = [0.030*25.4]
+    o10 else if [#<drillNo> EQ 0]
+    	#<cdA> = [1/8  *25.4]
+        #<cdD> = [1/32 *25.4]
+        #<cdC> = [0.038*25.4]
+    o10 else if [#<drillNo> EQ 1]
+    	#<cdA> = [1/8  *25.4]
+        #<cdD> = [3/64 *25.4]
+        #<cdC> = [3/64 *25.4]
+    o10 else if [#<drillNo> EQ 2]
+    	#<cdA> = [3/16 *25.4]
+        #<cdD> = [5/64 *25.4]
+        #<cdC> = [5/64 *25.4]
+    o10 else if [#<drillNo> EQ 3]
+    	#<cdA> = [1/4  *25.4]
+        #<cdD> = [7/64 *25.4]
+        #<cdC> = [7/64 *25.4]
+    o10 else if [#<drillNo> EQ 4]
+    	#<cdA> = [5/16 *25.4]
+        #<cdD> = [1/8  *25.4]
+        #<cdC> = [1/8  *25.4]
+    o10 else if [#<drillNo> EQ 5]
+    	#<cdA> = [7/16 *25.4]
+        #<cdD> = [3/16 *25.4]
+        #<cdC> = [3/16 *25.4]
+    o10 else if [#<drillNo> EQ 6]
+    	#<cdA> = [1/2  *25.4]
+        #<cdD> = [7/32 *25.4]
+        #<cdC> = [7/32 *25.4]
+    o10 else if [#<drillNo> EQ 7]
+    	#<cdA> = [5/8  *25.4]
+        #<cdD> = [1/4  *25.4]
+        #<cdC> = [1/4  *25.4]
+    o10 else
+        Invalid center drill number
+    o10 endif
+
+    #<fullDepth> =  [#<cdD>/2*tan[31] + #<cdC> + [#<cdA>-#<cdD>]/2*tan[30]]
+
+    #<depth> = [#<depthPercent> * #<fullDepth> / 100 ]
+    #<peckdepth> = [#<depth> / 4 ]
+    #<peckType>  = 1 	(full retract)
+    #<dwellTime> = 2
+    #<endZ> = [#<startZ> - #<depth>]
+
+    o<drill> call [#<cdD>] [#<startZ>] [#<endZ>] [#<peckType>] [#<peckdepth>] [#<dwellTime>] [#<feed>] [#<sfm>] [#<max_rpm>] [#<clearance>] 
+
+O<centerdrill> endsub

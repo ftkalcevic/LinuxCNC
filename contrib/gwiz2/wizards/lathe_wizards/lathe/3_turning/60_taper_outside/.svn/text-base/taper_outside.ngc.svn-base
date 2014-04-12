@@ -1,0 +1,131 @@
+O<taper_outside> sub (outside diameter taper)
+    #<startX> = #1
+    #<endX> = #2
+    #<startZ> = #3
+    #<endZ> = #4
+    #<angle> = #5
+    #<shortCut> = #6
+    #<roughFeed> = #7
+    #<roughDepth> = #8
+    #<finishPasses> = #9
+    #<finishFeed> = #10
+    #<finishDepth> = #11
+    #<sfm> = #12
+    #<max_rpm> = #13
+    #<clearance> = #14
+
+    (verify parameters)
+    o5 if [ #<endX> GT #<startX> ]
+        ! endX coordinate must be less than or equal to startX
+    o5 endif
+    o6 if [ #<angle> LT -90 OR #<angle> GT 90 ]
+        ! angle must be between -90 and 90
+    o6 endif
+
+    (CSS mode)
+    #<mpm> = [#<sfm> * 12 * 25.4/1000]
+    G96 D#<max_rpm> S#<mpm>
+
+    (Todo - how do we determine plunge speeds from SFM)
+    F50
+
+    (save start position)
+    G30.1
+
+    (Make sure spindle is on)
+    M3
+
+    (recalculate the depth of cut based on the angle - depth of cut at 90 deg to the surface)
+    #<finishDepth> = [ABS[#<finishDepth>/SIN[90-#<angle>]]]
+    #<roughDepth> = [ABS[#<roughDepth>/SIN[90-#<angle>]]]
+
+    (determine dx to work out where we start)
+    #<dX> = [ [ [#<startZ> - #<endZ>] * SIN[#<angle>] ]]
+
+    o9 if [ #<dX> LT 0 ]
+        (taper has negative slope - towards 0 over Z)
+	(need to push start back so we take small cuts)
+        #<startX> = [#<startX> - #<dX>]
+        #<endX> = [#<endX> - #<dX>]
+    o9 endif
+
+    (compute the first cut point backwards, allowing for a full finishing cuts)
+    o10 if [#<finishDepth> EQ 0 OR #<finishPasses> EQ 0]
+    	#<xRoughFinish> = #<endX>
+        #<xFinishCount> = 0
+    o10 else
+    	#<xRoughFinish> = [#<endX> + #<finishPasses> * #<finishDepth>]
+        #<xFinishCount> = #<finishPasses>
+    o10 endif
+
+    o11 if [#<startZ> GE #<endZ>]
+        #<zClearance> = #<clearance>
+    o11 else
+        #<zClearance> = [-1 * #<clearance>]
+    o11 endif
+
+    #<xRoughCount> = fup[[#<startX> - #<xRoughFinish>] / #<roughDepth>]
+    o12 if [#<xRoughCount> LT 0 ]
+        #<xRoughCount> = 0
+    o12 endif
+    #<xFirst> = [[#<xRoughCount>-1] * #<roughDepth> + #<xRoughFinish>]
+
+    (do the loop)
+    G0 X[#<startX>+#<clearance>]
+    G0 Z#<startZ>
+    #<xPos> = #<xFirst>
+    o20 repeat [ #<xRoughCount> ]
+        o<taper_outside_do_pass> call [#<xPos>] [#<startZ>] [#<endZ>] [#<angle>] [#<shortCut>] [#<mpm>] [#<max_rpm>] [#<roughFeed>] [#<clearance>] [#<zClearance>]
+	#<xPos> = [#<xPos> - #<roughDepth>]
+    o20 endrepeat
+
+    #<xPos> = [ #<endX> + #<finishDepth> * [#<xFinishCount>-1] ]
+    o30 repeat [ #<xFinishCount> ]
+
+	o<taper_outside_do_pass> call [#<xPos>] [#<startZ>] [#<endZ>] [#<angle>] [#<shortCut>] [#<mpm>] [#<max_rpm>] [#<finishFeed>] [#<clearance>] [#<zClearance>]
+	#<xPos> = [#<xPos> - #<finishDepth>]
+    o30 endrepeat
+
+    G0 X[#<startX>+#<clearance>]
+
+    (return to start position)
+    G30
+O<taper_outside> endsub
+
+
+o<taper_outside_do_pass> sub
+    #<xPos> = #1
+    #<startZ> = #2
+    #<endZ> = #3
+    #<angle> = #4
+    #<shortCut> = #5
+    #<mpm> = #6
+    #<max_rpm> = #7
+    #<FeedRate> = #8
+    #<xClearance> = #9
+    #<zClearance> = #10
+
+    #<css_rpm> = [ [#<mpm> * 1000 ] / [#<xPos> * 3.14159 ] ]
+    o21 if [ #<css_rpm> LT 0 ]
+	#<css_rpm> = [ -1 * #<css_rpm> ]
+    o21 endif
+    o22 if [ #<css_rpm> GT #<max_rpm> ]
+	#<css_rpm> = #<max_rpm>
+    o22 endif
+
+    #<feed> = [ #<FeedRate> * #<css_rpm> ]
+    #<endX> = [#<xPos> + 2*[#<startZ> - #<endZ>] * SIN[ #<angle> ] ]
+
+    G0 Z#<startZ>
+    G1 X#<xPos> F[#<feed>]
+    G1 X#<endX> Z#<endZ> F[#<feed>]
+  
+    ( Dwell to cut a complete revolution) 
+    G4 P[1/[#<css_rpm>/60]] 
+
+    (Retract)
+    G0 X[#<endX>+#<xClearance>]
+    G0 Z[#<startZ>+#<zClearance>] X[#<xPos>+#<xClearance>]
+
+o<taper_outside_do_pass> endsub
+

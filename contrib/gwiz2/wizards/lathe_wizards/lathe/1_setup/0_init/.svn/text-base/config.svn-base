@@ -1,0 +1,5 @@
+Initialisation
+L|Diameter/Radius mode|X values represent diameter or radius|7|Diameter Mode|2|Radius Mode
+L|Plane|Select plane|18|ZX|17|XY|19|YZ|17.1|UV|18.1|WU|19.1|VW
+L|Units|Program units|21|Millimeters|20|Inches
+L|Path Control Mode|Path Control Mode|61|Exact Path Mode|61.1|Exact Stop Mode|64|Best Possible Speed

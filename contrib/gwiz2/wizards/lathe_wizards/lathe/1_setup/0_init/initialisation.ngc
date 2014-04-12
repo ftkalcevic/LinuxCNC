@@ -1,0 +1,8 @@
+O<initialisation> sub (GCode Initialisation)
+    #<xMode> = #1
+    #<plane> = #2
+    #<units> = #3
+    #<pathControl> = #4
+
+    G#<xMode> G#<plane> G#<units> G#<pathControl> G40 G91.1
+O<initialisation> endsub

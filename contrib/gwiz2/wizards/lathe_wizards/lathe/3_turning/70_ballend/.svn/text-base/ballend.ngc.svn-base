@@ -1,0 +1,163 @@
+O<ballend> sub (turn ball end)
+    #<Zs> = #1
+    #<Zo> = #2
+    #<Ze> = #3
+    #<Xs> = #4
+    #<BallDia> = #5
+    #<ShaftDia> = #6
+    #<roughFeed> = #7
+    #<roughDepth> = #8
+    #<finishPasses> = #9
+    #<finishFeed> = #10
+    #<finishDepth> = #11
+    #<sfm> = #12
+    #<max_rpm> = #13
+    #<clearance> = #14
+
+    (print, ballend)
+    (print, Zs=#<Zs>)
+    (verify parameters)
+    (o5 if [ #<endX> GT #<startX> ])
+        (! endX coordinate must be less than or equal to startX)
+    (o5 endif)
+
+    (CSS mode)
+    #<mpm> = [#<sfm> * 12 * 25.4/1000]
+    G96 D#<max_rpm> S#<mpm>
+
+    (print, sfm=#<sfm> #<mpm> )
+
+    (Todo - how do we determine plunge speeds from SFM)
+    F50
+
+    (save start position)
+    G30.1
+
+    (Make sure spindle is on)
+    M3
+
+    (compute the first cut point backwards, allowing for a full finishing cuts)
+    (start by roughing from Xs to ball center)
+    (rough from center to shaft end)
+    (finish pass is continuous)
+
+    (compute the first cut point backwards, allowing for a full finishing cuts)
+    #<BallCenter> = [#<Zo> - #<BallDia> / 2.0]
+    #<RoughBall> = [#<BallDia> + #<finishPasses> * #<finishDepth>]
+    #<RoughShaft> = [#<ShaftDia> + #<finishPasses> * #<finishDepth>]
+    #<zRoughFinish> = [#<Ze> + #<finishPasses> * #<finishDepth>/2]
+    #<xFinishCount> = #<finishPasses>
+
+
+    (rough first quadrant)
+    #<xRoughCount> = fup[#<Xs> / #<roughDepth>]
+    o12 if [#<xRoughCount> LT 0 ]
+        #<xRoughCount> = 0
+    o12 endif
+    #<xFirst> = [[#<xRoughCount>-1] * #<roughDepth> ]
+
+    G0 X[#<Xs>+#<clearance>]
+    G0 Z[#<Zs>+#<clearance>]
+    #<xPos> = #<xFirst>
+    o20 repeat [ #<xRoughCount> ]
+        o21 if [#<xPos> GE #<RoughBall> ]
+	    #<zEnd> = #<BallCenter>
+	o21 else
+	    #<zEnd> = [#<BallCenter> + sqrt[ [#<RoughBall>/2] * [#<RoughBall>/2] - [#<xPos>/2] * [#<xPos>/2] ]]
+	o21 endif
+        o<ballend_do_pass> call [#<xPos>] [#<Zs>+#<clearance>] [#<zEnd>] [#<mpm>] [#<max_rpm>] [#<roughFeed>] [#<clearance>] [#<clearance>]
+	#<xPos> = [#<xPos> - #<roughDepth>]
+    o20 endrepeat
+
+
+    (rough second quadrant)
+    #<xRoughCount> = fup[[#<Xs> - #<RoughShaft>] / #<roughDepth>]
+    o12 if [#<xRoughCount> LT 0 ]
+        #<xRoughCount> = 0
+    o12 endif
+    #<xFirst> = [[#<xRoughCount>-1] * #<roughDepth> + #<RoughShaft>]
+
+    G0 X[#<Xs>+#<clearance>]
+    G0 Z[#<BallCenter>]
+    #<xPos> = #<xFirst>
+    #<zEnd> = #<zRoughFinish>
+    o30 repeat [ #<xRoughCount> ]
+        o31 if [#<xPos> GE #<RoughBall> ]
+	    #<zStart> = #<BallCenter>
+	o31 else
+	    #<zStart> = [#<BallCenter> - sqrt[ [#<RoughBall>/2] * [#<RoughBall>/2] - [#<xPos>/2] * [#<xPos>/2] ]]
+	o31 endif
+        o<ballend_do_pass> call [#<xPos>] [#<zStart>] [#<zEnd>] [#<mpm>] [#<max_rpm>] [#<roughFeed>] [#<clearance>] [#<clearance>]
+	#<xPos> = [#<xPos> - #<roughDepth>]
+    o30 endrepeat
+
+    ; Retract and move to the start
+    G0 X[#<Xs>+#<clearance>]
+    G0 Z#<Zs>
+
+    ; Now the finishing passes.  We approach from -X then trace the final curve
+
+    (CSS mode)
+    #<mpm> = [#<sfm> * 12 * 25.4/1000]
+    G96 D#<max_rpm> S#<mpm>
+	        
+    #<offset> = [[#<finishPasses>-1]*#<finishDepth>]
+    o40 repeat [ #<finishPasses> ]
+        #<dia> = [#<BallDia>+#<offset>]
+        #<x> = [#<ShaftDia>+#<offset>]
+	#<z> = [#<BallCenter> - sqrt[ [#<dia>/2] * [#<dia>/2] - [#<x>/2] * [#<x>/2] ]]
+   	G0 X[-1*#<clearance>]
+	G1 Z[#<Zo> + #<offset>/2]
+	G1 X0
+	G3 X#<x> Z#<z> I0 K[-1*#<dia>/2]
+	G1 Z[#<Ze>+#<offset>/2]
+	G1 X[#<Xs>+#<clearance>]
+	G0 Z[#<Zs>+#<clearance>]
+        #<offset> = [#<offset> - #<finishDepth>]
+    o40 endrepeat
+
+    (return to start position)
+    G30
+O<ballend> endsub
+
+
+o<ballend_do_pass> sub
+    #<xPos> = #1
+    #<startZ> = #2
+    #<endZ> = #3
+    #<mpm> = #4
+    #<max_rpm> = #5
+    #<FeedRate> = #6
+    #<xClearance> = #7
+    #<zClearance> = #8
+
+    ;(print, ballend_do_pass x=#<xPos>, z0=#<startZ>, z1=#<endZ> )
+    o20 if [ #<xPos> GT 0 ]
+        #<css_rpm> = [ [#<mpm> * 1000 ] / [#<xPos> * 3.14159 ] ]
+    o20 else
+        #<css_rpm> = #<max_rpm>
+    o20 endif
+
+    ;(print, css+rpm=#<css_rpm> #<mpm> #<xPos> )
+    o21 if [ #<css_rpm> LT 0 ]
+	#<css_rpm> = [ -1 * #<css_rpm> ]
+    o21 endif
+    o22 if [ #<css_rpm> GT #<max_rpm> ]
+	#<css_rpm> = #<max_rpm>
+    o22 endif
+
+    #<feed> = [ #<FeedRate> * #<css_rpm> ]
+    ;(print, feed=#<feed>)
+
+    G0 Z#<startZ>
+    G1 X#<xPos> F[#<feed>]
+    G1 Z#<endZ> F[#<feed>]
+  
+    ( Dwell to cut a complete revolution) 
+    G4 P[1/[#<css_rpm>/60]] 
+
+    (Retract)
+    G0 Z[#<endZ>+#<zClearance>] X[#<xPos>+#<xClearance>]
+
+o<ballend_do_pass> endsub
+

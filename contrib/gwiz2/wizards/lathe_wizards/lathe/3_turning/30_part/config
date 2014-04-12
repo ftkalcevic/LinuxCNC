@@ -1,0 +1,10 @@
+Parting
+S|X Start|Parting start position|10
+S|X End|Parting end position|-1
+S|Z|Parting Location|0
+U|Parting Feed rate (mm/rev)|Feed rate for parting|0.05
+U|SFM|Surface Feet per Minute for this combination of tool and material|30
+U|Peck Length|Withdraw tool every so often to clear chips|5
+U|Max RPM|Maximum RPM|1200
+U|Clearance|Relative distance to retract X for rapid traverse|2
+

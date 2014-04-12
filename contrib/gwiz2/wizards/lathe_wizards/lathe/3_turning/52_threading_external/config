@@ -1,0 +1,15 @@
+Threading External
+S|Z Start|Z coordinate start.  Allow some room for the Z axis to ramp up to speed.|-5.0
+S|Z End|Z coordinate end|-20.0
+S|X Start|Outside dimension of the thread|8
+U|Pitch|The pitch of the thread, ie the distance between threads|1.25
+U|Initial Cut Depth|The depth of the first cut.  Subsequent cuts are derived from this.|0.2
+U|Final Depth|The final depth of the thread.|1.25
+S|Angle|The “compound slide angle” is the angle (in degrees) describing to what extent successive passes should be offset along the drive line. This is used to cause one side of the tool to remove more material than the other. A positive Q value causes the leading edge of the tool to cut more heavily. Typical values are 29, 29.5 or 30.|29.5
+U|Depth Degression|Amount of material to remove on each pass. 1.0 selects constant depth on successive threading passes. 2.0 selects constant area. Values between 1.0 and 2.0 select decreasing depth but increasing area. Values above 2.0 select decreasing area. Beware that unnecessarily high degression values will cause a large number of passes to be used.|2.0
+U|Clearance|Relative distance to retract X for rapid traverse for next pass|2
+U|Spring Passes|Spring passes|1
+L|Taper|Apply a taper to the start/end of the thread.  If no taper is selected, a relief groove should be cut first.|2|Exit Taper|1|Entry Taper|3|Both Entry & Exit Taper|0|No Taper
+U|Taper Distance|Distance along the drive line used for the taper|1.0
+U|Spindle Speed|Spindle speed|300
+

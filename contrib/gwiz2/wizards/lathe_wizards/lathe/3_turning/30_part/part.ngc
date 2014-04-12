@@ -1,0 +1,56 @@
+O<part> sub (outside diameter turning)
+    #<startX> = #1
+    #<endX> = #2
+    #<Z> = #3
+    #<rate> = #4
+    #<sfm> = #5
+    #<peckLength> = #6
+    #<maxrpm> = #7
+    #<clearance> = #8
+
+    (verify parameters)
+    o5 if [ #<endX> GT #<startX> ]
+        ! endX coordinate must be less than or equal to startX
+    O5 endif
+
+    (CSS mode)
+    #<mpm> = [#<sfm> * 12 * 25.4/1000]
+    G96 D#<maxrpm> S#<mpm>
+
+    (save start position)
+    G30.1
+
+    (Make sure spindle is on)
+    M3
+
+    (compute the first cut point backwards)
+    o10 if [ #<peckLength> GT 0 ]
+        #<xCount> = fup[[#<startX> - #<endX>] / #<peckLength>]
+        #<xFirst> = [[#<xCount>-1] * #<peckLength> + #<endX>]
+    o10 else
+        #<xCount> = 1
+        #<xFirst> = #<endX>
+    o10 endif
+
+    (do the loop)
+    #<xPos> = #<xFirst>
+    #<xLast> = #<startX>
+    G0 X[#<xLast>+#<clearance>]
+    G0 Z#<Z>
+    o20 repeat [ #<xCount> ]
+        G0 X[#<xLast>+#<clearance>]
+        G33 X#<xPos> K#<rate>
+	(G4 P0.5)
+        G0 X[#<startX>+#<clearance>]
+    
+        #<xLast> = #<xPos>    
+	#<xPos> = [#<xPos> - #<peckLength>]
+    o20 endrepeat
+
+    (rpm mode)
+    G97
+
+    (return to start position)
+    (G4 P0.5)
+    G30
+O<part> endsub

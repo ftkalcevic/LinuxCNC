@@ -1,0 +1,21 @@
+O<ChamferOutside> sub (Chamfer Outside with chamfering tool)
+    #<X> = #1
+    #<Z> = #2
+    #<toolOffset> = #3
+    #<depth> = #4
+    #<feedRate> = #5
+    #<clearance> = #6
+
+    ( Save position )
+    G30.1
+
+    G0 X[#<X> + #<clearance>]
+    G0 Z#<Z>
+
+    G1 X[#<X> - #<depth>] F#<feedRate>
+    G0 X[#<X> + #<clearance>]
+
+    (Restore position)
+    G30
+
+O<ChamferOutside> endsub

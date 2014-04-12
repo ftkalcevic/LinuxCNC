@@ -1,0 +1,9 @@
+Center Drill
+S|Z Start|Z coordinate start|0.0
+L|Center Drill #||20|#00|0|#0|1|#1 1/8"|2|#2 3/16"|3|#3 1/4"|4|#4 5/16"|5|#5 7/16"|6|#6 1/2"|7|#7 5/8"
+U|Depth %|Percentage of max center drill depth to drill|90
+U|Feed rate (mm/rev)|How far to advance the drill per revolution|0.01
+U|SFM|SFM value for this material and cutter|100
+U|Max RPM|Max RPM when computing RPM based on diameter and SFM|1200
+U|X Clearance|Releative distance to retract X on completion|2
+

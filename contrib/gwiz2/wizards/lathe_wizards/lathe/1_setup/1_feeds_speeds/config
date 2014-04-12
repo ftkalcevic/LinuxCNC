@@ -1,0 +1,9 @@
+Lathe Speeds, Feeds and Tool Selection
+L|Material|Select the material|1|Alum.: Cast|2|Alum.: Wrought(6061)|3|Brass|4|Ductile Cast Iron|5|Gray Cast Iron|6|Wrought Copper Alloy|7|Nickel Hi Temp Alloy|8|Magnesium Alloy|9|Nickel Alloy: Monel 400)|10|300 Stainless (316)|11|400 Stainless (420)|12|PH Stainless (17-4)|13|Steel: Low Carbon(1020)|14|Steel: Low Carbon Alloy(8620)|15|Steel: Med Carbon(1045)|16|Steel: Med Carbon Alloy(4130)|17|Steel: Hi Carbon(1090)|18|Steel: Hi Carbon Alloy(52100)|19|Steel: Tool(H13)|20|Titanium Alloy
+L|Tool Type|Select the material the tool is made of|1|Carbide|2|HSS|3|Tool Steel
+L|Speed Mode|Select fixed spindle speed, or constant surface speed|0|Fixed RPM|1|CSS
+U|CSS rate|ft/min or m/min for CSS speed mode|200
+U|CSS max speed|maximum spindle speed when in CSS mode|1500
+U|Spindle speed|spindle speed when not in CSS mode|500
+U|Tool Number|Tool Number|0
+

@@ -1,0 +1,15 @@
+Boring
+S|X Start|Starting outside point for boring|11
+S|X End|Final bored dimension (includes rough and finish passes)|20.0
+S|Z Start|Z coordinate start|0.0
+S|Z End|Z coordinate end|-10.0
+U|Rough Feed rate (mm/rev)|Feed rate for roughing pass|0.2
+U|Rough Cut Depth (mm)|Roughing depth of cut per pass|0.5
+U|Finish Passes|Number of finishing passes|1
+U|Finish Feed rate (mm/rev)|Feed rate for the Finishing pass|0.1
+U|Finish Cut Depth|Depth of cut for the Finishing pass|0.1
+U|Spring Passes|Number of spring passes|0
+U|Surface Feet per Minute|SFM cutting speed|100
+U|Maximum RPM|Maximum RPM to use when calculating based on SFM and diameter|1200
+U|Clearance|Relative distance to retract Z and X for rapid traverse for next pass|2
+

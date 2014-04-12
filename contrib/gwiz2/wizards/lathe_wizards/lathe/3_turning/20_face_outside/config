@@ -1,0 +1,14 @@
+Outside Facing
+S|X Start|Start X coordinate of facing travel|10.0
+S|X End|End X coordinate of facing travel|-1.0
+S|Z Start|Z coordinate start|0.0
+S|Z End|Z coordinate end|-1.0
+U|Rough Feed rate (mm/rev)|How far to advance the cutter per revolution|0.25
+U|Rough Depth per pass|Roughing depth of cut per pass|0.25
+U|Finish Passes|Number of finishing passes|1
+U|Finish Feed rate (mm/rev)|How far to advance the cutter per revolution|0.1
+U|Finish Cut Depth|Depth of cut for the Finishing pass|0.1
+U|SFM|SFM value for this material and cutter|100
+U|Max RPM|Max RPM when computing RPM based on diameter and SFM|1200
+U|Z Clearance|Releative distance to retract Z when traversing back to X Start|2
+
