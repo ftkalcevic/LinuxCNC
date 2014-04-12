@@ -1,0 +1,42 @@
+gwiz2 was built against Qt 4.8.
+
+To build, run
+
+qmake
+
+Then run,
+
+make
+
+
+Setup...
+
+In your linuxcnc.ini file, add gwiz2 config (change as appropriate)
+
+[GWIZARD]
+WizardDirs = "/home/frankt/linuxcnc-dev/ikfast/contrib/gwiz2/wizards/lathe_wizards;/home/frankt/linuxcnc-dev/ikfast/contrib/gwiz2/wizards/general_wizards"  ; Where the gwiz2 wizards live.  Semi-colon separated list
+WizFileDir = "/home/frankt/linux-cnc/wiz_files"  ; Directory to store user created .wiz files.
+GWiz2IniFilePath = "/home/frankt/linuxcnc-dev/ikfast/contrib/gwiz2/gwiz2.ini" ; GWiz2 static settings
+
+
+And add to the FILTER section (again, change paths)...
+
+[FILTER]
+PROGRAM_EXTENSION = .wiz GWiz Wizard File
+wiz = /home/frankt/linuxcnc-dev/ikfast/contrib/gwiz2/wiz2gcode
+
+
+To run gwiz, either...
+
+gwiz2 -ini <path to linuxcnc.ini> <optional wiz file to edit>
+
+
+OR, add ini file path to .bashrc...
+
+export INI_FILE_NAME=<path to linuxcnc.ini>
+
+and then run...
+
+gwiz2 <optional wiz file to edit>
+
+
