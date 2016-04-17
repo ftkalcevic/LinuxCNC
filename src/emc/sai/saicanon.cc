@@ -109,7 +109,9 @@ stdout to a file.
 */
 
 //extern void rs274ngc_line_text(char * line_text, int max_size);
-extern Interp interp_new;
+extern InterpBase *pinterp;
+#define interp_new (*pinterp)
+
 void print_nc_line_number()
 {
   char text[256];
@@ -538,13 +540,7 @@ void STRAIGHT_PROBE(int line_number,
   _probe_position_a = a; /*AA*/
   _probe_position_b = b; /*BB*/
   _probe_position_c = c; /*CC*/
-  if (distance == 0)
-    {
-      _program_position_x = _program_position_x;
-      _program_position_y = _program_position_y;
-      _program_position_z = _program_position_z;
-    }
-  else
+  if (distance != 0)
     {
       backoff = ((_length_unit_type == CANON_UNITS_MM) ? 0.254 : 0.01);
       _program_position_x = (x + (backoff * (dx / distance)));
@@ -1055,32 +1051,38 @@ int USER_DEFINED_FUNCTION_ADD(USER_DEFINED_FUNCTION_TYPE func, int num)
 
 void SET_MOTION_OUTPUT_BIT(int index)
 {
-  return;
+    PRINT1("SET_MOTION_OUTPUT_BIT(%d)\n", index);
+    return;
 }
 
 void CLEAR_MOTION_OUTPUT_BIT(int index)
 {
-  return;
+    PRINT1("CLEAR_MOTION_OUTPUT_BIT(%d)\n", index);
+    return;
 }
 
 void SET_MOTION_OUTPUT_VALUE(int index, double value)
 {
-  return;
+    PRINT2("SET_MOTION_OUTPUT_VALUE(%d,%f)\n", index, value);
+    return;
 }
 
 void SET_AUX_OUTPUT_BIT(int index)
 {
-  return;
+    PRINT1("SET_AUX_OUTPUT_BIT(%d)\n", index);
+    return;
 }
 
 void CLEAR_AUX_OUTPUT_BIT(int index)
 {
-  return;
+    PRINT1("CLEAR_AUX_OUTPUT_BIT(%d)\n", index);
+    return;
 }
 
 void SET_AUX_OUTPUT_VALUE(int index, double value)
 {
-  return;
+    PRINT2("SET_AUX_OUTPUT_VALUE(%d,%f)\n", index, value);
+    return;
 }
 
 double GET_EXTERNAL_TOOL_LENGTH_XOFFSET()

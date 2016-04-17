@@ -74,7 +74,7 @@ static int readToolChange(IniFile *toolInifile)
                         &tool_change_position.u,
                         &tool_change_position.v,
                         &tool_change_position.w)) {
-            have_tool_change_position=1;
+            have_tool_change_position=9;
             retval=0;
         } else if (6 == sscanf(inistring, "%lf %lf %lf %lf %lf %lf",
                         &tool_change_position.tran.x,
@@ -86,7 +86,7 @@ static int readToolChange(IniFile *toolInifile)
 	    tool_change_position.u = 0.0;
 	    tool_change_position.v = 0.0;
 	    tool_change_position.w = 0.0;
-            have_tool_change_position = 1;
+            have_tool_change_position = 6;
             retval = 0;
         } else if (3 == sscanf(inistring, "%lf %lf %lf",
                                &tool_change_position.tran.x,
@@ -99,7 +99,7 @@ static int readToolChange(IniFile *toolInifile)
 	    tool_change_position.u = 0.0;
 	    tool_change_position.v = 0.0;
 	    tool_change_position.w = 0.0;
-	    have_tool_change_position = 1;
+	    have_tool_change_position = 3;
 	    retval = 0;
 	} else {
 	    /* bad format */
@@ -111,31 +111,6 @@ static int readToolChange(IniFile *toolInifile)
 	/* didn't find an entry */
 	have_tool_change_position = 0;
     }
-
-    if (NULL !=
-	(inistring = toolInifile->Find("TOOL_HOLDER_CLEAR", "EMCIO"))) {
-	/* found an entry */
-	if (3 == sscanf(inistring, "%lf %lf %lf",
-			&tool_holder_clear.tran.x,
-			&tool_holder_clear.tran.y,
-			&tool_holder_clear.tran.z)) {
-	    /* read them OK */
-	    tool_holder_clear.a = 0.0;	// not supporting ABC for now
-	    tool_holder_clear.b = 0.0;
-	    tool_holder_clear.c = 0.0;
-	    have_tool_holder_clear = 1;
-	    retval = 0;
-	} else {
-	    /* bad format */
-	    rcs_print("bad format for TOOL_HOLDER_CLEAR\n");
-	    have_tool_holder_clear = 0;
-	    retval = -1;
-	}
-    } else {
-	/* didn't find an entry */
-	have_tool_holder_clear = 0;
-    }
-
     return retval;
 }
 
@@ -170,7 +145,11 @@ int iniTool(const char *filename)
 
 int emcToolSetToolTableFile(const char *filename)
 {
-    strcpy(tool_table_file, filename);
-
+    strncpy(tool_table_file, filename, sizeof(tool_table_file));
+    if (tool_table_file[sizeof(tool_table_file)-1] != '\0') {
+        rcs_print("Tool Table File name too long, max %zu characters.\n", sizeof(tool_table_file)-1);
+        rcs_print("Requested Tool Table File name was: %s\n", filename);
+        return -1;
+    }
     return 0;
 }

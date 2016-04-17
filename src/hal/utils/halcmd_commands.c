@@ -42,6 +42,7 @@
 #include "hal.h"		/* HAL public API decls */
 #include "../hal_priv.h"	/* private HAL decls */
 #include "halcmd_commands.h"
+#include <rtapi_mutex.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -51,7 +52,6 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <signal.h>
 #include <errno.h>
 #include <time.h>
 #include <fnmatch.h>
@@ -299,6 +299,14 @@ int do_stop_cmd(void) {
     return retval;
 }
 
+int do_echo_cmd(void) {
+    printf("Echo on\n");
+    return 0;
+}
+int do_unecho_cmd(void) {
+    printf("Echo off\n");
+    return 0;
+}
 int do_addf_cmd(char *func, char *thread, char **opt) {
     char *position_str = opt ? opt[0] : NULL;
     int position = -1;
@@ -510,7 +518,7 @@ int do_newinst_cmd(char *comp_name, char *inst_name) {
         return -EINVAL;
     }	
 
-#if defined(RTAPI_SIM)
+#if defined(RTAPI_USPACE)
     {
         char *argv[MAX_TOK];
         int m = 0, result;
@@ -774,7 +782,7 @@ int do_ptype_cmd(char *name)
     }   
     
     rtapi_mutex_give(&(hal_data->mutex));
-    halcmd_error("parameter '%s' not found\n", name);
+    halcmd_error("pin or parameter '%s' not found\n", name);
     return -EINVAL;
 }
 
@@ -819,7 +827,7 @@ int do_getp_cmd(char *name)
     }   
     
     rtapi_mutex_give(&(hal_data->mutex));
-    halcmd_error("parameter '%s' not found\n", name);
+    halcmd_error("pin or parameter '%s' not found\n", name);
     return -EINVAL;
 }
 
@@ -1054,7 +1062,7 @@ int do_loadrt_cmd(char *mod_name, char *args[])
     hal_comp_t *comp;
     char *argv[MAX_TOK+3];
     char *cp1;
-#if defined(RTAPI_SIM)
+#if defined(RTAPI_USPACE)
     argv[m++] = "-Wn";
     argv[m++] = mod_name;
     argv[m++] = EMC2_BIN_DIR "/rtapi_app";
@@ -1079,11 +1087,21 @@ int do_loadrt_cmd(char *mod_name, char *args[])
 	halcmd_error("Module path too long\n");
 	return -1;
     }
+
     /* make full module name '<path>/<name>.o' */
-    strcpy (mod_path, rtmod_dir);
-    strcat (mod_path, "/");
-    strcat (mod_path, mod_name);
-    strcat (mod_path, MODULE_EXT);
+    {
+        int r;
+        r = snprintf(mod_path, sizeof(mod_path), "%s/%s%s", rtmod_dir, mod_name, MODULE_EXT);
+        if (r < 0) {
+            halcmd_error("error making module path for %s/%s%s\n", rtmod_dir, mod_name, MODULE_EXT);
+            return -1;
+        } else if (r >= sizeof(mod_path)) {
+            // truncation!
+            halcmd_error("module path too long (max %lu) for %s/%s%s\n", (unsigned long)sizeof(mod_path)-1, rtmod_dir, mod_name, MODULE_EXT);
+            return -1;
+        }
+    }
+
     /* is there a file with that name? */
     if ( stat(mod_path, &stat_buf) != 0 ) {
         /* can't find it */
@@ -1107,11 +1125,11 @@ int do_loadrt_cmd(char *mod_name, char *args[])
 #endif
 
     if ( retval != 0 ) {
-	halcmd_error("insmod failed, returned %d\n"
-#if !defined(RTAPI_SIM)
+	halcmd_error("insmod for %s failed, returned %d\n"
+#if !defined(RTAPI_USPACE)
             "See the output of 'dmesg' for more information.\n"
 #endif
-        , retval );
+        , mod_name, retval );
 	return -1;
     }
     /* make the args that were passed to the module into a single string */
@@ -1179,7 +1197,7 @@ int do_delsig_cmd(char *mod_name)
 	rtapi_mutex_give(&(hal_data->mutex));
 	sigs[n][0] = '\0';
 
-	if ( ( sigs[0][0] == '\0' )) {
+	if ( sigs[0][0] == '\0' ) {
 	    /* desired signals not found */
 	    halcmd_error("no signals found to be deleted\n");
 	    return -1;
@@ -1282,6 +1300,11 @@ int do_unloadrt_cmd(char *mod_name)
     n = 0;
     retval1 = 0;
     while ( comps[n][0] != '\0' ) {
+        // special case: initial prefix means it is not a real comp
+        if (strstr(comps[n],HAL_PSEUDO_COMP_PREFIX) == comps[n] ) {
+           n++;
+           continue;
+        }
 	retval = unloadrt_comp(comps[n++]);
 	/* check for fatal error */
 	if ( retval < -1 ) {
@@ -1303,7 +1326,7 @@ static int unloadrt_comp(char *mod_name)
     int retval;
     char *argv[4];
 
-#if defined(RTAPI_SIM)
+#if defined(RTAPI_USPACE)
     argv[0] = EMC2_BIN_DIR "/rtapi_app";
     argv[1] = "unload";
 #else
@@ -1439,7 +1462,12 @@ int do_loadusr_cmd(char *args[])
 	    /* check for program ending */
 	    retval = waitpid( pid, &status, WNOHANG );
 	    if ( retval != 0 ) {
-		exited = 1;
+		    exited = 1;
+	        if (WIFEXITED(status) && WEXITSTATUS(status)) {
+	            halcmd_error("waitpid failed %s %s\n",prog_name,new_comp_name);
+	            ready = 0;
+	            break;
+	        }
 	    }
 	    /* check for program becoming ready */
             rtapi_mutex_get(&(hal_data->mutex));
@@ -1857,9 +1885,35 @@ static void print_thread_info(char **patterns)
 	tptr = SHMPTR(next_thread);
 	if ( match(patterns, tptr->name) ) {
 		/* note that the scriptmode format string has no \n */
-		// TODO FIXME add thread runtime and max runtime to this print
-	    halcmd_output(((scriptmode == 0) ? "%11ld  %-3s  %20s ( %8ld, %8ld )\n" : "%ld %s %s %ld %ld"),
-		tptr->period, (tptr->uses_fp ? "YES" : "NO"), tptr->name, (long)tptr->runtime, (long)tptr->maxtime);
+            char name[HAL_NAME_LEN+1];
+            hal_pin_t* pin;
+            hal_sig_t *sig;
+            void *dptr;
+  
+            snprintf(name, sizeof(name), "%s.time",tptr->name);
+            pin = halpr_find_pin_by_name(name);
+            if (pin) {
+                if (pin->signal != 0) {
+                    sig = SHMPTR(pin->signal);
+                    dptr = SHMPTR(sig->data_ptr);
+                } else {
+                    sig = 0;
+                    dptr = &(pin->dummysig);
+                }
+
+                halcmd_output(((scriptmode == 0) ? "%11ld  %-3s  %20s ( %8ld, %8ld )\n"
+                                                 : "%ld %s %s %8ld %ld"),
+                              tptr->period,
+                              (tptr->uses_fp ? "YES" : "NO"),
+                              tptr->name,
+                              (long)*(long*)dptr,
+                              (long)tptr->maxtime);
+            } else {
+                rtapi_print_msg(RTAPI_MSG_ERR,
+                     "unexpected: cannot find time pin for %s thread",tptr->name);
+            }
+
+
 	    list_root = &(tptr->funct_list);
 	    list_entry = list_next(list_root);
 	    n = 1;
@@ -2357,19 +2411,38 @@ static void save_comps(FILE *dst)
 
     fprintf(dst, "# components\n");
     rtapi_mutex_get(&(hal_data->mutex));
+
+    int ncomps = 0;
     next = hal_data->comp_list_ptr;
     while (next != 0) {
 	comp = SHMPTR(next);
 	if ( comp->type == 1 ) {
-	    /* only print realtime components */
-	    if ( comp->insmod_args == 0 ) {
-		fprintf(dst, "#loadrt %s  (not loaded by loadrt, no args saved)\n", comp->name);
-	    } else {
-		fprintf(dst, "loadrt %s %s\n", comp->name,
-		    (char *)SHMPTR(comp->insmod_args));
-	    }
-	}
+            ncomps ++;
+        }
 	next = comp->next_ptr;
+    }
+
+    hal_comp_t *comps[ncomps], **compptr = comps;
+    next = hal_data->comp_list_ptr;
+    while(next != 0)  {
+	comp = SHMPTR(next);
+	if ( comp->type == 1 ) {
+            *compptr++ = SHMPTR(next);
+        }
+	next = comp->next_ptr;
+    }
+
+    int i;
+    for(i=ncomps; i--;)
+    {
+        comp = comps[i];
+        /* only print realtime components */
+        if ( comp->insmod_args == 0 ) {
+            fprintf(dst, "#loadrt %s  (not loaded by loadrt, no args saved)\n", comp->name);
+        } else {
+            fprintf(dst, "loadrt %s %s\n", comp->name,
+                (char *)SHMPTR(comp->insmod_args));
+        }
     }
 #if 0  /* newinst deferred to version 2.2 */
     next = hal_data->comp_list_ptr;
@@ -2645,7 +2718,7 @@ int do_help_cmd(char *command)
 	printf("  Starts user space program 'progname', passing\n");
 	printf("  'progargs' to it.  Options are:\n");
 	printf("  -W  wait for HAL component to become ready\n");
-	printf("  -Wn name to wait for the component, which will have the given name.\n");
+	printf("  -Wn NAME  wait for component named NAME to become ready\n");
 	printf("  -w  wait for program to finish\n");
 	printf("  -i  ignore program return value (use with -w)\n");
     } else if ((strcmp(command, "linksp") == 0) || (strcmp(command,"linkps") == 0)) {
@@ -2791,6 +2864,14 @@ int do_help_cmd(char *command)
         printf("  Removes any alias from the pin or parameter \"name\".\n");
         printf("  \"type\" must be pin or param\n");
         printf("  \"name\" must be an existing name or alias of the specified type.\n");
+    } else if (strcmp(command, "echo") == 0) {
+        printf("echo\n");
+        printf("echo the commands from stdin to stderr\n");
+        printf("Useful for debugging scripted commands from a running program\n");
+    } else if (strcmp(command, "unecho") == 0) {
+        printf("unecho\n");
+        printf("Turn off echo of commands from stdin to stdout\n");
+
     } else {
 	printf("No help for unknown command '%s'\n", command);
     }
@@ -2823,5 +2904,6 @@ static void print_help_commands(void)
     printf("  save                Print config as commands\n");
     printf("  start, stop         Start/stop realtime threads\n");
     printf("  alias, unalias      Add or remove pin or parameter name aliases\n");
+    printf("  echo, unecho        Echo commands from stdin to stderr\n");
     printf("  quit, exit          Exit from halcmd\n");
 }

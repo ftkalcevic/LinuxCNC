@@ -1,6 +1,5 @@
 autosave.halscope
 build-stamp
-lib
 *.pyc
 *.o
 *.ko
@@ -13,7 +12,7 @@ lib
 *.cmd
 .tmp*
 # Ignore generated html files, 
-*.html
+/docs/src/*/*.html
 # Except Gcode quick-ref cards (en,de,sp,fr) which are maintained by hand
 !docs/html/gcode*.html
 # Ignore all LyX files, we're done with them now. 
@@ -28,3 +27,15 @@ docs/html/drivers
 /configs/*/emc.nml
 !/configs/common/emc.nml
 /docs/src/source-highlight/local
+lib/python/gremlin.py
+lib/python/touchy
+configs/sim/gmoccapy/*.pref
+configs/sim/gmoccapy/gmoccapy_plasma/*.pref
+# Miscellaneous generated files (Rob)
+cscope
+cscope.*
+*.kdev*
+oprofile*
+*.log
+position.txt
+*.9

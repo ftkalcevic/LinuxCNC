@@ -1,8 +1,33 @@
+/*    This is a component of LinuxCNC
+ *    Copyright 2011, 2012, 2013 Jeff Epler <jepler@dsndata.com>, Michael
+ *    Haberler <git@mah.priv.at>, Sebastian Kuzminsky <seb@highlab.com>
+ *
+ *    This program is free software; you can redistribute it and/or modify
+ *    it under the terms of the GNU General Public License as published by
+ *    the Free Software Foundation; either version 2 of the License, or
+ *    (at your option) any later version.
+ *
+ *    This program is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *    GNU General Public License for more details.
+ *
+ *    You should have received a copy of the GNU General Public License
+ *    along with this program; if not, write to the Free Software
+ *    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ */
 #include "python_plugin.hh"
 #include "inifile.hh"
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
+
+#include <boost/python/exec.hpp>
+#include <boost/python/extract.hpp>
+#include <boost/python/import.hpp>
+
+namespace bp = boost::python;
 
 #define MAX_ERRMSG_SIZE 256
 
@@ -27,8 +52,7 @@ extern const char *strstore(const char *s);
 
 int PythonPlugin::run_string(const char *cmd, bp::object &retval, bool as_file)
 {
-    if (reload_on_change)
-	reload();
+    reload();
     try {
 	if (as_file)
 	    retval = bp::exec_file(cmd, main_namespace, main_namespace);
@@ -87,8 +111,7 @@ int PythonPlugin::call(const char *module, const char *callable,
     if (callable == NULL)
 	return PLUGIN_NO_CALLABLE;
 
-    if (reload_on_change)
-	reload();
+    reload();
 
     if (status < PLUGIN_OK)
 	return status;
@@ -139,8 +162,7 @@ bool PythonPlugin::is_callable(const char *module,
     bool result = false;
     bp::object function;
 
-    if (reload_on_change)
-	reload();
+    reload();
     if ((status != PLUGIN_OK) ||
 	(funcname == NULL)) {
 	return false;
@@ -181,6 +203,8 @@ bool PythonPlugin::is_callable(const char *module,
 int PythonPlugin::reload()
 {
     struct stat st;
+    if (!reload_on_change)
+	return PLUGIN_OK;
 
     if (stat(abs_path, &st)) {
 	logPP(0, "reload: stat(%s) returned %s", abs_path, strerror(errno));
@@ -189,7 +213,7 @@ int PythonPlugin::reload()
     }
     if (st.st_mtime > module_mtime) {
 	module_mtime = st.st_mtime;
-	initialize(true);
+	initialize();
 	logPP(1, "reload():  %s reloaded, status=%d", toplevel, status);
     } else {
 	logPP(5, "reload: no-op");
@@ -219,7 +243,7 @@ std::string handle_pyerror()
     return bp::extract<std::string>(formatted);
 }
 
-void PythonPlugin::initialize(bool reload)
+int PythonPlugin::initialize()
 {
     std::string msg;
     if (Py_IsInitialized()) {
@@ -230,9 +254,10 @@ void PythonPlugin::initialize(bool reload)
 	    for(unsigned i = 0; i < inittab_entries.size(); i++) {
 		main_namespace[inittab_entries[i]] = bp::import(inittab_entries[i].c_str());
 	    }
-	    bp::object result = bp::exec_file(abs_path,
-					      main_namespace,
-					      main_namespace);
+	    if (toplevel) // only execute a file if there's one configured.
+		bp::object result = bp::exec_file(abs_path,
+						  main_namespace,
+						  main_namespace);
 	    status = PLUGIN_OK;
 	}
 	catch (bp::error_already_set) {
@@ -252,71 +277,19 @@ void PythonPlugin::initialize(bool reload)
 	logPP(-1, "initialize: Plugin not initialized");
 	status = PLUGIN_PYTHON_NOT_INITIALIZED;
     }
+    return status;
 }
 
-PythonPlugin::PythonPlugin(const char *iniFilename,
-			   const char *section,
-			   struct _inittab *inittab) :
+PythonPlugin::PythonPlugin(struct _inittab *inittab) :
     status(0),
     module_mtime(0),
     reload_on_change(0),
-    ini_filename(0),
-    section(0),
-    inittab_pointer(0),
     toplevel(0),
     abs_path(0),
     log_level(0)
 {
-    IniFile inifile;
-    const char *inistring;
-
-    if (section == NULL) {
-	logPP(1, "no section");
-	status = PLUGIN_NO_SECTION;
-	return;
-    }
-    if ((iniFilename == NULL) &&
-	((iniFilename = getenv("INI_FILE_NAME")) == NULL)) {
-	logPP(-1, "no inifile");
-	status = PLUGIN_NO_INIFILE;
-	return;
-    }
-    if (inifile.Open(iniFilename) == false) {
-          logPP(-1, "Unable to open inifile:%s:\n", iniFilename);
-	  status = PLUGIN_BAD_INIFILE;
-	  return;
-    }
-
-    if ((inistring = inifile.Find("TOPLEVEL", section)) != NULL)
-	toplevel = strstore(inistring);
-    else {
-         logPP(1, "no TOPLEVEL script in inifile:%s:\n", iniFilename);
-	 status =  PLUGIN_NO_TOPLEVEL;
-	 return;
-    }
-    if ((inistring = inifile.Find("RELOAD_ON_CHANGE", section)) != NULL)
-	reload_on_change = (atoi(inistring) > 0);
-
-    if ((inistring = inifile.Find("LOG_LEVEL", section)) != NULL)
-	log_level = atoi(inistring);
-    else log_level = 0;
-
-    char real_path[PATH_MAX];
-    if (realpath(toplevel, real_path) == NULL) {
-	logPP(-1, "cant resolve path to '%s'", toplevel);
-	status = PLUGIN_BAD_PATH;
-	return;
-    }
-    struct stat st;
-    if (stat(real_path, &st)) {
-	logPP(1, "stat(%s) returns %s", real_path, strerror(errno));
-	status = PLUGIN_STAT_FAILED;
-	return;
-    }
-    abs_path = strstore(real_path);
-
-    module_mtime = st.st_mtime;      // record timestamp
     Py_SetProgramName((char *) abs_path);
+
     if ((inittab != NULL) &&
 	PyImport_ExtendInittab(inittab)) {
 	logPP(-1, "cant extend inittab");
@@ -324,6 +297,67 @@ PythonPlugin::PythonPlugin(const char *iniFilename,
 	return;
     }
     Py_Initialize();
+    initialize();
+}
+
+
+int PythonPlugin::configure(const char *iniFilename,
+			   const char *section) 
+{
+    IniFile inifile;
+    const char *inistring;
+
+    if (section == NULL) {
+	logPP(1, "no section");
+	status = PLUGIN_NO_SECTION;
+	return status;
+    }
+    if ((iniFilename == NULL) &&
+	((iniFilename = getenv("INI_FILE_NAME")) == NULL)) {
+	logPP(-1, "no inifile");
+	status = PLUGIN_NO_INIFILE;
+	return status;
+    }
+    if (inifile.Open(iniFilename) == false) {
+          logPP(-1, "Unable to open inifile:%s:\n", iniFilename);
+	  status = PLUGIN_BAD_INIFILE;
+	  return status;
+    }
+
+    char real_path[PATH_MAX];
+    if ((inistring = inifile.Find("TOPLEVEL", section)) != NULL) {
+	toplevel = strstore(inistring);
+
+	if ((inistring = inifile.Find("RELOAD_ON_CHANGE", section)) != NULL)
+	    reload_on_change = (atoi(inistring) > 0);
+
+	if (realpath(toplevel, real_path) == NULL) {
+	    logPP(-1, "cant resolve path to '%s'", toplevel);
+	    status = PLUGIN_BAD_PATH;
+	    return status;
+	}
+	struct stat st;
+	if (stat(real_path, &st)) {
+	    logPP(1, "stat(%s) returns %s", real_path, strerror(errno));
+	    status = PLUGIN_STAT_FAILED;
+	    return status;
+	}
+	abs_path = strstore(real_path);
+	module_mtime = st.st_mtime;      // record timestamp
+
+    } else {
+        if (getcwd(real_path, PATH_MAX) == NULL) {
+            logPP(1, "path too long");
+            status = PLUGIN_PATH_TOO_LONG;
+            return status;
+        }
+	abs_path = strstore(real_path);
+    }
+
+    if ((inistring = inifile.Find("LOG_LEVEL", section)) != NULL)
+	log_level = atoi(inistring);
+    else log_level = 0;
+
     char pycmd[PATH_MAX];
     int n = 1;
     int lineno;
@@ -336,7 +370,7 @@ PythonPlugin::PythonPlugin(const char *iniFilename,
 	    logPP(-1, "%s:%d: exeception running '%s'",iniFilename, lineno, pycmd);
 	    exception_msg = "exeception running:" + std::string((const char*)pycmd);
 	    status = PLUGIN_EXCEPTION_DURING_PATH_PREPEND;
-	    return;
+	    return status;
 	}
 	n++;
     }
@@ -349,24 +383,24 @@ PythonPlugin::PythonPlugin(const char *iniFilename,
 	    logPP(-1, "%s:%d: exeception running '%s'",iniFilename, lineno, pycmd);
 	    exception_msg = "exeception running " + std::string((const char*)pycmd);
 	    status = PLUGIN_EXCEPTION_DURING_PATH_APPEND;
-	    return;
+	    return status;
 	}
 	n++;
     }
     logPP(3,"PythonPlugin: Python  '%s'",  Py_GetVersion());
-    initialize(false);
+    return initialize();
 }
 
 // the externally visible singleton instance
 PythonPlugin *python_plugin;
 
+
 // first caller wins
-PythonPlugin *PythonPlugin::configure(const char *iniFilename,
-				      const char *section,
-				      struct _inittab *inittab)
+// this splits instantiation from configuring PYTHONPATH, imports etc
+PythonPlugin *PythonPlugin::instantiate(struct _inittab *inittab)
 {
     if (python_plugin == NULL) {
-	python_plugin =  new PythonPlugin(iniFilename, section, inittab);
+	python_plugin = new PythonPlugin(inittab);
     }
     return (python_plugin->usable()) ? python_plugin : NULL;
 }

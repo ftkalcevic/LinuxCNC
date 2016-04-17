@@ -160,7 +160,10 @@ int main(int argc, gchar * argv[])
     shm_id = rtapi_shmem_new(SCOPE_SHM_KEY, comp_id, sizeof(scope_shm_control_t));
     if (shm_id < 0) {
 	rtapi_print_msg(RTAPI_MSG_ERR,
-	    "SCOPE: ERROR: failed to get shared memory\n");
+	    "SCOPE: ERROR: failed to get shared memory (key=0x%x, size=%lu)\n",
+            SCOPE_SHM_KEY,
+            (unsigned long)sizeof(scope_shm_control_t)
+        );
 	hal_exit(comp_id);
 	return -1;
     }
@@ -176,7 +179,7 @@ int main(int argc, gchar * argv[])
     hal_ready(comp_id);
 
     /* register an exit function to cleanup and disconnect from the HAL */
-    g_atexit(exit_from_hal);
+    atexit(exit_from_hal);
 
     /* init control structure */
     ctrl_usr = &ctrl_struct;

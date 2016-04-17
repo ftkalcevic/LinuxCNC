@@ -97,6 +97,9 @@ typedef int CANON_AXIS;
 #define CANON_AXIS_A 4
 #define CANON_AXIS_B 5
 #define CANON_AXIS_C 6
+#define CANON_AXIS_U 7
+#define CANON_AXIS_V 8
+#define CANON_AXIS_W 9
 
 /* Currently using the typedefs above rather than the enums below
 typedef enum {CANON_PLANE_XY, CANON_PLANE_YZ, CANON_PLANE_XZ} CANON_PLANE;
@@ -121,39 +124,6 @@ struct CANON_VECTOR {
     }
     double x, y, z;
 };
-
-struct CANON_POSITION {
-#ifndef JAVA_DIAG_APPLET
-    CANON_POSITION() {
-    } 
-    CANON_POSITION(double _x, double _y, double _z,
-                   double _a, double _b, double _c,
-                   double _u, double _v, double _w) {
-	x = _x;
-	y = _y;
-	z = _z;
-	a = _a;
-	b = _b;
-	c = _c;
-        u = _u;
-        v = _v;
-        w = _w;
-    }
-    bool operator==(const CANON_POSITION &o) const {
-        return(x == o.x && y == o.y && z == o.z &&
-               a == o.a && b == o.b && c == o.c &&
-               u == o.u && v == o.v && w == o.v);
-    }
-    bool operator!=(const CANON_POSITION &o) const {
-        return(x != o.x || y != o.y || z != o.z ||
-               a != o.a || b != o.b || c != o.c ||
-               u != o.u || v != o.v || w != o.v);
-    }
-#endif
-
-    double x, y, z, a, b, c, u, v, w;
-};
-
 /* Initialization */
 
 /* reads world model data into the canonical interface */
@@ -542,8 +512,7 @@ a change_tool command, the select_tool command must have been given
 before the change_tool command, and the value of slot must be the slot
 number of the selected tool. */
 
-// extern void SELECT_POCKET(int i);	/* i is slot number */
-extern void SELECT_POCKET(int i, int tool);	/* i is slot number, tool is tool number */
+extern void SELECT_POCKET(int pocket, int tool);	/* pocket is pocket number, tool is tool number */
 
 extern void CHANGE_TOOL_NUMBER(int number);
 

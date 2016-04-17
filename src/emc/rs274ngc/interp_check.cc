@@ -11,7 +11,6 @@
 *
 * Last change:
 ********************************************************************/
-#include <boost/python.hpp>
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -92,14 +91,15 @@ int Interp::check_g_codes(block_pointer block,   //!< pointer to a block to be c
     (block->p_number >= 0) ? p_int = (int) (block->p_number +0.5) :p_int = (int) (block->p_number -0.5);
     CHKS((block->l_number != 2 && block->l_number != 1 && block->l_number != 20 && block->l_number != 10 && block->l_number != 11), _("Line with G10 does not have L1, L10, L11, L2, or L20"));
     CHKS((((block->p_number + 0.0001) - p_int) > 0.0002),  _("P value not an integer with G10"));
-    CHKS((((block->l_number == 2 || block->l_number == 20) && ((p_int < 0) || (p_int > 9)))), _("P value out of range (0-9) with G10 L2 or L20"));
-    CHKS((((block->l_number == 1 || block->l_number == 10 || block->l_number == 11) && p_int < 1)), _("P value out of range with G10 L1 or G10 L10"));
+    CHKS((((block->l_number == 2 || block->l_number == 20) && ((p_int < 0) || (p_int > 9)))), _("P value out of range (0-9) with G10 L%d"), block->l_number);
+    CHKS((((block->l_number == 1 || block->l_number == 10 || block->l_number == 11) && p_int < 1)), _("P value out of range with G10 L%d"), block->l_number);
   } else if (mode0 == G_28) {
   } else if (mode0 == G_30) {
   } else if (mode0 == G_5_3) { 
       CHKS(((mode1 != G_5_2) && (mode1 != -1)), _("Between G5.2 and G5.3 codes, only additional G5.2 codes are allowed."));
   } else if (mode1 == G_5_2){
   } else if (mode0 == G_28_1 || mode0 == G_30_1) {
+  } else if (mode0 == G_52) {
   } else if (mode0 == G_53) {
     CHKS(((block->motion_to_be != G_0) && (block->motion_to_be != G_1)),
         NCE_MUST_USE_G0_OR_G1_WITH_G53);
@@ -265,7 +265,7 @@ int Interp::check_other_codes(block_pointer block)       //!< pointer to a block
   }
 
   if (block->h_flag) {
-    CHKS((block->g_modes[8] != G_43 && motion != G_76),
+    CHKS((block->g_modes[8] != G_43 && motion != G_76 && block->g_modes[8] != G_43_2),
       _("H word with no G43 or G76 to use it"));
   }
 

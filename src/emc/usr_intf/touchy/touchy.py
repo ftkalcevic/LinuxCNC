@@ -83,10 +83,25 @@ invisible = gtk.gdk.Cursor(pix, pix, color, color, 0, 0)
 
 class touchy:
         def __init__(self, inifile):
-		#Set the Glade file
-		self.gladefile = os.path.join(datadir, "touchy.glade")
+		# System default Glade file:
+                self.gladefile = os.path.join(datadir, "touchy.glade")
+                if inifile:
+                        self.ini = linuxcnc.ini(inifile)
+                        alternate_gladefile = self.ini.find("DISPLAY", "GLADEFILE")
+                        if alternate_gladefile:
+                                self.gladefile = alternate_gladefile
+                else:
+                        self.ini = None
+
+
 	        self.wTree = gtk.glade.XML(self.gladefile) 
-                
+
+		for w in ['wheelinc1', 'wheelinc2', 'wheelinc3',
+				'wheelx', 'wheely', 'wheelz',
+				'wheela', 'wheelb', 'wheelc',
+				'wheelu', 'wheelv', 'wheelw']:
+			self.wTree.get_widget(w).get_child().set_property('width-chars', 6)
+
 		for widget in self.wTree.get_widget_prefix(''):
 			widget.unset_flags(gtk.CAN_FOCUS)
 		self.wTree.get_widget('MainWindow').set_flags(gtk.CAN_FOCUS)
@@ -173,13 +188,12 @@ class touchy:
                         mdi_eventboxes.append(self.wTree.get_widget("eventbox_mdi%d" % i))
                 self.mdi_control = mdi.mdi_control(gtk, linuxcnc, mdi_labels, mdi_eventboxes)
 
-                if inifile:
-                    ini = linuxcnc.ini(inifile)
-                    self.mdi_control.mdi.add_macros(
-                        ini.findall("TOUCHY", "MACRO"))
-                    self.ini = ini
-                else:
-                    self.ini = None
+                if self.ini:
+                    macros = self.ini.findall("TOUCHY", "MACRO")
+                    if len(macros) > 0:
+                        self.mdi_control.mdi.add_macros(macros)
+                    else:
+                        self.wTree.get_widget("macro").set_sensitive(0)
 
                 listing_labels = []
                 listing_eventboxes = []
@@ -238,13 +252,13 @@ class touchy:
                                                        floods, mists, spindles, prefs,
                                                        opstop, blockdel)
 
+                self.current_file = self.status.emcstat.file
                 # check the ini file if UNITS are set to mm"
-                inifile=self.linuxcnc.emc.ini(sys.argv[2])
                 # first check the global settings
-                units=inifile.find("TRAJ","LINEAR_UNITS")
+                units=self.ini.find("TRAJ","LINEAR_UNITS")
 
                 if units==None:
-                        units=inifile.find("AXIS_0","UNITS")
+                        units=self.ini.find("AXIS_0","UNITS")
 
                 if units=="mm" or units=="metric" or units == "1.0":
                         self.machine_units_mm=1
@@ -344,6 +358,7 @@ class touchy:
                         "on_so_clicked" : self.so,
                         "on_mv_clicked" : self.mv,
                         "on_jogging_clicked" : self.jogging,
+                        "on_scrolling_clicked" : self.scrolling,
                         "on_wheelx_clicked" : self.wheelx,
                         "on_wheely_clicked" : self.wheely,
                         "on_wheelz_clicked" : self.wheelz,
@@ -507,6 +522,11 @@ class touchy:
                 self.wheel = "mv"
                 self.jogsettings_activate(0)
 
+        def scrolling(self, b):
+                if self.radiobutton_mask: return
+                self.wheel = "scrolling"
+                self.jogsettings_activate(1)
+
         def jogging(self, b):
                 if self.radiobutton_mask: return
                 self.wheel = "jogging"
@@ -569,7 +589,7 @@ class touchy:
                           "g", "gp", "m", "t", "set_tool", "set_origin", "macro",
                           "estop", "estop_reset", "machine_off", "machine_on",
                           "home_all", "unhome_all", "home_selected", "unhome_selected",
-                          "fo", "so", "mv", "jogging", "wheelinc1", "wheelinc2", "wheelinc3",
+                          "fo", "so", "mv", "jogging", "scrolling", "wheelinc1", "wheelinc2", "wheelinc3",
                           "wheelx", "wheely", "wheelz",
                           "wheela", "wheelb", "wheelc",
                           "wheelu", "wheelv", "wheelw",
@@ -637,14 +657,21 @@ class touchy:
 
         def fileselect(self, eb, e):
                 if self.wheel == "jogging": self.wheel = "mv"
-                self.jogsettings_activate(0)
-                self.filechooser.select(eb, e)
+                self.jogsettings_activate(1)
+                self.current_file = self.filechooser.select(eb, e)
                 self.listing.clear_startline()
 
         def periodic_status(self):
                 self.linuxcnc.mask()
                 self.radiobutton_mask = 1
                 self.status.periodic()
+
+                # check if current_file changed
+                # perhaps by another gui or a gladevcp app
+                if self.current_file != self.status.emcstat.file:
+                    self.current_file = self.status.emcstat.file
+                    self.filechooser.select_and_show(self.current_file)
+
                 self.radiobutton_mask = 0
                 self.linuxcnc.unmask()
                 self.hal.periodic(self.tab == 1) # MDI tab?
@@ -671,6 +698,11 @@ class touchy:
                                         self.wTree.get_widget("wheel_hbox").set_homogeneous(1)
                         self.resized_wheelbuttons = 1
                 
+                self.wTree.get_widget("scrolling").set_sensitive(self.tab == 3)
+                if self.tab != 3 and self.wheel == "scrolling":
+                        self.jogsettings_activate(0)
+                        self.wheel = "fo"
+
                 set_active(self.wTree.get_widget("wheelx"), self.wheelxyz == 0)
                 set_active(self.wTree.get_widget("wheely"), self.wheelxyz == 1)
                 set_active(self.wTree.get_widget("wheelz"), self.wheelxyz == 2)
@@ -687,6 +719,7 @@ class touchy:
                 set_active(self.wTree.get_widget("so"), self.wheel == "so")
                 set_active(self.wTree.get_widget("mv"), self.wheel == "mv")
                 set_active(self.wTree.get_widget("jogging"), self.wheel == "jogging")
+                set_active(self.wTree.get_widget("scrolling"), self.wheel == "scrolling")
                 set_active(self.wTree.get_widget("pointer_show"), not self.invisible_cursor)
                 set_active(self.wTree.get_widget("pointer_hide"), self.invisible_cursor)
                 set_active(self.wTree.get_widget("toolset_workpiece"), not self.g10l11)
@@ -699,7 +732,9 @@ class touchy:
                         # disable all
                         self.hal.jogaxis(-1)
 
-                if self.wheelxyz == 3 or self.wheelxyz == 4 or self.wheelxyz == 5:
+                if self.wheel == "scrolling":
+                        incs = ["100", "10", "1"]
+                elif self.wheelxyz == 3 or self.wheelxyz == 4 or self.wheelxyz == 5:
                         incs = ["1.0", "0.1", "0.01"]
                 elif self.machine_units_mm:
                         incs = ["0.1", "0.01", "0.001"]
@@ -733,6 +768,9 @@ class touchy:
                                 self.linuxcnc.max_velocity(self.mv_val)
                                 self.linuxcnc.continuous_jog_velocity(self.mv_val)
                         
+		if self.wheel == "scrolling":
+			d0 = d * 10 ** (2-self.wheelinc)
+			if d != 0: self.listing.next(None, d0)
 
                 set_label(self.wTree.get_widget("fo").child, "FO: %d%%" % self.fo_val)
                 set_label(self.wTree.get_widget("so").child, "SO: %d%%" % self.so_val)
@@ -783,8 +821,7 @@ class touchy:
                 self.prefs.putpref('maxvel', self.mv_val, int)
 
 	def postgui(self):
-		inifile=self.linuxcnc.emc.ini(sys.argv[2])
-		postgui_halfile = inifile.find("HAL", "POSTGUI_HALFILE")
+		postgui_halfile = self.ini.find("HAL", "POSTGUI_HALFILE")
 		return postgui_halfile,sys.argv[2]
 
 if __name__ == "__main__":
@@ -799,6 +836,9 @@ if __name__ == "__main__":
 	postgui_halfile,inifile = touchy.postgui(hwg)
 	print "TOUCHY postgui filename:",postgui_halfile
 	if postgui_halfile:
-		res = os.spawnvp(os.P_WAIT, "halcmd", ["halcmd", "-i",inifile,"-f", postgui_halfile])
+		if postgui_halfile.lower().endswith('.tcl'):
+			res = os.spawnvp(os.P_WAIT, "haltcl", ["haltcl", "-i",inifile, postgui_halfile])
+		else:
+			res = os.spawnvp(os.P_WAIT, "halcmd", ["halcmd", "-i",inifile,"-f", postgui_halfile])
 		if res: raise SystemExit, res
 	gtk.main()

@@ -1,0 +1,122 @@
+.\" Copyright (c) 2014 Jeff Epler
+.\"
+.\" This is free documentation; you can redistribute it and/or
+.\" modify it under the terms of the GNU General Public License as
+.\" published by the Free Software Foundation; either version 2 of
+.\" the License, or (at your option) any later version.
+.\"
+.\" The GNU General Public License's references to "object code"
+.\" and "executables" are to be interpreted as the output of any
+.\" document formatting or typesetting system, including
+.\" intermediate and printed output.
+.\"
+.\" This manual is distributed in the hope that it will be useful,
+.\" but WITHOUT ANY WARRANTY; without even the implied warranty of
+.\" MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+.\" GNU General Public License for more details.
+.\"
+.\" You should have received a copy of the GNU General Public
+.\" License along with this manual; if not, write to the Free
+.\" Software Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111,
+.\" USA.
+.TH HM2_ETH "9" "2008-05-13" "LinuxCNC Documentation" "HAL Component"
+.de TQ
+.br
+.ns
+.TP \\$1
+..
+
+.SH NAME
+
+hm2_eth \- LinuxCNC HAL driver for the Mesa Electronics Ethernet Anything IO boards, with HostMot2 firmware.
+.SH SYNOPSIS
+
+.HP
+.B loadrt hm2_eth [config=\fI"str[,str...]"\fB] [board_ip=\fIip[,ip...]\fB] [board_mac=\fImac[,mac...]\]fB]
+.RS 4
+.TP
+\fBconfig\fR [default: ""]
+HostMot2 config strings, described in the hostmot2(9) manpage.
+.TP
+\fBboard_ip\fR [default: ""]
+The IP address of the board(s), separated by commas.  As shipped, the board address is 192.168.1.121.
+.SH DESCRIPTION
+
+hm2_eth is a device driver that interfaces Mesa's ethernet
+based Anything I/O boards (with the HostMot2 firmware) to the LinuxCNC
+HAL.
+
+The supported boards are: 7I80DB, 7I80HD, 7i92, 7i76E.
+
+The board must have its hardware loaded on the board by the mesaflash(1) program.
+
+hm2_eth is only available when linuxcnc is configured with "uspace" realtime.
+
+.SH INTERFACE CONFIGURATION
+
+hm2_eth should be used on a dedicated network interface, with only a cable
+between the PC and the board.  Wireless and USB network interfaces are not
+suitable.
+
+These instructions assume your dedicated network interface is "eth1",
+192.168.1/24 is an unused private network, that the hostmot2 board is using the
+default address of 192.168.1.121, that you are using Debian 7 or similar, and
+that you do not otherwise use iptables.  If any of these are false, you will
+need to modify the instructions accordingly.  After following all the
+instructions, reboot so that the changes take effect.
+
+It is particularly important to check that the network 192.168.1/24 is not
+already the private network used by your internet router, because this is a
+commonly-used value.  If you use another network, you will also need to
+reconfigure the hostmot2 card to use an IP address on that network by using the
+mesaflash(1) utility and change jumper settings.  Typically, you will choose
+one of the networks in the
+.UR http://en.wikipedia.org/wiki/IPv4#Private_networks
+Private IPv4 address space.
+.UE
+One common alternative is PC address 10.10.10.1, hostmot2 address 10.10.10.10.
+
+Use of the dedicated ethernet interface while linuxcnc is running can cause
+violation of realtime guarantees.  hm2_eth will automatically mitigate most
+accidental causes of interference.
+
+.SS Configure network with static address
+Add these lines to the file /etc/network/interfaces to configure eth1 with a
+static address:
+
+.EX
+auto eth1
+iface eth1 inet static
+    address 192.168.1.1
+.EE
+
+.SH NOTES
+hm2_eth uses an iptables chain called "hm2-eth-rules-output" to control access
+to the network interface while hal is running.  The chain is created if it does
+not exist, and a jump to it is inserted at the beginning of the OUTPUT chain if
+it is not there already.  If you have an existing iptables setup, you can insert
+a direct jump from OUTPUT to hm2-eth-rules-output in an order appropriate to
+your local network.
+
+At (normal) exit, hm2_eth will remove the rules.  After a crash, you can
+manually clear the rules with \fBsudo iptables -F hm2-eth-rules-output\fR;
+the rules are also removed by a reboot.
+
+.SH BUGS
+Some hostmot2 functions such uart are coded in a way that causes additional
+latency when used with hm2_eth.
+
+The HAL pins for the LEDs are called CR01..CR04, but the silkscreens are
+CR3..CR6.  Depending on the FPGA firmware, the LEDs may initially be under
+control of the ethernet engine.  This can be changed until power cycle with
+
+.EX
+elbpcom 01D914000000
+.EE
+
+.SH SEE ALSO
+
+hostmot2(9)
+.SH LICENSE
+
+GPL

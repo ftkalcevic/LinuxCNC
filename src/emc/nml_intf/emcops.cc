@@ -62,6 +62,7 @@ EMC_TRAJ_STAT_MSG(EMC_TRAJ_STAT_TYPE, sizeof(EMC_TRAJ_STAT))
     id = 0;
     paused = OFF;
     scale = 0.0;
+    rapid_scale = 0.0;
     spindle_scale = 0.0;
 
     ZERO_EMC_POSE(position);
@@ -142,6 +143,7 @@ EMC_TASK_STAT_MSG(EMC_TASK_STAT_TYPE, sizeof(EMC_TASK_STAT))
     interpreter_errcode = 0;
     task_paused = 0;
     delayLeft = 0.0;
+    queuedMDIcommands = 0;
 }
 
 EMC_TOOL_STAT::EMC_TOOL_STAT():

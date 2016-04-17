@@ -46,6 +46,16 @@ interactively.  Use the up arrow to recall previous commands, and press tab to
 complete the names of items such as pins and signals.
 .SH OPTIONS
 .TP
+\fB-I\fR
+Before tearing down the realtime environment, run an interactive halcmd.
+\fBhalrun\fR only.  If \fB-I\fR is used, it must precede all other
+commandline arguments.
+.TP
+\fB\-f\fR [\fIfile\fR]
+Ignore commands on command line, take input from \fIfile\fR
+instead.  If \fIfile\fR is not specified, take input from
+\fIstdin\fR.
+.TP
 \fB-i \fIinifile\fR
 Use variables from \fIinifile\fR for substitutions.  See \fBSUBSTITUTION\fR
 below.
@@ -67,7 +77,6 @@ listings.  Threads are printed on a single line, with the thread period, FP usag
 name first, followed by all of the functions in the thread, in execution order.  Signals
 are printed on a single line, with the type, value, and signal name first, followed by
 a list of pins connected to the signal, showing both the direction and the pin name.
-No prompt will be printed if both \fB-s\fR and \fB-f\fR are specified.
 .TP
 \fB-R\fR
 Release the HAL mutex.  This is useful for recovering when a HAL component has crashed
@@ -206,11 +215,15 @@ this just as if it were:
 \fBnet\fR \fIsigname\fR \fIpinname\fR \fI...\fR
 Create \fIsignname\fR to match the type of \fIpinname\fR if it does not yet
 exist.  Then, link \fIsigname\fR to each \fIpinname\fR in turn.  Arrows may
-be used as in \fBlinkps\fR.
+be used as in \fBlinkps\fR. When linking a pin to a signal for the first
+time, the signal value will inherit the pin's default value.
+
 .TP
 \fBunlinkp\fR \fIpinname\fR
 (\fIunlink\fR \fIp\fRin)  Breaks any previous link to \fIpinname\fR.
-Fails if \fIpinname\fR does not exist.
+Fails if \fIpinname\fR does not exist. An unlinked pin will retain the last
+value of the signal it was linked to.
+
 .TP
 \fBsetp\fR \fIname\fR \fIvalue\fR
 (\fIset\fR \fIp\fRarameter or \fIp\fRin)  Sets the value of parameter or pin
@@ -265,7 +278,7 @@ their functions.
 Prints HAL items to \fIstdout\fR in human readable format.
 \fIitem\fR can be one of "\fBcomp\fR" (components), "\fBpin\fR",
 "\fBsig\fR" (signals), "\fBparam\fR" (parameters), "\fBfunct\fR"
-(functions), "\fBthread\fR", or "\fBalias\fR.  The type "\fBall\fR"
+(functions), "\fBthread\fR", or "\fBalias\fR".  The type "\fBall\fR"
 can be used to show matching items of all the preceeding types.
 If \fIitem\fR is omitted, \fBshow\fR will print everything.
 .TP
@@ -359,12 +372,11 @@ halcmd \fB-i\fR flag.  They have the following formats:
 .SH BUGS
 None known at this time.
 .SH AUTHOR
-Original version by John Kasunich, as part of the LinuxCNC Enhanced Machine
-Controller project.  Now includes major contributions by several
-members of the project.
+Original version by John Kasunich, as part of the LinuxCNC project.  Now
+includes major contributions by several members of the project.
 .SH REPORTING BUGS
 Report bugs to the
-.URL http://sf.net/tracker/?group_id=6744&atid=106744 "LinuxCNC bug tracker" .
+.URL http://sf.net/p/emc/bugs/ "LinuxCNC bug tracker" .
 .SH COPYRIGHT
 Copyright \(co 2003 John Kasunich.
 .br

@@ -20,8 +20,8 @@
 #ifndef HOSTMOT2_LOWLEVEL_H
 #define HOSTMOT2_LOWLEVEL_H
 
-#include <linux/device.h>
-#include <linux/firmware.h>
+#include <rtapi_device.h>
+#include <rtapi_firmware.h>
 
 #include "rtapi.h"
 #include "hal.h"
@@ -69,13 +69,39 @@ struct hm2_lowlevel_io_struct {
     // these two are required
     // on success these two return TRUE (not zero)
     // on failure they return FALSE (0) and set *self->io_error (below) to TRUE
-    int (*read)(hm2_lowlevel_io_t *self, u32 addr, void *buffer, int size);
-    int (*write)(hm2_lowlevel_io_t *self, u32 addr, void *buffer, int size);
+    int (*read)(hm2_lowlevel_io_t *self, rtapi_u32 addr, void *buffer, int size);
+    int (*write)(hm2_lowlevel_io_t *self, rtapi_u32 addr, void *buffer, int size);
 
     // these two are optional
     int (*program_fpga)(hm2_lowlevel_io_t *self, const bitfile_t *bitfile);
     int (*reset)(hm2_lowlevel_io_t *self);
 
+    // for devices with a lot of inherent latency (ethernet and spi are two
+    // examples), it is useful to divide the work of the bulk reads which occur
+    // every servo cycle into up to three groups:
+    //   * queuing the reads -- the buffer must point to storage which is stable
+    //     thrugh the eventual receive_queued_reads call
+    //   * actually requesting the queued reads
+    //   * actually receiving the read result and storing it in the buffer given in the
+    //     queue_read call
+    //
+    // these routines are optional: the llio may provide any of these subsets:
+    //   * none, in which case a dummy implementation of ->queue_read delegates to
+    //     ->read
+    //   * queue_read and send_queued_reads, in which case send_queued_reads must also
+    //     receive and process the reads
+    //   * all three
+    int (*queue_read)(hm2_lowlevel_io_t *self, rtapi_u32 addr, void *buffer, int size);
+    int (*send_queued_reads)(hm2_lowlevel_io_t *self);
+    int (*receive_queued_reads)(hm2_lowlevel_io_t *self);
+
+    // similarly, it is useful to divide the work of bulk writes into two groups
+    //   * queueing the writes
+    //   * actually performing the writes
+    // these routines are optional; the llio may either provide both of them, or neither
+    // (in which case a dummy implementation of ->queue_write delegates to ->write)
+    int (*queue_write)(hm2_lowlevel_io_t *self, rtapi_u32 addr, void *buffer, int size);
+    int (*send_queued_writes)(hm2_lowlevel_io_t *self);
     // 
     // This is a HAL parameter allocated and added to HAL by hostmot2.
     // 
@@ -89,6 +115,13 @@ struct hm2_lowlevel_io_struct {
     //   driving it again.
     // 
     hal_bit_t *io_error;
+
+    // this gets set to TRUE by .read-request and cleared by .read, in order
+    // to amortize latency on multiple ethernet devices
+    bool read_requested;
+
+    // TRUE if it is useful to split reads into a request and response part
+    bool split_read;
 
     // this gets set to TRUE when the llio driver detects an io_error, and
     // by the hm2 watchdog (if present) when it detects a watchdog bite
@@ -107,8 +140,8 @@ struct hm2_lowlevel_io_struct {
     const char *fpga_part_number;
 
     // the llio can set this to TRUE (non-zero) or to FALSE (zero)
-    // if FALSE, the hostmot2 driver will export only global read() and write() functions (and pet_watchdog())
-    // if TRUE, the hostmot2 driver will export those three functions and also read_gpio() and write_gpio()
+    // if FALSE, the hostmot2 driver will export only global read() and write() functions
+    // if TRUE, the hostmot2 driver will also export read_gpio() and write_gpio()
     int threadsafe;
 
     void *private;  // for the low-level driver to hang their struct on

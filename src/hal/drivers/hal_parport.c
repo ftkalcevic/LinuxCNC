@@ -105,13 +105,7 @@
    instead of rtapi_outb() and rtapi_inb() - the <asm.io> ones
    are inlined, and save a microsecond or two (on my 233MHz box)
 */
-#define FASTIO
-
-#ifdef FASTIO
-#define rtapi_inb inb
-#define rtapi_outb outb
-#include <asm/io.h>
-#endif
+#include <rtapi_io.h>
 
 #include "hal_parport.h"
 
@@ -211,7 +205,7 @@ int rtapi_app_main(void)
     int n, retval;
 
 
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
+#ifdef __KERNEL__
     // this calculation fits in a 32-bit unsigned 
     // as long as CPUs are under about 6GHz
     ns2tsc_factor = (cpu_khz << 6) / 15625ul;

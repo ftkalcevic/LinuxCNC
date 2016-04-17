@@ -4,7 +4,7 @@ exec $LINUXCNC_EMCSH "$0" "$@"
 
 ###############################################################
 # Description:  emccalib.tcl
-#               A Tcl/Tk script that interfaces with EMC2 
+#               A Tcl/Tk script that interfaces with LinuxCNC
 #               through GUIs.  It configures ini tuning variables 
 #               on the fly and saves if desired.
 #
@@ -27,6 +27,8 @@ exec $LINUXCNC_EMCSH "$0" "$@"
 source [file join [file dirname [info script]] .. linuxcnc.tcl]
 eval emc_init $argv
 
+source [file join $::env(HALLIB_DIR) hal_procs_lib.tcl]
+
 package require BWidget
 
 # add a few default characteristics to the display
@@ -38,7 +40,7 @@ foreach class { Button Checkbutton Entry Label Listbox Menu Menubutton \
 set numaxes [emc_ini "AXES" "TRAJ"]
 
 # Find the name of the ini file used for this run.
-set thisinifile "$EMC_INIFILE"
+set thisinifile "$::EMC_INIFILE"
 set thisconfigdir [file dirname $thisinifile]
 
 
@@ -127,7 +129,9 @@ set inilastline $nl
 for {set i 1} {$i < $nl} {incr i} {
     if { [$initext get $i.0] == "\[" } {
         set inisectionname [$initext get $i.1 $i.end]
-        set inisectionname [string trimright $inisectionname \] ]
+        set tab "	"
+        set spc " "
+        set inisectionname [string trimright $inisectionname "$spc$tab]" ]
         array set sectionarray "$inisectionname $i"
         lappend sectionlist $inisectionname
     }
@@ -141,11 +145,14 @@ set startline $sectionarray(HAL)
 set endline $sectionarray([lindex $sectionlist [expr [lsearch -exact $sectionlist HAL] + 1 ]])
 
 set halfilelist ""
+
 for {set i $startline} {$i < $endline} {incr i} {
     set thisstring [$initext get $i.0 $i.end]
-    if { [lindex $thisstring 0] == "HALFILE" } {
+    if {   [lindex $thisstring 0] == "HALFILE"
+        || [lindex $thisstring 0] == "POSTGUI_HALFILE"
+       } {
         set thishalname [lindex $thisstring end]
-        lappend halfilelist $thisconfigdir/$thishalname
+        lappend halfilelist [find_file_in_hallib_path $thishalname $thisinifile]
     }
 }
 
@@ -165,37 +172,40 @@ proc makeIniTune {} {
         grid rowconfigure $af($j) 9999 -weight 1
     }
 
-    puts "af: [array get af]"
+    #puts "af: [array get af]"
 
     foreach fname $halfilelist {
+        if {[string first LIB: $fname] != -1} {
+            # LIB: files are not candidates tunable items
+            continue
+        }
         $haltext config -state normal
         $haltext delete 1.0 end
         if {[catch {open $fname} programin]} {
-            return
+            continue
         } else {
-            $haltext insert end [halcmdSubstitute [read $programin]]
+            $haltext insert end [read $programin]
             catch {close $programin}
         }
 
         # find the ini references in this hal and build widgets        
         scan [$haltext index end] %d nl
         for {set i 1} { $i < $nl } {incr i} {
-            set tmpstring [$haltext get $i.0 $i.end]
+            set tmpstring [string trim [$haltext get $i.0 $i.end]]
             if {[string match *AXIS* $tmpstring] && ![string match *#* $tmpstring]} {
-	      set halcommand [split $tmpstring " "]
+	      set halcommand [split $tmpstring " \t"]
 	      if { [lindex $halcommand 0] == "setp" || [lindex $halcommand 1] == "\=" } {
                         if { [lindex $halcommand 1] == "\=" } {
                             set tmpstring "setp [lindex $halcommand 0] [lindex $halcommand 2]"
                         }
                 for {set j 0} {$j < $numaxes} {incr j} {
                     if {[string match *AXIS_${j}* $tmpstring]} {
-			puts [list $j $tmpstring]
+                        # puts "j=axisno,match:[list $j $tmpstring]"
                         # this is a hal file search ordered loop
                         set thisininame [string trimright [lindex [split $tmpstring "\]" ] end ]]
                         set lowername "[string tolower $thisininame]"
                         set thishalcommand [lindex $tmpstring 1]
-                        set thishalcommand [halcmdSubstitute $thishalcommand]
-			set tmpval [string trim [hal getp $thishalcommand]]
+                        set tmpval [string trim [hal getp [halcmdSubstitute $thishalcommand]]]
                         global axis$j-$lowername axis$j-$lowername-next
                         set axis$j-$lowername $tmpval
                         set axis$j-$lowername-next $tmpval
@@ -217,6 +227,10 @@ proc makeIniTune {} {
             }
         }
     }
+    if { ![info exists ininamearray] } {
+        incompatible_ini_file
+        return
+    }
 
     # build the buttons to control axis variables.
     for {set j 0} {$j<$numaxes } {incr j} {
@@ -232,7 +246,32 @@ proc makeIniTune {} {
             -command {iniTuneButtonpress refresh}]
         pack $tmpok $tmptest $tmpcancel $tmprefresh -side left -fill both -expand yes -pady 5
     }
-}
+} ;# makeIniTune
+
+proc incompatible_ini_file {} {
+   set progname [file tail $::argv0]
+   set fname [file tail $::EMC_INIFILE]
+   set answer [tk_messageBox \
+      -title "Ini file not compatible with $progname" \
+      -message [msgcat::mc "\
+               No Tuneable items in ini file: <$fname>\n\n\
+               To specify tuneable item(s):\n\n\
+                  1) Include all \[AXIS_n\] sections\n\
+                     and specify itemnames(s)\n\n\
+                     Inifile example:\n\
+                        \[AXIS_0\]\n\
+                        P = 1\n\n\
+                  2) Use setp for \[AXIS_n\]itemname\n\n\
+                     Halfile example:\n\
+                     loadrt pid names=example\n\
+                     ...\n\
+                     setp example.Pgain \[AXIS_0\]P\n\
+               \n\
+               " ] \
+      -type ok \
+      -icon info]
+      exit 1
+} ;# incompatible_ini_file
 
 proc selectAxis {which} {
     global axisentry
@@ -304,7 +343,7 @@ proc changeIni {how } {
                 # get the parameter name string
                 set tmpcmd [lindex $varcommands $listnum]
                 # set new parameter value in hal
-                set thisret [hal setp $tmpcmd $newval]
+                set thisret [hal setp [halcmdSubstitute $tmpcmd] $newval]
                 # see if we need to swap the new and old control values
                 if {[lsearch -exact $swapvars $thisvar] < 0} {
                     # set the current value for display
@@ -339,7 +378,7 @@ proc changeIni {how } {
                 # get the parameter name string
                 set tmpcmd [lindex $varcommands $listnum]
                 # get parameter value from hal
-                set val [string trim [hal getp $tmpcmd]]
+                set val [string trim [hal getp [halcmdSubstitute $tmpcmd]]]
                 set $var $val
                 set $var-next $val
             }
@@ -351,7 +390,7 @@ proc changeIni {how } {
                 set cmds [lindex [array get commandarray $j] 1]
                 set k 0
                 foreach cmd $cmds {
-                    set tmpval [string trim [exec hal getp $cmd]]
+                    set tmpval [string trim [hal getp [halcmdSubstitute $cmd]]]
                     set oldval [lindex $oldvals $k]
                     if {$tmpval != $oldval} {
                         set answer [tk_messageBox \
@@ -402,12 +441,13 @@ proc saveIni {which} {
                         "#" {}
                         default {
                             set tmpstr [$initext get $ind.0 $ind.end]
-                            set tmpvar [lindex $tmpstr 0]
+                            set tmpvar [lindex [split $tmpstr "="] 0]
+                            set tmpvar [string trim $tmpvar]
                             set tmpindx [lsearch $upvarnames $tmpvar]
                             if {$tmpindx != -1} {
                                 set cmd [lindex $varcommands $tmpindx]
                                 $initext mark set insert $ind.0
-                                set newval [string trim [hal getp $cmd]]
+                                set newval [string trim [hal getp [halcmdSubstitute $cmd]]]
                                 set tmptest [string first "e" $newval]
                                 if {[string first "e" $newval] > 1} {
                                     set newval [format %f $newval]
@@ -433,7 +473,7 @@ proc halcmdSubstitute {s} {
     set pat {\[([^]]+)\](\([^)]+\)|[^() \r\n\t]+)}
     set pos 0
     set result {}
-    while {$pos < [string length s]
+    while {$pos < [string length $s]
             && [regexp -start $pos -indices $pat $s indx]} {
         set start [lindex $indx 0]
         set end [lindex $indx 1]
@@ -441,7 +481,7 @@ proc halcmdSubstitute {s} {
         append result [string range $s $pos [expr $start-1]]
 
         set query [string range $s $start $end]
-        regexp $pat $s - section var
+        regexp $pat $query - section var
         set var [regsub {\((.*)\)} $var {\1}]
         append result [emc_ini $var $section]
         
@@ -456,6 +496,20 @@ proc saveFile {filename contents} {
     if { [catch {open $filename w} fileout] } {
         puts stdout [msgcat::mc "can't save %s" $halconfFilename($name)]
         return
+    }
+    if {-1 != [string first ".ini.expanded" $filename]} {
+       set fname [file tail $filename]
+       set answer [tk_messageBox \
+          -title "Expanded File" \
+          -message [msgcat::mc "\
+                   Save to: <$fname>\n\n\
+                   Expanded file for \#INCLUDEs\n\n\
+                   \#INCLUDE files (*.inc)\n\
+                   must be edited separately\n\
+                   \n\
+                   " ] \
+          -type ok \
+          -icon info]
     }
     switch -- [string index $contents 0] {
         "/" {

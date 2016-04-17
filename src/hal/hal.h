@@ -130,9 +130,13 @@ RTAPI_BEGIN_DECLS
 #error HAL needs RTAPI/ULAPI, check makefile and flags
 #endif
 
+#ifdef ULAPI
+#include <signal.h>
+#endif
+
 #include <rtapi_errno.h>
 
-#define HAL_NAME_LEN     41	/* length for pin, signal, etc, names */
+#define HAL_NAME_LEN     47	/* length for pin, signal, etc, names */
 
 /** These locking codes define the state of HAL locking, are used by most functions */
 /** The functions locked will return a -EPERM error message **/
@@ -233,6 +237,14 @@ extern char* hal_comp_name(int comp_id);
 *                     DATA RELATED TYPEDEFS                            *
 ************************************************************************/
 
+/* The hal enums are arranged as distinct powers-of-two, so
+   that accidental confusion of one type with another (which ought
+   to be diagnosed by the type system) can be diagnosed as unexpected
+   values.  Note how HAL_RW is an exception to the powers-of-two rule,
+   as it is the bitwise OR of HAL_RO and the (nonexistent and nonsensical)
+   HAL_WO param direction.
+ */
+
 /** HAL pins and signals are typed, and the HAL only allows pins
     to be attached to signals of the same type.
     All HAL types can be read or written atomically.  (Read-modify-
@@ -244,6 +256,7 @@ extern char* hal_comp_name(int comp_id);
     or parameter.
 */
 typedef enum {
+    HAL_TYPE_UNSPECIFIED = -1,
     HAL_BIT = 1,
     HAL_FLOAT = 2,
     HAL_S32 = 3,
@@ -259,6 +272,7 @@ typedef enum {
 */
 
 typedef enum {
+    HAL_DIR_UNSPECIFIED = -1,
     HAL_IN = 16,
     HAL_OUT = 32,
     HAL_IO = (HAL_IN | HAL_OUT),
@@ -272,22 +286,18 @@ typedef enum {
 
 typedef enum {
     HAL_RO = 64,
-    HAL_RW = 192,
+    HAL_RW = HAL_RO | 128 /* HAL_WO */,
 } hal_param_dir_t;
 
 /* Use these for x86 machines, and anything else that can write to
    individual bytes in a machine word. */
-#include <linux/types.h>
-#ifdef __cplusplus
-typedef bool hal_bool;
-#else
-typedef _Bool hal_bool;
-#endif
-typedef volatile hal_bool hal_bit_t;
-typedef volatile __u32 hal_u32_t;
-typedef volatile __s32 hal_s32_t;
+#include <rtapi_bool.h>
+#include <rtapi_stdint.h>
+typedef volatile bool hal_bit_t;
+typedef volatile rtapi_u32 hal_u32_t;
+typedef volatile rtapi_s32 hal_s32_t;
 typedef double real_t __attribute__((aligned(8)));
-typedef __u64 ireal_t __attribute__((aligned(8))); // integral type as wide as real_t / hal_float_t
+typedef rtapi_u64 ireal_t __attribute__((aligned(8))); // integral type as wide as real_t / hal_float_t
 #define hal_float_t volatile real_t
 
 /***********************************************************************
@@ -715,6 +725,57 @@ typedef int(*constructor)(char *prefix, char *arg);
 /** hal_set_constructor() sets the constructor function for this component
 */
 extern int hal_set_constructor(int comp_id, constructor make);
+
+union hal_stream_data {
+    real_t f;
+    bool b;
+    int32_t s;
+    uint32_t u;
+};
+
+typedef struct {
+    int comp_id, shmem_id;
+    struct hal_stream_shm *fifo;
+} hal_stream_t;
+
+/**
+ * HAL streams are modeled after sampler/stream and will hopefully replace
+ * the independent implementations there.
+ *
+ * There may only be one reader and one writer but this is not enforced
+ */
+
+#define HAL_STREAM_MAX_PINS (21)
+/** create and attach a stream */
+extern int hal_stream_create(hal_stream_t *stream, int comp, int key, int depth, const char *typestring);
+/** detach and destroy an open stream */
+extern void hal_stream_destroy(hal_stream_t *stream);
+
+/** attach to an existing stream */
+extern int hal_stream_attach(hal_stream_t *stream, int comp, int key, const char *typestring);
+/** detach from an open stream */
+extern int hal_stream_detach(hal_stream_t *stream);
+
+/** stream introspection */
+extern int hal_stream_element_count(hal_stream_t *stream);
+extern hal_type_t hal_stream_element_type(hal_stream_t *stream, int idx);
+
+// only one reader and one writer is allowed.
+extern int hal_stream_read(hal_stream_t *stream, union hal_stream_data *buf, unsigned *sampleno);
+extern bool hal_stream_readable(hal_stream_t *stream);
+extern int hal_stream_depth(hal_stream_t *stream);
+extern int hal_stream_maxdepth(hal_stream_t *stream);
+extern int hal_stream_num_underruns(hal_stream_t *stream);
+extern int hal_stream_num_overruns(hal_stream_t *stream);
+#ifdef ULAPI
+extern void hal_stream_wait_readable(hal_stream_t *stream, sig_atomic_t *stop);
+#endif
+
+extern int hal_stream_write(hal_stream_t *stream, union hal_stream_data *buf);
+extern bool hal_stream_writable(hal_stream_t *stream);
+#ifdef ULAPI
+extern void hal_stream_wait_writable(hal_stream_t *stream, sig_atomic_t *stop);
+#endif
 
 RTAPI_END_DECLS
 

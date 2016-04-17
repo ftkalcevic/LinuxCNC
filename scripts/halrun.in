@@ -4,6 +4,8 @@ PATH=@EMC2_BIN_DIR@:$PATH
 REALTIME=@REALTIME@
 THIS=$(basename $0)
 
+export HAL_RTMOD_DIR=@EMC2_RTLIB_DIR@
+
 help () {
 halcmd -h
 cat <<EOF
@@ -29,7 +31,7 @@ EOF
 INTERACTIVE=""
 inifile=""
 theargs=""
-while getopts "f:hi:kqsvIRQTUV" opt ; do
+while getopts "ef:hi:kqsvIRQTUV" opt ; do
   case $opt in
     h) help; exit 0;;
 
@@ -45,6 +47,7 @@ while getopts "f:hi:kqsvIRQTUV" opt ; do
     I) INTERACTIVE="halcmd -kf";;
     T) INTERACTIVE="haltcl";;
 
+    e) theargs="$theargs -$opt";;
     k) theargs="$theargs -$opt";;
     q) theargs="$theargs -$opt";;
     s) theargs="$theargs -$opt";;
@@ -104,7 +107,7 @@ case $filename in
      "") # for nil filename, support interactive halcmd
          # or haltcl if -T was used
          if [ "$INTERACTIVE" != "haltcl" ] ; then
-            INTERACTIVE="halcmd -kf"
+            INTERACTIVE="halcmd $theargs -kf"
          fi
          ;;
       *) echo "$THIS: Unknown file extension for filename=<$filename>"

@@ -36,6 +36,12 @@
 #include "python_plugin.hh"
 #include "taskclass.hh"
 
+#include <boost/python/dict.hpp>
+#include <boost/python/extract.hpp>
+#include <boost/python/object.hpp>
+#include <boost/python/tuple.hpp>
+namespace bp = boost::python;
+
 // Python plugin interface
 #define TASK_MODULE "task"
 #define TASK_VAR "pytask"
@@ -307,10 +313,13 @@ int emcTaskOnce(const char *filename)
     // NB: the interpreter.this global will appear only after Interp.init()
 
     extern struct _inittab builtin_modules[];
-
-    if (PythonPlugin::configure(filename, "PYTHON",  builtin_modules)) {
+    if (!PythonPlugin::instantiate(builtin_modules)) {
+	rcs_print("emcTaskOnce: cant instantiate Python plugin\n");
+	goto no_pytask;
+    }
+    if (python_plugin->configure(filename, "PYTHON") == PLUGIN_OK) {
 	if (emc_debug & EMC_DEBUG_PYTHON_TASK) {
-	    rcs_print("emcTaskOnce: Python plugin configured");
+	    rcs_print("emcTaskOnce: Python plugin configured\n");
 	}
     } else {
 	goto no_pytask;

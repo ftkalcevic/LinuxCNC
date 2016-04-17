@@ -1,6 +1,3 @@
-.\" a large part of this file (the pin names and descriptions) came from
-.\" docs/src/config/emc2hal.lyx 
-.\"
 .TH MOTION "9" "2007-08-25" "LinuxCNC Documentation" "HAL Component" 
 .de TQ
 .br
@@ -11,9 +8,12 @@
 .SH NAME
 motion \- accepts NML motion commands, interacts with HAL in realtime
 .SH SYNOPSIS
-\fBloadrt motmod [base_period_nsec=\fIperiod\fB] [servo_period_nsec=\fIperiod\fB] [traj_period_nsec=\fIperiod\fB] [num_joints=\fI[0-9]\fB] ([num_dio=\fI[1-64]\fB] [num_aio=\fI[1-16]\fB])
+\fBloadrt motmod [base_period_nsec=\fIperiod\fB] [base_thread_fp=\fI0 or 1\fB] [servo_period_nsec=\fIperiod\fB] [traj_period_nsec=\fIperiod\fB] [num_joints=\fI[0-9]\fB] ([num_dio=\fI[1-64]\fB] [num_aio=\fI[1-64]\fB])
 
 .SH DESCRIPTION
+By default, the base thread does not support floating point.  Software stepping, software encoder counting, and software pwm do not use floating point.  \fBbase_thread_fp\fR can be used to enable floating point in the base thread (for example for brushless DC motor control).
+
+.P
 These pins and parameters are created by the realtime \fBmotmod\fR module. This module provides a HAL interface for LinuxCNC's motion planner. Basically \fBmotmod\fR takes in a list of waypoints and generates a nice blended and constraint-limited stream of joint positions to be fed to the motor drives. 
 
 .P
@@ -90,7 +90,7 @@ Should be driven TRUE if the positive limit switch for this joint is tripped.
 
 .TP
 \fBaxis.\fIN\fB.unlock\fR OUT BIT 
-TRUE if the axis is a locked rotary and a move is commaned.
+TRUE if the axis is a locked rotary and a move is commanded.
 
 .TP
 \fBmotion.adaptive-feed\fR IN FLOAT 
@@ -137,8 +137,25 @@ If this bit is driven FALSE, motion stops, the machine is placed in the "machine
 When Feed Stop Control is enabled with M53 P1, and this bit is TRUE, the feed rate is set to 0.
 
 .TP
-\fBmotion.motion-inpos\fR OUT BIT 
-TRUE if the machine is in position.
+\fBmotion.feed-inhibit\fR IN BIT 
+When this pin is TRUE, machine motion is inhibited (this includes jogs,
+programmed feeds, and programmed rapids, aka traverse moves).
+
+If the machine is performing a spindle synchronized move when this
+pin goes TRUE, the spindle synchronized motion will finish, and any
+following moves will be inhibited (this is to prevent damage to the
+machine, the tool, or the work piece).
+
+If the machine is in the middle of a (non-spindle synchronized) move
+when this pin goes TRUE, the machine will decelerate to a stop at the
+maximum allowed acceleration rate.
+
+Motion resumes when this pin goes FALSE.
+
+.TP
+\fBmotion.in-position\fR OUT BIT
+TRUE if the machine is in position (ie, not currently moving towards
+the commanded position).
 
 .TP
 \fBmotion.probe-input\fR IN BIT 
@@ -170,6 +187,10 @@ TRUE when the spindle should rotate forward
 For correct operation of spindle synchronized moves, this signal must be hooked to the index-enable pin of the spindle encoder.
 
 .TP
+\fBmotion.spindle-inhibit\fR IN BIT 
+When TRUE, the spindle speed is set and held to 0.
+
+.TP
 \fBmotion.spindle-on\fR OUT BIT 
 TRUE when spindle should rotate
 
@@ -183,15 +204,23 @@ For correct operation of spindle synchronized moves, this signal must be hooked 
 
 .TP
 \fBmotion.spindle-speed-in\fR IN FLOAT 
-Actual spindle speed feedback in revolutions per second; used for G96 feed-per-revolution and constant surface speed modes.
+Actual spindle speed feedback in revolutions per second; used for G96 (constant surface speed) and G95 (feed per revolution) modes.
 
 .TP
 \fBmotion.spindle-speed-out\fR OUT FLOAT 
 Desired spindle speed in rotations per minute
 
 .TP
+\fBmotion.spindle-speed-out-abs\fR OUT FLOAT 
+Desired spindle speed in rotations per minute, always positive regardless of spindle direction.
+
+.TP
 \fBmotion.spindle-speed-out-rps\fR OUT float
 Desired spindle speed in rotations per second
+
+.TP
+\fBmotion.spindle-speed-out-rps-abs\fR OUT float
+Desired spindle speed in rotations per second, always positive regardless of spindle direction.
 
 .TP
 \fBmotion.spindle-orient-angle\fR OUT FLOAT
@@ -216,20 +245,39 @@ was asserted, the spindle-orient pin is cleared and the spindle-locked pin is as
 Fault code input for orient cycle. Any value other than zero will cause the orient cycle to abort.
 
 .TP
-\fBmotion.pindle-locked\fR OUT BIT
+\fBmotion.spindle-locked\fR OUT BIT
 Spindle orient complete pin. Cleared by any of M3,M4,M5. 
 
 .TP
 \fBmotion.teleop-mode\fR OUT bit
 
 .TP
-\fBmotion.tooloffset.w\fR OUT FLOAT
-
-.TP
 \fBmotion.tooloffset.x\fR OUT FLOAT
 
-.TP
+.TQ
+\fBmotion.tooloffset.y\fR OUT FLOAT
+
+.TQ
 \fBmotion.tooloffset.z\fR OUT FLOAT
+
+.TQ
+\fBmotion.tooloffset.a\fR OUT FLOAT
+
+.TQ
+\fBmotion.tooloffset.b\fR OUT FLOAT
+
+.TQ
+\fBmotion.tooloffset.c\fR OUT FLOAT
+
+.TQ
+\fBmotion.tooloffset.u\fR OUT FLOAT
+
+.TQ
+\fBmotion.tooloffset.v\fR OUT FLOAT
+
+.TQ
+\fBmotion.tooloffset.w\fR OUT FLOAT
+Current tool offset in all 9 axes.
 
 
 .SH DEBUGGING PINS
@@ -314,11 +362,27 @@ The positive hard limit for the joint
 \fBaxis.\fIN\fB.wheel-jog-active\fR OUT BIT
 
 .TP
-\fBmotion.in-position\fR OUT BIT
-Same as the pin motion.motion-inpos
+\fBmotion.motion-enabled\fR OUT BIT
 
 .TP
-\fBmotion.motion-enabled\fR IN BIT
+\fBmotion.motion-type\fR OUT S32
+These values are from src/emc/nml_intf/motion_types.h
+.RS
+.RS
+.TP
+1: Traverse
+.P
+2: Linear feed
+.P
+3: Arc feed
+.P
+4: Tool change
+.P
+5: Probing
+.P
+6: Rotary axis indexing
+.RE
+.RE
 
 .TP
 \fBmotion.on-soft-limit\fR OUT BIT

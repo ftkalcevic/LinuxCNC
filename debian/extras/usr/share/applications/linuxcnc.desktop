@@ -7,6 +7,6 @@ Icon=linuxcncicon
 X-GNOME-DocPath=
 Terminal=false
 Name=LinuxCNC
-Comment=The LinuxCNC Enhanced Machine Controller
+Comment=Configuration Launcher
 StartupNotify=false
 Categories=X-CNC;

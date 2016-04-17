@@ -44,6 +44,7 @@
 #include "halcmd.h"
 #include "halcmd_commands.h"
 #include "halcmd_completion.h"
+#include <rtapi_mutex.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -53,7 +54,6 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <signal.h>
 #include <errno.h>
 #include <time.h>
 #include <fnmatch.h>
@@ -63,6 +63,8 @@ static int get_input(FILE *srcfile, char *buf, size_t bufsize);
 static void print_help_general(int showR);
 static int release_HAL_mutex(void);
 static int propose_completion(char *all, char *fragment, int start);
+
+static char *prompt = "";
 
 
 /***********************************************************************
@@ -91,7 +93,7 @@ int main(int argc, char **argv)
     keep_going = 0;
     /* start parsing the command line, options first */
     while(1) {
-        c = getopt(argc, argv, "+RCfi:kqQsvVh");
+        c = getopt(argc, argv, "+RCfi:kqQsvVhe");
         if(c == -1) break;
         switch(c) {
             case 'R':
@@ -134,6 +136,9 @@ int main(int argc, char **argv)
 	    case 'V':
 		/* -V = very verbose */
 		rtapi_set_msg_level(RTAPI_MSG_ALL);
+		break;
+	    case 'e':
+                echo_mode = 1;
 		break;
 	    case 'f':
                 filemode = 1;
@@ -213,13 +218,19 @@ int main(int argc, char **argv)
             halcmd_set_filename("<stdin>");
             /* no filename followed -f option, use stdin */
             srcfile = stdin;
-            prompt_mode = 1;
+        }
+    }
+
+    if (srcfile && isatty(fileno(srcfile))) {
+        if (scriptmode) {
+            prompt = "%%\n";
+        } else {
+            prompt = "halcmd: ";
         }
     }
 
     if ( halcmd_startup(0) != 0 ) return 1;
 
-    retval = 0;
     errorcount = 0;
     /* HAL init is OK, let's process the command(s) */
     if (srcfile == NULL) {
@@ -244,6 +255,9 @@ int main(int argc, char **argv)
 	    halcmd_set_linenumber(linenumber++);
 	    /* remove comments, do var substitution, and tokenise */
 	    retval = halcmd_preprocess_line(raw_buf, tokens);
+        if(echo_mode) { 
+            halcmd_echo("%s\n", raw_buf);
+        }
 	    if (retval == 0) {
 		/* the "quit" command is not handled by parse_line() */
 		if ( ( strcasecmp(tokens[0],"quit") == 0 ) ||
@@ -348,6 +362,7 @@ static void print_help_general(int showR)
     printf("\nUsage:   halcmd [options] [cmd [args]]\n\n");
     printf("\n         halcmd [options] -f [filename]\n\n");
     printf("options:\n\n");
+    printf("  -e             echo the commands from stdin to stderr\n");
     printf("  -f [filename]  Read commands from 'filename', not command\n");
     printf("                 line.  If no filename, read from stdin.\n");
 #ifndef NO_INI
@@ -368,7 +383,7 @@ static void print_help_general(int showR)
     printf("commands:\n\n");
     printf("  loadrt, loadusr, waitusr, unload, lock, unlock, net, linkps, linksp,\n");
     printf("  unlinkp, newsig, delsig, setp, getp, ptype, sets, gets, stype,\n");
-    printf("  addf, delf, show, list, save, status, start, stop, source, quit, exit\n");
+    printf("  addf, delf, show, list, save, status, start, stop, source, echo, unecho, quit, exit\n");
     printf("  help           Lists all commands with short descriptions\n");
     printf("  help command   Prints detailed help for 'command'\n\n");
 }
@@ -385,7 +400,7 @@ static int get_input(FILE *srcfile, char *buf, size_t bufsize) {
             halcmd_init_readline();
             first_time = 0;
         }
-        rlbuf = readline("halcmd: ");
+        rlbuf = readline(prompt);
         if(!rlbuf) return 0;
         strncpy(buf, rlbuf, bufsize);
         buf[bufsize-1] = 0;
@@ -395,16 +410,12 @@ static int get_input(FILE *srcfile, char *buf, size_t bufsize) {
 
         return 1;
     }
-    if(prompt_mode) {
-	    fprintf(stdout, scriptmode ? "%%\n" : "halcmd: "); fflush(stdout);
-    }
+    fprintf(stdout, "%s", prompt); fflush(stdout);
     return fgets(buf, bufsize, srcfile) != NULL;
 }
 #else
 static int get_input(FILE *srcfile, char *buf, size_t bufsize) {
-    if(prompt_mode) {
-	    fprintf(stdout, scriptmode ? "%%\n" : "halcmd: "); fflush(stdout);
-    }
+    fprintf(stdout, "%s", prompt); fflush(stdout);
     return fgets(buf, bufsize, srcfile) != NULL;
 }
 #endif
@@ -438,5 +449,13 @@ void halcmd_info(const char *format, ...) {
     fprintf(stdout, "%s:%d: ", halcmd_get_filename(), halcmd_get_linenumber());
     va_start(ap, format);
     vfprintf(stdout, format, ap);
+    va_end(ap);
+}
+
+void halcmd_echo(const char *format, ...) {
+    va_list ap;
+    fprintf(stderr, "(%d)<echo>: ", halcmd_get_linenumber());
+    va_start(ap, format);
+    vfprintf(stderr, format, ap);
     va_end(ap);
 }

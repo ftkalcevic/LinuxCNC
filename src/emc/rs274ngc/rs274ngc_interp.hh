@@ -1,8 +1,25 @@
+//    Copyright 2009-2011, various authors
+//
+//    This program is free software; you can redistribute it and/or modify
+//    it under the terms of the GNU General Public License as published by
+//    the Free Software Foundation; either version 2 of the License, or
+//    (at your option) any later version.
+//
+//    This program is distributed in the hope that it will be useful,
+//    but WITHOUT ANY WARRANTY; without even the implied warranty of
+//    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//    GNU General Public License for more details.
+//
+//    You should have received a copy of the GNU General Public License
+//    along with this program; if not, write to the Free Software
+//    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+
 #ifndef RS274NGC_INTERP_H
 #define RS274NGC_INTERP_H
 #include "rs274ngc.hh"
+#include "interp_internal.hh"
 
-class Interp {
+class Interp : public InterpBase {
 
 public:
  Interp();
@@ -16,11 +33,8 @@ public:
  int close();
 
 // execute a line of NC code
-#ifndef NOT_OLD_EMC_INTERP_COMPATIBLE
- int execute(const char *command = 0);
-#else
+ int execute(const char *command);
  int execute();
-#endif
 
  int execute(const char *command, int line_no); //used for MDI calls to specify the pseudo MDI line number
 
@@ -37,7 +51,8 @@ public:
  int open(const char *filename);
 
 // read the mdi or the next line of the open NC code file
- int read(const char *mdi = 0);
+ int read(const char *mdi);
+ int read();
 
 // reset yourself
  int reset();
@@ -69,21 +84,21 @@ public:
 
 // copy the text of the error message whose number is error_code into the
 // error_text array, but stop at max_size if the text is longer.
- void error_text(int error_code, char *error_text,
-                                int max_size);
+ char *error_text(int error_code, char *error_text,
+                                size_t max_size);
 
  void setError(const char *fmt, ...) __attribute__((format(printf,2,3)));
 
 // copy the name of the currently open file into the file_name array,
 // but stop at max_size if the name is longer
- void file_name(char *file_name, int max_size);
+ char *file_name(char *file_name, size_t max_size);
 
 // return the length of the most recently read line
- int line_length();
+ size_t line_length();
 
 // copy the text of the most recently read line into the line_text array,
 // but stop at max_size if the text is longer
- void line_text(char *line_text, int max_size);
+ char *line_text(char *line_text, size_t max_size);
 
 // return the current sequence number (how many lines read)
  int sequence_number();
@@ -91,8 +106,8 @@ public:
 // copy the function name from the stack_index'th position of the
 // function call stack at the time of the most recent error into
 // the function name string, but stop at max_size if the name is longer
- void stack_name(int stack_index, char *function_name,
-                                int max_size);
+ char *stack_name(int stack_index, char *function_name,
+                                size_t max_size);
 
 // Get the parameter file name from the ini file.
  int ini_load(const char *filename);
@@ -100,9 +115,9 @@ public:
  int line() { return sequence_number(); }
  int call_level();
 
- char *command(char *buf, int len) { line_text(buf, len); return buf; }
+ char *command(char *buf, size_t len) { line_text(buf, len); return buf; }
 
- char *file(char *buf, int len) { file_name(buf, len); return buf; }
+ char *file(char *buf, size_t len) { file_name(buf, len); return buf; }
 
  int init_tool_parameters();
  int default_tool_parameters();
@@ -129,27 +144,69 @@ public:
 
 /* Function prototypes for all  functions */
 
- int arc_data_comp_ijk(int move, int plane, int side, double tool_radius,
-                          double current_x, double current_y,
-                          double end_x, double end_y,
-                          int ij_absolute, double i_number, double j_number,
-                          int p_number,
-                          double *center_x, double *center_y, int *turn,
-                          double tolerance);
- int arc_data_comp_r(int move, int plane, int side, double tool_radius,
-                        double current_x, double current_y, double end_x,
-                        double end_y, double big_radius, int p_number, double *center_x,
-                        double *center_y, int *turn, double tolerance);
- int arc_data_ijk(int move, int plane, double current_x, double current_y,
-                     double end_x, double end_y,
-                     int ij_absolute, double i_number, double j_number,
-                     int p_number,
-                     double *center_x, double *center_y,
-                     int *turn, double tolerance);
- int arc_data_r(int move, int plane, double current_x, double current_y,
-                      double end_x, double end_y, double radius, int p_number,
-                      double *center_x, double *center_y, int *turn,
-		      double tolerance);
+ int arc_data_comp_ijk(int move,
+         int plane,
+         int side,
+         double tool_radius,
+         double current_x,
+         double current_y,
+         double end_x,
+         double end_y,
+         int ij_absolute,
+         double i_number,
+         double j_number,
+         int p_number,
+         double *center_x,
+         double *center_y,
+         int *turn,
+         double radius_tolerance,
+         double spiral_abs_tolerance,
+         double spiral_rel_tolerance);
+
+ int arc_data_comp_r(int move,
+         int plane,
+         int side,
+         double tool_radius,
+         double current_x,
+         double current_y,
+         double end_x,
+         double end_y,
+         double big_radius,
+         int p_number,
+         double *center_x,
+         double *center_y,
+         int *turn,
+         double radius_tolerance);
+
+ int arc_data_ijk(int move,
+         int plane,
+         double current_x,
+         double current_y,
+         double end_x,
+         double end_y,
+         int ij_absolute,
+         double i_number,
+         double j_number,
+         int p_number,
+         double *center_x,
+         double *center_y,
+         int *turn,
+         double radius_tolerance,
+         double spiral_abs_tolerance,
+         double spiral_rel_tolerance);
+
+ int arc_data_r(int move,
+         int plane,
+         double current_x,
+         double current_y,
+         double end_x,
+         double end_y,
+         double radius,
+         int p_number,
+         double *center_x,
+         double *center_y,
+         int *turn,
+         double radius_tolerance);
  int check_g_codes(block_pointer block, setup_pointer settings);
  int check_items(block_pointer block, setup_pointer settings);
  int check_m_codes(block_pointer block);
@@ -215,7 +272,7 @@ public:
                              CANON_DIRECTION direction,
                              CANON_SPEED_FEED_MODE mode);
  int convert_cycle_g85(block_pointer block, CANON_PLANE plane, double x, double y,
-                             double clear_z, double bottom_z);
+                             double r, double clear_z, double bottom_z);
  int convert_cycle_g86(block_pointer block, CANON_PLANE plane, double x, double y,
                              double clear_z, double bottom_z, double dwell,
                              CANON_DIRECTION direction);
@@ -396,9 +453,9 @@ public:
     int free_named_parameters(context_pointer frame);
  int save_settings(setup_pointer settings);
  int restore_settings(setup_pointer settings, int from_level);
- int gen_settings(double *current, double *saved, char *cmd);
- int gen_g_codes(int *current, int *saved, char *cmd);
- int gen_m_codes(int *current, int *saved, char *cmd);
+ int gen_settings(double *current, double *saved, std::string &cmd);
+ int gen_g_codes(int *current, int *saved, std::string &cmd);
+ int gen_m_codes(int *current, int *saved, std::string &cmd);
  int read_name(char *line, int *counter, char *nameBuf);
  int read_named_parameter(char *line, int *counter, double *double_ptr,
                           double *parameters, bool check_exists);
@@ -512,6 +569,7 @@ int read_inputs(setup_pointer settings);
 		       char *posarglist);
 
  int init_named_parameters();
+    int init_python_predef_parameter(const char *name);
 
     bool has_user_mcode(setup_pointer settings,block_pointer block);
 
@@ -520,12 +578,18 @@ int read_inputs(setup_pointer settings);
 
     // range for user-remapped M-codes
     // and M6,M61
+    // this is overdue for a bitset
 #define M_REMAPPABLE(m)					\
     (((m > 199) && (m < 1000)) ||			\
      ((m > 0) && (m < 100) &&				\
       !M_BUILTIN(m)) ||					\
      (m == 6) ||					\
-     (m == 61))
+     (m == 61) ||					\
+     (m == 0) ||					\
+     (m == 1) ||					\
+     (m == 60))
+
+
 
     // range for user-remapped G-codes
 #define G_REMAPPABLE(g)	 \
@@ -551,6 +615,7 @@ int read_inputs(setup_pointer settings);
 
 #define OWORD_MODULE "oword"
 #define REMAP_MODULE "remap"
+#define NAMEDPARAMS_MODULE "namedparams"
     // describes intented use, and hence parameter and return value
     // interpretation
     enum py_calltype { PY_OWORDCALL,
@@ -603,7 +668,7 @@ int read_inputs(setup_pointer settings);
  read_function_pointer _readers[256];
  static const read_function_pointer default_readers[256];
 
- static setup _setup;
+ setup _setup;
 
  enum {
      AXIS_MASK_X =   1, AXIS_MASK_Y =   2, AXIS_MASK_Z =   4,

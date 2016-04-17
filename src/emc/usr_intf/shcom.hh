@@ -49,7 +49,6 @@ extern ANGULAR_UNIT_CONVERSION angularUnitConversion;
 
 // the current command numbers, set up updateStatus(), used in main()
 extern int emcCommandSerialNumber;
-extern int saveEmcCommandSerialNumber;
 
 // the NML channels to the EMC task
 extern RCS_CMD_CHANNEL *emcCommandBuffer;
@@ -73,8 +72,7 @@ enum EMC_UPDATE_TYPE {
 extern EMC_UPDATE_TYPE emcUpdateType;
 
 enum EMC_WAIT_TYPE {
-    EMC_WAIT_NONE = 1,
-    EMC_WAIT_RECEIVED,
+    EMC_WAIT_RECEIVED = 2,
     EMC_WAIT_DONE
 };
 extern EMC_WAIT_TYPE emcWaitType;
@@ -89,8 +87,9 @@ extern int emcErrorNmlGet();
 extern int tryNml(double retry_time=10.0, double retry_interval=1.0);
 extern int updateStatus();
 extern int updateError();
-extern int emcCommandWaitReceived(int serial_number);
-extern int emcCommandWaitDone(int serial_number);
+extern int emcCommandWaitReceived();
+extern int emcCommandWaitDone();
+extern int emcCommandSend(RCS_CMD_MSG & cmd);
 extern double convertLinearUnits(double u);
 extern double convertAngularUnits(double u);
 extern int sendDebug(int level);
@@ -123,6 +122,7 @@ extern int sendAbort();
 extern int sendHome(int axis);
 extern int sendUnHome(int axis);
 extern int sendFeedOverride(double override);
+extern int sendRapidOverride(double override);
 extern int sendMaxVelocity(double velocity);
 extern int sendSpindleOverride(double override);
 extern int sendTaskPlanInit();
