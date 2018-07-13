@@ -25,6 +25,9 @@
 #include "emcIniFile.hh"
 #include "initraj.hh"		// these decls
 #include "emcglb.h"		/*! \todo TRAVERSE_RATE (FIXME) */
+#include "inihal.hh"
+
+extern value_inihal_data old_inihal_data;
 
 /*
   loadTraj()
@@ -113,6 +116,7 @@ static int loadTraj(EmcIniFile *trajInifile)
 
         // set the corresponding global
         traj_default_velocity = vel;
+        old_inihal_data.traj_default_velocity = vel;
 
         // and set dynamic value
         if (0 != emcTrajSetVelocity(0, vel)) { //default velocity on startup 0
@@ -127,6 +131,7 @@ static int loadTraj(EmcIniFile *trajInifile)
 
         // set the corresponding global
         traj_max_velocity = vel;
+        old_inihal_data.traj_max_velocity = vel;
 
         // and set dynamic value
         if (0 != emcTrajSetMaxVelocity(vel)) {
@@ -145,6 +150,7 @@ static int loadTraj(EmcIniFile *trajInifile)
             }
             return -1;
         }
+        old_inihal_data.traj_default_acceleration = acc;
 
         acc = 1e99; // let the axis values apply
         trajInifile->Find(&acc, "MAX_ACCELERATION", "TRAJ");
@@ -152,6 +158,58 @@ static int loadTraj(EmcIniFile *trajInifile)
         if (0 != emcTrajSetMaxAcceleration(acc)) {
             if (emc_debug & EMC_DEBUG_CONFIG) {
                 rcs_print("bad return value from emcTrajSetMaxAcceleration\n");
+            }
+            return -1;
+        }
+        old_inihal_data.traj_max_acceleration = acc;
+
+        int arcBlendEnable = 1;
+        int arcBlendFallbackEnable = 0;
+        int arcBlendOptDepth = 50;
+        int arcBlendGapCycles = 4;
+        double arcBlendRampFreq = 100.0;
+        double arcBlendTangentKinkRatio = 0.1;
+
+        trajInifile->Find(&arcBlendEnable, "ARC_BLEND_ENABLE", "TRAJ");
+        trajInifile->Find(&arcBlendFallbackEnable, "ARC_BLEND_FALLBACK_ENABLE", "TRAJ");
+        trajInifile->Find(&arcBlendOptDepth, "ARC_BLEND_OPTIMIZATION_DEPTH", "TRAJ");
+        trajInifile->Find(&arcBlendGapCycles, "ARC_BLEND_GAP_CYCLES", "TRAJ");
+        trajInifile->Find(&arcBlendRampFreq, "ARC_BLEND_RAMP_FREQ", "TRAJ");
+        trajInifile->Find(&arcBlendTangentKinkRatio, "ARC_BLEND_KINK_RATIO", "TRAJ");
+
+        if (0 != emcSetupArcBlends(arcBlendEnable, arcBlendFallbackEnable,
+                    arcBlendOptDepth, arcBlendGapCycles, arcBlendRampFreq, arcBlendTangentKinkRatio)) {
+            if (emc_debug & EMC_DEBUG_CONFIG) {
+                rcs_print("bad return value from emcSetupArcBlends\n");
+            }
+            return -1;
+        } 
+
+        old_inihal_data.traj_arc_blend_enable = arcBlendEnable;
+        old_inihal_data.traj_arc_blend_fallback_enable = arcBlendFallbackEnable;
+        old_inihal_data.traj_arc_blend_optimization_depth = arcBlendOptDepth;
+        old_inihal_data.traj_arc_blend_gap_cycles = arcBlendGapCycles;
+        old_inihal_data.traj_arc_blend_ramp_freq = arcBlendRampFreq;
+        old_inihal_data.traj_arc_blend_tangent_kink_ratio = arcBlendTangentKinkRatio;
+        //TODO update inihal
+
+        double maxFeedScale = 1.0;
+        trajInifile->Find(&maxFeedScale, "MAX_FEED_OVERRIDE", "DISPLAY");
+
+        if (0 != emcSetMaxFeedOverride(maxFeedScale)) {
+            if (emc_debug & EMC_DEBUG_CONFIG) {
+                rcs_print("bad return value from emcSetMaxFeedOverride\n");
+            }
+            return -1;
+        } 
+        
+        int j_inhibit = 0;
+        int h_inhibit = 0;
+        trajInifile->Find(&j_inhibit, "NO_PROBE_JOG_ERROR", "TRAJ");
+        trajInifile->Find(&h_inhibit, "NO_PROBE_HOME_ERROR", "TRAJ");
+        if (0 != emcSetProbeErrorInhibit(j_inhibit, h_inhibit)) {
+            if (emc_debug & EMC_DEBUG_CONFIG) {
+                rcs_print("bad return value from emcSetProbeErrorInhibit\n");
             }
             return -1;
         }

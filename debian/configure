@@ -16,8 +16,11 @@ usage () {
 $P: Set up debian/ files to build for a particular kernel
 
 Usage:
+    $P uspace
+        Build for a userspace realtime systems or simulator
+
     $P sim
-        Build for a system without a realtime kernel
+        Deprecated synonym for '$P uspace'
 
     $P [kernel-version]
         Build for the realtime kernel [kernel-version], such as 2.6.12-magma
@@ -57,15 +60,19 @@ fi
 
 TARGET=$1
 
+# for example: "3.16.0-9"
+KERNEL_VERSION_ABI=${TARGET%-rtai-*}
+
 MODULE_PATH=usr/realtime-$1/modules/linuxcnc
 MODULE_EXT=.ko
-KERNEL_DEPENDS=linux-image-$1,rtai-modules-$1
+KERNEL_DEPENDS="linux-image-$1,rtai-modules-$TARGET|rtai-modules-$KERNEL_VERSION_ABI"
 KERNEL_HEADERS=linux-headers-$1
 EXTRA_FILES="usr/bin/linuxcnc_module_helper"
 KERNEL_VERSION=$1
 DRIVERS=drivers.files.in
 PYTHON_VERSION=$(python -c 'import sys; print sys.version[:3]')
 PYTHON_VERSION_NEXT=$(python -c 'import sys; print sys.version[:2] + str(1+int(sys.version[2]))')
+LIBREADLINE_DEV=libreadline-gplv2-dev
 
 # hope this works on other systems too
 DISTRIB_NAME=
@@ -82,55 +89,81 @@ else
 	EXTRAS=extras
 fi
 
+PYTHON_PACKAGING=dh_pysupport
+
 case $DISTRIB_NAME in
-Ubuntu-12.04) # Precise Pangolin LTS
-	EXTRA_BUILD=dvipng,texlive-extra-utils,texlive-latex-recommended,texlive-fonts-recommended,ghostscript,imagemagick,texlive-lang-french,texlive-lang-german,texlive-lang-spanish,texlive-lang-polish,texlive-font-utils
-	TCLTK_VERSION=8.5
+Ubuntu-14.*|Ubuntu-15.04|LinuxMint-17.*) # Trusty Tahr (LTS) through Vivid
+	EXTRA_BUILD=dvipng,texlive-extra-utils,texlive-latex-recommended,texlive-fonts-recommended,ghostscript,imagemagick,texlive-font-utils,module-init-tools,python-support
+	TCLTK_VERSION=8.6
 	;;
-Ubuntu-11.04) # natty
-	EXTRA_BUILD=dvipng,texlive-extra-utils,texlive-latex-recommended,texlive-fonts-recommended,ghostscript,imagemagick,texlive-lang-french,texlive-lang-german,texlive-lang-spanish,texlive-lang-polish,texlive-font-utils
+Ubuntu-11.04|Ubuntu-12.04|Ubuntu-12.10) # Natty Narwhal, Precise Pangolin (LTS), Quantal Quetzal
+	EXTRA_BUILD=dvipng,texlive-extra-utils,texlive-latex-recommended,texlive-fonts-recommended,ghostscript,imagemagick,texlive-font-utils,module-init-tools,libgnomeprintui2.2-dev,python-support
 	TCLTK_VERSION=8.5
 	;;
 Ubuntu-10.04)
-	EXTRA_BUILD=dvipng,texlive-extra-utils,texlive-latex-recommended,texlive-fonts-recommended,ghostscript,imagemagick,texlive-lang-french,texlive-lang-german,texlive-lang-spanish,texlive-lang-polish,texlive-font-utils
+        LIBREADLINE_DEV=libreadline5-dev
+	EXTRA_BUILD=dvipng,texlive-extra-utils,texlive-latex-recommended,texlive-fonts-recommended,ghostscript,imagemagick,texlive-font-utils,module-init-tools,libgnomeprintui2.2-dev,python-support
 	TCLTK_VERSION=8.5
 	;;
 Ubuntu-9.10)
-	EXTRA_BUILD=dvipng,texlive-extra-utils,texlive-latex-recommended,texlive-fonts-recommended,ghostscript,imagemagick,texlive-lang-french,texlive-lang-german,texlive-lang-spanish,texlive-lang-polish
+        LIBREADLINE_DEV=libreadline5-dev
+	EXTRA_BUILD=dvipng,texlive-extra-utils,texlive-latex-recommended,texlive-fonts-recommended,ghostscript,imagemagick,module-init-tools,libgnomeprintui2.2-dev,python-support
 	TCLTK_VERSION=8.5
 	;;
 Ubuntu-8.04)
-	EXTRA_BUILD=dvipng,texlive-extra-utils,texlive-latex-recommended,texlive-fonts-recommended,ghostscript,imagemagick,texlive-lang-french,texlive-lang-german,texlive-lang-spanish,texlive-lang-polish
+        LIBREADLINE_DEV=libreadline5-dev
+	EXTRA_BUILD=dvipng,texlive-extra-utils,texlive-latex-recommended,texlive-fonts-recommended,ghostscript,imagemagick,module-init-tools,libgnomeprintui2.2-dev,python-support
 	TCLTK_VERSION=8.4
 	;;
-Debian-testing|Debian-6.0*)
-	EXTRA_BUILD=dvipng
+Debian-testing)
+	EXTRA_BUILD=dvipng,texlive-extra-utils,texlive-latex-recommended,texlive-fonts-recommended,ghostscript,imagemagick,texlive-lang-polish,texlive-font-utils,kmod,dh-python
+	TCLTK_VERSION=8.6
+        PYTHON_PACKAGING=dh_python2
+        ;;
+Debian-8.*)
+	EXTRA_BUILD=dvipng,texlive-extra-utils,texlive-latex-recommended,texlive-fonts-recommended,ghostscript,imagemagick,texlive-lang-polish,texlive-font-utils,kmod,dh-python
+	TCLTK_VERSION=8.6
+        PYTHON_PACKAGING=dh_python2
+        ;;
+Debian-7.*)
+	EXTRA_BUILD=dvipng,texlive-extra-utils,texlive-latex-recommended,texlive-fonts-recommended,ghostscript,imagemagick,texlive-lang-polish,texlive-font-utils,kmod,libgnomeprintui2.2-dev,python-support
+	TCLTK_VERSION=8.5
+	;;
+Debian-6.0*)
+	EXTRA_BUILD=dvipng,module-init-tools,libgnomeprintui2.2-dev,python-support
 	TCLTK_VERSION=8.5
 	;;
 Debian-5.0*)
-	EXTRA_BUILD=dvipng
+	EXTRA_BUILD=dvipng,module-init-tools,libgnomeprintui2.2-dev,python-support
 	TCLTK_VERSION=8.4
 	;;
 *)
-	EXTRA_BUILD=dvipng
+        echo "unknown distribution: $DISTRIB_NAME"
+        echo "configuration may be wrong!"
+	EXTRA_BUILD=dvipng,kmod,libgnomeprintui2.2-dev,python-support
 	TCLTK_VERSION=8.4
 	;;
 esac
 
 DOC_BUILD=
 MAIN_PACKAGE_NAME=linuxcnc
-OLD_PACKAGE_NAME=emc2
+OTHER_MAIN_PACKAGE_NAME=linuxcnc-uspace
+EXTRA_RECOMMENDS=hostmot2-firmware-all
 case $TARGET in
-    sim)
+    uspace|sim)
+	TARGET=uspace
         MODULE_PATH=usr/lib/linuxcnc/modules
 	MODULE_EXT=.so
-	KERNEL_DEPENDS=
-	KERNEL_HEADERS=libpth-dev
+	KERNEL_DEPENDS=libudev-dev,iptables
+	KERNEL_HEADERS=
+	KERNEL_VERSION=uspace
 	DRIVERS=
         EXTRA_FILES="usr/bin/rtapi_app"
-	DISTRIB_NAME=sim-$DISTRIB_NAME
-	MAIN_PACKAGE_NAME=linuxcnc-sim
-	OLD_PACKAGE_NAME=emc2-sim
+	DISTRIB_NAME=uspace-$DISTRIB_NAME
+	MAIN_PACKAGE_NAME=linuxcnc-uspace
+        OTHER_MAIN_PACKAGE_NAME=linuxcnc
+
+        EXTRA_RECOMMENDS="$EXTRA_RECOMMENDS, linux-image-rt-amd64 [linux-amd64], linux-image-rt-686-pae [linux-i386]"
     ;;
     2.6.12-magma)
         KERNEL_HEADERS=$KERNEL_HEADERS,gcc-3.4
@@ -144,7 +177,7 @@ case $TARGET in
     2.6.24-16-rtai)
         KERNEL_HEADERS=$KERNEL_HEADERS,gcc-4.2
     ;;
-    2.6.32-122-rtai) ;;
+    2.6.32-122-rtai|3.4-9-rtai-686-pae|3.16.0-9-rtai-*) ;;
     *)
 	echo "your kernel '$TARGET' is not known. There might be needed dependencies which won't get set automatically."
 esac
@@ -153,11 +186,13 @@ subst () {
 sed -e "s|@MODULE_PATH@|$MODULE_PATH|g" \
     -e "s|@MODULE_EXT@|$MODULE_EXT|g" \
     -e "s|@KERNEL_VERSION@|$KERNEL_VERSION|g" \
-    -e "s|@KERNEL_DEPENDS@|$KERNEL_DEPENDS|g" \
+    -e "s/@KERNEL_DEPENDS@/$KERNEL_DEPENDS/g" \
     -e "s|@KERNEL_HEADERS@|$KERNEL_HEADERS|g" \
     -e "s|@EXTRA_BUILD@|$EXTRA_BUILD|g" \
+    -e "s|@LIBREADLINE_DEV@|$LIBREADLINE_DEV|g" \
+    -e "s|@EXTRA_RECOMMENDS@|$EXTRA_RECOMMENDS|g" \
     -e "s|@MAIN_PACKAGE_NAME@|$MAIN_PACKAGE_NAME|g" \
-    -e "s|@OLD_PACKAGE_NAME@|$OLD_PACKAGE_NAME|g" \
+    -e "s|@OTHER_MAIN_PACKAGE_NAME@|$OTHER_MAIN_PACKAGE_NAME|g" \
     -e "s|@EXTRAS@|$EXTRAS|g" \
     -e "s|@EXTRA_FILES@|$EXTRA_FILES|g" \
     -e "s|@DISTRIB_NAME@|$DISTRIB_NAME|g" \
@@ -165,13 +200,14 @@ sed -e "s|@MODULE_PATH@|$MODULE_PATH|g" \
     -e "s|@PYTHON_VERSION@|$PYTHON_VERSION|g" \
     -e "s|@TCLTK_VERSION@|$TCLTK_VERSION|g" \
     -e "s|@PYTHON_VERSION_NEXT@|$PYTHON_VERSION_NEXT|g" \
+    -e "s|@PYTHON_PACKAGING@|$PYTHON_PACKAGING|g" \
     $*
 }
 
 subst control.in > control
 
-if [ "$TARGET" == "sim" ]; then
-    cp linuxcnc-dev.files.in linuxcnc-sim-dev.files
+if [ "$TARGET" == "uspace" ]; then
+    cp linuxcnc-dev.files.in linuxcnc-uspace-dev.files
 else
     cp linuxcnc-dev.files.in linuxcnc-dev.files
     echo "$MODULE_PATH/Module.symvers" >> linuxcnc-dev.files
@@ -185,7 +221,7 @@ else
     subst linuxcnc.files.in $DRIVERS > $MAIN_PACKAGE_NAME.files
 fi
 
-DOCS_PACKAGES=$(echo linuxcnc-doc-{en,fr,de,es,pl})
+DOCS_PACKAGES=$(echo linuxcnc-doc-{en,fr,es})
 for P in $DOCS_PACKAGES; do
     if [ -f $EXTRAS/$P.files ]; then
         cat $P.files.in $EXTRAS/$P.files > $P.files

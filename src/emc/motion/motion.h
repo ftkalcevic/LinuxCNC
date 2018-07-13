@@ -66,7 +66,7 @@ to another.
    emcmotStruct shared memory area, for debugging purposes.
 */
 
-// #define STRUCTS_IN_SHMEM
+#define STRUCTS_IN_SHMEM
 
 
 
@@ -78,7 +78,16 @@ to another.
 #include "cubic.h"		/* CUBIC_STRUCT, CUBIC_COEFF */
 #include "emcmotcfg.h"		/* EMCMOT_MAX_JOINTS */
 #include "kinematics.h"
+#include "rtapi_limits.h"
 #include <stdarg.h>
+
+
+// define a special value to denote an invalid motion ID 
+// NB: do not ever generate a motion id of  MOTION_INVALID_ID
+// this should be really be tested for in command.c 
+
+#define MOTION_INVALID_ID INT_MIN
+#define MOTION_ID_VALID(x) ((x) != MOTION_INVALID_ID)
 
 #ifdef __cplusplus
 extern "C" {
@@ -86,9 +95,9 @@ extern "C" {
 
     typedef struct _EMC_TELEOP_DATA {
 	EmcPose currentVel;
-	EmcPose currentAccell;
+	EmcPose currentAccel;
 	EmcPose desiredVel;
-	EmcPose desiredAccell;
+	EmcPose desiredAccel;
     } EMC_TELEOP_DATA;
 
 /* This enum lists all the possible commands */
@@ -115,6 +124,7 @@ extern "C" {
 	EMCMOT_SPINDLE_SCALE,	/* set scale factor for spindle speed */
 	EMCMOT_SS_ENABLE,	/* enable/disable scaling the spindle speed */
 	EMCMOT_FEED_SCALE,	/* set scale factor for feedrate */
+	EMCMOT_RAPID_SCALE,	/* set scale factor for rapids */
 	EMCMOT_FS_ENABLE,	/* enable/disable scaling feedrate */
 	EMCMOT_FH_ENABLE,	/* enable/disable feed_hold */
 	EMCMOT_AF_ENABLE,	/* enable/disable adaptive feedrate */
@@ -155,7 +165,6 @@ extern "C" {
 	EMCMOT_SET_AOUT,	/* sets or unsets a AIO, this can be imediate or synched with motion */
         EMCMOT_SET_SPINDLESYNC, /* syncronize motion to spindle encoder */
 	
-	EMCMOT_SET_SPINDLE_VEL,	/* set the spindle vel (>0 means forward, <0 means backward) */
 	EMCMOT_SPINDLE_ON,	/* start the spindle */
 	EMCMOT_SPINDLE_OFF,	/* stop the spindle */
 	EMCMOT_SPINDLE_INCREASE,	/* spindle faster */
@@ -166,6 +175,9 @@ extern "C" {
 	EMCMOT_SET_MOTOR_OFFSET,	/* set the offset between joint and motor */
 	EMCMOT_SET_JOINT_COMP,	/* set a compensation triplet for a joint (nominal, forw., rev.) */
         EMCMOT_SET_OFFSET, /* set tool offsets */
+        EMCMOT_SET_MAX_FEED_OVERRIDE,
+        EMCMOT_SETUP_ARC_BLENDS,
+        EMCMOT_SET_PROBE_ERR_INHIBIT
     } cmd_code_t;
 
 /* this enum lists the possible results of a command */
@@ -181,6 +193,7 @@ extern "C" {
 /* termination conditions for queued motions */
 #define EMCMOT_TERM_COND_STOP 1
 #define EMCMOT_TERM_COND_BLEND 2
+#define EMCMOT_TERM_COND_TANGENT 3
 
 /*********************************
        COMMAND STRUCTURE
@@ -232,11 +245,20 @@ extern "C" {
                                      |1 = suppress error, report in # instead
                                      ~2 = move until probe trips (ngc default)
                                      |2 = move until probe clears */
+        int probe_jog_err_inhibit;  // setting to inhibit probe tripped while jogging error.
+        int probe_home_err_inhibit;  // setting to inhibit probe tripped while homeing error.
         EmcPose tool_offset;        /* TLO */
 	double  orientation;    /* angle for spindle orient */
 	char    direction;      /* CANON_DIRECTION flag for spindle orient */
 	double  timeout;        /* of wait for spindle orient to complete */
 	unsigned char tail;	/* flag count for mutex detect */
+        int arcBlendOptDepth;
+        int arcBlendEnable;
+        int arcBlendFallbackEnable;
+        int arcBlendGapCycles;
+        double arcBlendRampFreq;
+        double arcBlendTangentKinkRatio;
+        double maxFeedScale;
     } emcmot_command_t;
 
 /*! \todo FIXME - these packed bits might be replaced with chars
@@ -596,7 +618,8 @@ Suggestion: Split this in to an Error and a Status flag register..
 	int commandNumEcho;	/* echo of input command number */
 	cmd_status_t commandStatus;	/* result of most recent command */
 	/* these are config info, updated when a command changes them */
-	double feed_scale;	/* velocity scale factor for all motion */
+	double feed_scale;	/* velocity scale factor for all motion but rapids */
+	double rapid_scale;	/* velocity scale factor for rapids */
 	double spindle_scale;	/* velocity scale factor for spindle speed */
 	unsigned char enables_new;	/* flags for FS, SS, etc */
 		/* the above set is the enables in effect for new moves */
@@ -723,6 +746,16 @@ Suggestion: Split this in to an Error and a Status flag register..
 	KINEMATICS_TYPE kinematics_type;
 	int debug;		/* copy of DEBUG, from .ini file */
 	unsigned char tail;	/* flag count for mutex detect */
+        int arcBlendOptDepth;
+        int arcBlendEnable;
+        int arcBlendFallbackEnable;
+        int arcBlendGapCycles;
+        double arcBlendRampFreq;
+        double arcBlendTangentKinkRatio;
+        double maxFeedScale;
+        
+        int inhibit_probe_jog_error;
+        int inhibit_probe_home_error;
     } emcmot_config_t;
 
 /*********************************

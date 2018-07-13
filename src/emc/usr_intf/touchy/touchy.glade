@@ -8,7 +8,7 @@
     <property name="default_width">800</property>
     <property name="default_height">600</property>
     <accessibility>
-      <atkproperty name="AtkObject::accessible-name" translatable="yes" comments=" # Touchy is Copyright (c) 2009  Chris Radek &lt;chris@timeguy.com&gt; # # Touchy is free software: you can redistribute it and/or modify # it under the terms of the GNU General Public License as published by # the Free Software Foundation, either version 2 of the License, or # (at your option) any later version. # # Touchy is distributed in the hope that it will be useful, # but WITHOUT ANY WARRANTY; without even the implied warranty of # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the # GNU General Public License for more details. ">window1</atkproperty>
+      <atkproperty name="AtkObject::accessible-name" translatable="yes" comments=" # Touchy is Copyright (c) 2009-2015  Chris Radek &lt;chris@timeguy.com&gt; # # Touchy is free software: you can redistribute it and/or modify # it under the terms of the GNU General Public License as published by # the Free Software Foundation, either version 2 of the License, or # (at your option) any later version. # # Touchy is distributed in the hope that it will be useful, # but WITHOUT ANY WARRANTY; without even the implied warranty of # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the # GNU General Public License for more details. ">window1</atkproperty>
     </accessibility>
     <signal name="destroy" handler="quit"/>
     <child>
@@ -3617,6 +3617,20 @@ F1 S1</property>
                               </widget>
                               <packing>
                                 <property name="position">3</property>
+                              </packing>
+                            </child>
+                            <child>
+                              <widget class="GtkToggleButton" id="scrolling">
+                                <property name="label" translatable="yes">Start Point</property>
+                                <property name="visible">True</property>
+                                <property name="can_focus">True</property>
+                                <property name="receives_default">False</property>
+                                <property name="use_underline">True</property>
+                                <property name="focus_on_click">False</property>
+                                <signal name="clicked" handler="on_scrolling_clicked"/>
+                              </widget>
+                              <packing>
+                                <property name="position">4</property>
                               </packing>
                             </child>
                           </widget>

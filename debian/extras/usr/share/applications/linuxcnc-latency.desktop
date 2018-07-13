@@ -7,6 +7,6 @@ Icon=linuxcncicon
 X-GNOME-DocPath=
 Terminal=false
 Name=Latency Test
-Comment=Determine your machine's latency
+Comment=Test your computers's latency
 StartupNotify=false
 Categories=X-CNC;

@@ -27,9 +27,11 @@ class EMC_MDIHistory(gtk.VBox, _EMC_ActionBase):
     __gtype_name__ = 'EMC_MDIHistory'
     def __init__(self, *a, **kw):
         gtk.VBox.__init__(self, *a, **kw)
+        self.gstat = GStat()
+        # if 'NO_FORCE_HOMING' is true, MDI  commands are allowed before homing.
         inifile = os.environ.get('INI_FILE_NAME', '/dev/null')
         self.ini = linuxcnc.ini(inifile)
-
+        no_home_required = int(self.ini.find("TRAJ", "NO_FORCE_HOMING") or 0)
         path = self.ini.find('DISPLAY', 'MDI_HISTORY_FILE') or '~/.axis_mdi_history'
         self.filename = os.path.expanduser(path)
 
@@ -54,7 +56,7 @@ class EMC_MDIHistory(gtk.VBox, _EMC_ActionBase):
         scroll.props.vscrollbar_policy = gtk.POLICY_AUTOMATIC
 
         self.entry = gtk.Entry()
-        self.entry.set_icon_from_stock(gtk.POS_RIGHT, 'gtk-ok')
+        self.entry.set_icon_from_stock(gtk.ENTRY_ICON_SECONDARY, 'gtk-ok')
 
         self.entry.connect('activate', self.submit)
         self.entry.connect('icon-press', self.submit)
@@ -62,7 +64,11 @@ class EMC_MDIHistory(gtk.VBox, _EMC_ActionBase):
 
         self.pack_start(scroll, True)
         self.pack_start(self.entry, False)
-
+        self.gstat.connect('state-off', lambda w: self.set_sensitive(False))
+        self.gstat.connect('state-estop', lambda w: self.set_sensitive(False))
+        self.gstat.connect('interp-idle', lambda w: self.set_sensitive(self.machine_on() and ( self.is_all_homed() or no_home_required ) ))
+        self.gstat.connect('interp-run', lambda w: self.set_sensitive(not self.is_auto_mode()))
+        self.gstat.connect('all-homed', lambda w: self.set_sensitive(self.machine_on()))
         self.reload()
         self.show_all()
 
@@ -76,7 +82,6 @@ class EMC_MDIHistory(gtk.VBox, _EMC_ActionBase):
         lines = map(str.strip, fp.readlines())
         fp.close()
 
-        lines = list(reversed(list(set(reversed(lines)))))
         lines = filter(bool, lines)
         for l in lines:
             self.model.append((l,))
@@ -103,6 +108,8 @@ class EMC_MDIHistory(gtk.VBox, _EMC_ActionBase):
         path = self.model.get_path(last)
         self.tv.scroll_to_cell(path)
         self.tv.set_cursor(path)
+        self.entry.set_text('')
+        self.entry.grab_focus()
 
     def select(self, w):
         idx = w.get_cursor()[0]

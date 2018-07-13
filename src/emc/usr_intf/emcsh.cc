@@ -176,6 +176,10 @@
   With no args, returns the current feed override, as a percent. With
   argument, set the feed override to be the percent value
 
+  emc_rapid_override {<percent>}
+  With no args, returns the current rapid override, as a percent. With
+  argument, set the rapid override to be the percent value
+
   emc_spindle_override {<percent>}
   With no args, returns the current spindle override, as a percent. With
   argument, set the spindle override to be the percent value
@@ -341,14 +345,9 @@ static void thisQuit(ClientData clientData)
 
     if (0 != emcStatusBuffer) {
 	// wait until current message has been received
-	emcCommandWaitReceived(emcCommandSerialNumber);
+	emcCommandWaitReceived();
     }
 
-    if (0 != emcCommandBuffer) {
-	// send null message to reset serial number to original
-	emc_null_msg.serial_number = saveEmcCommandSerialNumber;
-	emcCommandBuffer->write(emc_null_msg);
-    }
     // clean up NML buffers
 
     if (emcErrorBuffer != 0) {
@@ -465,9 +464,6 @@ static int emc_set_wait(ClientData clientdata,
     CHECKEMC
     if (objc == 1) {
 	switch (emcWaitType) {
-	case EMC_WAIT_NONE:
-	    setresult(interp,"none");
-	    break;
 	case EMC_WAIT_RECEIVED:
 	    setresult(interp,"received");
 	    break;
@@ -483,10 +479,6 @@ static int emc_set_wait(ClientData clientdata,
 
     if (objc == 2) {
 	objstr = Tcl_GetStringFromObj(objv[1], 0);
-	if (!strcmp(objstr, "none")) {
-	    emcWaitType = EMC_WAIT_NONE;
-	    return TCL_OK;
-	}
 	if (!strcmp(objstr, "received")) {
 	    emcWaitType = EMC_WAIT_RECEIVED;
 	    return TCL_OK;
@@ -497,7 +489,7 @@ static int emc_set_wait(ClientData clientdata,
 	}
     }
 
-    setresult(interp, "emc_set_wait: need 'none', 'received', 'done', or no args");
+    setresult(interp, "emc_set_wait: need 'received', 'done', or no args");
     return TCL_ERROR;
 }
 
@@ -510,13 +502,13 @@ static int emc_wait(ClientData clientdata,
     if (objc == 2) {
 	objstr = Tcl_GetStringFromObj(objv[1], 0);
 	if (!strcmp(objstr, "received")) {
-	    if (0 != emcCommandWaitReceived(emcCommandSerialNumber)) {
+	    if (0 != emcCommandWaitReceived()) {
 		setresult(interp,"timeout");
 	    }
 	    return TCL_OK;
 	}
 	if (!strcmp(objstr, "done")) {
-	    if (0 != emcCommandWaitDone(emcCommandSerialNumber)) {
+	    if (0 != emcCommandWaitDone()) {
 		setresult(interp,"timeout");
 	    }
 	    return TCL_OK;
@@ -1889,6 +1881,40 @@ static int emc_feed_override(ClientData clientdata,
     }
 
     setresult(interp,"emc_feed_override: need percent");
+    return TCL_ERROR;
+}
+
+static int emc_rapid_override(ClientData clientdata,
+			     Tcl_Interp * interp, int objc,
+			     Tcl_Obj * CONST objv[])
+{
+    Tcl_Obj *rapidobj;
+    int percent;
+
+    CHECKEMC
+    if (objc == 1) {
+	// no arg-- return status
+	if (emcUpdateType == EMC_UPDATE_AUTO) {
+	    updateStatus();
+	}
+	rapidobj =
+	    Tcl_NewIntObj((int)
+			  (emcStatus->motion.traj.rapid_scale * 100.0 + 0.5));
+	Tcl_SetObjResult(interp, rapidobj);
+	return TCL_OK;
+    }
+
+    if (objc != 2) {
+	setresult(interp,"emc_rapid_override: need percent");
+	return TCL_ERROR;
+    }
+
+    if (TCL_OK == Tcl_GetIntFromObj(0, objv[1], &percent)) {
+	sendRapidOverride(((double) percent) / 100.0);
+	return TCL_OK;
+    }
+
+    setresult(interp,"emc_rapid_override: need percent");
     return TCL_ERROR;
 }
 
@@ -3287,8 +3313,10 @@ static int emc_pendant(ClientData clientdata,
 		}
 	    }
 
-	    sprintf(interp->result, "%i %i %d %d %i", inBytes[0],
+	    char buf[80];
+	    snprintf(buf, sizeof(buf), "%i %i %d %d %i", inBytes[0],
 		    inBytes[1], inBytes[2], inBytes[3], inBytes[4]);
+	    Tcl_SetResult(interp, buf, TCL_VOLATILE);
 	    return TCL_OK;
 	}
     }
@@ -3413,7 +3441,6 @@ static void initMain()
 {
     emcWaitType = EMC_WAIT_RECEIVED;
     emcCommandSerialNumber = 0;
-    saveEmcCommandSerialNumber = 0;
     emcTimeout = 0.0;
     emcUpdateType = EMC_UPDATE_AUTO;
     linearUnitConversion = LINEAR_UNITS_AUTO;
@@ -3462,7 +3489,6 @@ int emc_init(ClientData cd, Tcl_Interp *interp, int argc, const char **argv)
     // so as not to interfere with real operator interface
     updateStatus();
     emcCommandSerialNumber = emcStatus->echo_serial_number;
-    saveEmcCommandSerialNumber = emcStatus->echo_serial_number;
 
     // attach our quit function to exit
     Tcl_CreateExitHandler(thisQuit, (ClientData) 0);
@@ -3618,6 +3644,9 @@ int Linuxcnc_Init(Tcl_Interp * interp)
 			 (ClientData) NULL, (Tcl_CmdDeleteProc *) NULL);
 
     Tcl_CreateObjCommand(interp, "emc_feed_override", emc_feed_override,
+			 (ClientData) NULL, (Tcl_CmdDeleteProc *) NULL);
+
+    Tcl_CreateObjCommand(interp, "emc_rapid_override", emc_rapid_override,
 			 (ClientData) NULL, (Tcl_CmdDeleteProc *) NULL);
 
     Tcl_CreateObjCommand(interp, "emc_spindle_override", emc_spindle_override,

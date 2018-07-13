@@ -211,6 +211,15 @@ DONE: - feed-override
    halui.feed-override.increase        bit   // pin for increasing the FO (+=scale)
    halui.feed-override.decrease        bit   // pin for decreasing the FO (-=scale)
 
+DONE: - rapid-override
+   halui.rapid-override.value           float //current RO value
+   halui.rapid-override.scale           float // pin for setting the scale on changing the RO
+   halui.rapid-override.counts          s32   //counts from an encoder for example to change RO
+   halui.rapid-override.count-enable    bit   // TRUE to modify RO based on counts
+   halui.rapid-override.direct-value    bit   // TRUE to make override based as a direct (scaled) value rather then counts of increments
+   halui.rapid-override.increase        bit   // pin for increasing the RO (+=scale)
+   halui.rapid-override.decrease        bit   // pin for decreasing the RO (-=scale)
+
 DONE: - spindle-override
    halui.spindle-override.value           float //current FO value
    halui.spindle-override.scale           float // pin for setting the scale on changing the SO
@@ -334,6 +343,14 @@ DONE: - spindle-override
     FIELD(hal_bit_t,fo_increase) /* pin for increasing the FO (+=scale) */ \
     FIELD(hal_bit_t,fo_decrease) /* pin for decreasing the FO (-=scale) */ \
 \
+    FIELD(hal_s32_t,ro_counts) /* pin for the Feed Override counting */ \
+    FIELD(hal_bit_t,ro_count_enable) /* pin for the Feed Override counting enable */ \
+    FIELD(hal_bit_t,ro_direct_value) /* pin for enabling direct value option instead of counts  */ \
+    FIELD(hal_float_t,ro_scale) /* scale for the Feed Override counting */ \
+    FIELD(hal_float_t,ro_value) /* current Feed Override value */ \
+    FIELD(hal_bit_t,ro_increase) /* pin ror increasing the FO (+=scale) */ \
+    FIELD(hal_bit_t,ro_decrease) /* pin for decreasing the FO (-=scale) */ \
+\
     FIELD(hal_s32_t,so_counts) /* pin for the Spindle Speed Override counting */ \
     FIELD(hal_bit_t,so_count_enable) /* pin for the Spindle Speed Override counting enable */ \
     FIELD(hal_bit_t,so_direct_value) /* pin for enabling direct value option instead of counts */ \
@@ -353,8 +370,8 @@ struct PTR {
 
 template<class T> struct NATIVE {};
 template<> struct NATIVE<hal_bit_t> { typedef bool type; };
-template<> struct NATIVE<hal_s32_t> { typedef __s32 type; };
-template<> struct NATIVE<hal_u32_t> { typedef __u32 type; };
+template<> struct NATIVE<hal_s32_t> { typedef rtapi_s32 type; };
+template<> struct NATIVE<hal_u32_t> { typedef rtapi_u32 type; };
 template<> struct NATIVE<hal_float_t> { typedef double type; };
 struct VALUE {
     template<class T> struct field { typedef typename NATIVE<T>::type type; };
@@ -399,13 +416,13 @@ EMC_STAT *emcStatus = 0;
 // the NML channel for errors
 static NML *emcErrorBuffer = 0;
 
-// the serial number to use.  By starting high we'll not clash with other guis so easily.
-// XXX it would be nice to have a real fix here. XXX
-static int emcCommandSerialNumber = 100000;
+// the serial number to use.
+static int emcCommandSerialNumber = 0;
 
-// default value for timeout, 0 means wait forever
-// use same timeout value as in tkemc & mini
-static double receiveTimeout = 1.;
+// how long to wait for Task to report that it has received our command
+static double receiveTimeout = 5.0;
+
+// how long to wait for Task to finish running our command
 static double doneTimeout = 60.;
 
 static void quit(int sig)
@@ -524,14 +541,20 @@ static int updateStatus()
 {
     NMLTYPE type;
 
-    if (0 == emcStatus || 0 == emcStatusBuffer
-	|| !emcStatusBuffer->valid()) {
+    if (0 == emcStatus || 0 == emcStatusBuffer) {
+        rtapi_print("halui: %s: no status buffer\n", __func__);
+        return -1;
+    }
+
+    if (!emcStatusBuffer->valid()) {
+        rtapi_print("halui: %s: status buffer is not valid\n", __func__);
 	return -1;
     }
 
     switch (type = emcStatusBuffer->peek()) {
     case -1:
 	// error on CMS channel
+        rtapi_print("halui: %s: error peeking status buffer\n", __func__);
 	return -1;
 	break;
 
@@ -540,6 +563,7 @@ static int updateStatus()
 	break;
 
     default:
+        rtapi_print("halui: %s: unknown error peeking status buffer\n", __func__);
 	return -1;
 	break;
     }
@@ -550,42 +574,20 @@ static int updateStatus()
 
 #define EMC_COMMAND_DELAY   0.1	// how long to sleep between checks
 
-/*
-  emcCommandWaitReceived() waits until the EMC reports that it got
-  the command with the indicated serial_number.
-  emcCommandWaitDone() waits until the EMC reports that it got the
-  command with the indicated serial_number, and it's done, or error.
-*/
-
-static int emcCommandWaitReceived(int serial_number)
+static int emcCommandWaitDone()
 {
-    double end = 0.0;
-
-    while (end < receiveTimeout) {
+    double end;
+    for (end = 0.0; end < doneTimeout; end += EMC_COMMAND_DELAY) {
 	updateStatus();
+	int serial_diff = emcStatus->echo_serial_number - emcCommandSerialNumber;
 
-	if (emcStatus->echo_serial_number == serial_number) {
-	    return 0;
+	if (serial_diff < 0) {
+	    continue;
 	}
 
-	esleep(EMC_COMMAND_DELAY);
-	end += EMC_COMMAND_DELAY;
-    }
-
-    return -1;
-}
-
-static int emcCommandWaitDone(int serial_number)
-{
-    double end = 0.0;
-
-    // first get it there
-    if (0 != emcCommandWaitReceived(serial_number)) {
-	return -1;
-    }
-    // now wait until it, or subsequent command (e.g., abort) is done
-    while (end < doneTimeout) {
-	updateStatus();
+	if (serial_diff > 0) {
+	    return 0;
+	}
 
 	if (emcStatus->status == RCS_DONE) {
 	    return 0;
@@ -596,8 +598,34 @@ static int emcCommandWaitDone(int serial_number)
 	}
 
 	esleep(EMC_COMMAND_DELAY);
-	end += EMC_COMMAND_DELAY;
     }
+
+    return -1;
+}
+
+static int emcCommandSend(RCS_CMD_MSG & cmd)
+{
+    // write command
+    if (emcCommandBuffer->write(&cmd)) {
+        rtapi_print("halui: %s: error writing to Task\n", __func__);
+        return -1;
+    }
+    emcCommandSerialNumber = cmd.serial_number;
+
+    // wait for receive
+    double end;
+    for (end = 0.0; end < receiveTimeout; end += EMC_COMMAND_DELAY) {
+	updateStatus();
+	int serial_diff = emcStatus->echo_serial_number - emcCommandSerialNumber;
+
+	if (serial_diff >= 0) {
+	    return 0;
+	}
+
+	esleep(EMC_COMMAND_DELAY);
+    }
+
+    rtapi_print("halui: %s: no echo from Task after %.3f seconds\n", __func__, receiveTimeout);
     return -1;
 }
 
@@ -801,6 +829,8 @@ int halui_hal_init(void)
     if (retval < 0) return retval;
     retval =  hal_pin_float_newf(HAL_OUT, &(halui_data->fo_value), comp_id, "halui.feed-override.value"); 
     if (retval < 0) return retval;
+    retval =  hal_pin_float_newf(HAL_OUT, &(halui_data->ro_value), comp_id, "halui.rapid-override.value"); 
+    if (retval < 0) return retval;
     retval = hal_pin_u32_newf(HAL_OUT, &(halui_data->joint_selected), comp_id, "halui.joint.selected"); 
     if (retval < 0) return retval;
     retval = hal_pin_u32_newf(HAL_OUT, &(halui_data->tool_number), comp_id, "halui.tool.number"); 
@@ -926,6 +956,22 @@ int halui_hal_init(void)
     retval = halui_export_pin_IN_bit(&(halui_data->fo_decrease), "halui.feed-override.decrease");
     if (retval < 0) return retval;
 
+    retval = halui_export_pin_IN_s32(&(halui_data->ro_counts), "halui.rapid-override.counts");
+    if (retval < 0) return retval;
+    *halui_data->ro_counts = 0;
+    retval = halui_export_pin_IN_bit(&(halui_data->ro_count_enable), "halui.rapid-override.count-enable");
+    if (retval < 0) return retval;
+    *halui_data->ro_count_enable = 1;
+    retval = halui_export_pin_IN_bit(&(halui_data->ro_direct_value), "halui.rapid-override.direct-value");
+    if (retval < 0) return retval;
+    *halui_data->ro_direct_value = 0;
+    retval = halui_export_pin_IN_float(&(halui_data->ro_scale), "halui.rapid-override.scale");
+    if (retval < 0) return retval;
+    retval = halui_export_pin_IN_bit(&(halui_data->ro_increase), "halui.rapid-override.increase");
+    if (retval < 0) return retval;
+    retval = halui_export_pin_IN_bit(&(halui_data->ro_decrease), "halui.rapid-override.decrease");
+    if (retval < 0) return retval;
+
     retval = halui_export_pin_IN_s32(&(halui_data->so_counts), "halui.spindle-override.counts");
     if (retval < 0) return retval;
     *halui_data->so_counts = 0;
@@ -1005,9 +1051,7 @@ static int sendMachineOn()
     EMC_TASK_SET_STATE state_msg;
 
     state_msg.state = EMC_TASK_STATE_ON;
-    state_msg.serial_number = ++emcCommandSerialNumber;
-    emcCommandBuffer->write(state_msg);
-    return emcCommandWaitReceived(emcCommandSerialNumber);
+    return emcCommandSend(state_msg);
 }
 
 static int sendMachineOff()
@@ -1015,9 +1059,7 @@ static int sendMachineOff()
     EMC_TASK_SET_STATE state_msg;
 
     state_msg.state = EMC_TASK_STATE_OFF;
-    state_msg.serial_number = ++emcCommandSerialNumber;
-    emcCommandBuffer->write(state_msg);
-    return emcCommandWaitReceived(emcCommandSerialNumber);
+    return emcCommandSend(state_msg);
 }
 
 static int sendEstop()
@@ -1025,9 +1067,7 @@ static int sendEstop()
     EMC_TASK_SET_STATE state_msg;
 
     state_msg.state = EMC_TASK_STATE_ESTOP;
-    state_msg.serial_number = ++emcCommandSerialNumber;
-    emcCommandBuffer->write(state_msg);
-    return emcCommandWaitReceived(emcCommandSerialNumber);
+    return emcCommandSend(state_msg);
 }
 
 static int sendEstopReset()
@@ -1035,74 +1075,93 @@ static int sendEstopReset()
     EMC_TASK_SET_STATE state_msg;
 
     state_msg.state = EMC_TASK_STATE_ESTOP_RESET;
-    state_msg.serial_number = ++emcCommandSerialNumber;
-    emcCommandBuffer->write(state_msg);
-    return emcCommandWaitReceived(emcCommandSerialNumber);
+    return emcCommandSend(state_msg);
 }
 
 static int sendManual()
 {
     EMC_TASK_SET_MODE mode_msg;
 
+    if (emcStatus->task.mode == EMC_TASK_MODE_MANUAL) {
+        return 0;
+    }
+
     mode_msg.mode = EMC_TASK_MODE_MANUAL;
-    mode_msg.serial_number = ++emcCommandSerialNumber;
-    emcCommandBuffer->write(mode_msg);
-    return emcCommandWaitReceived(emcCommandSerialNumber);
+    return emcCommandSend(mode_msg);
 }
 
 static int sendAuto()
 {
     EMC_TASK_SET_MODE mode_msg;
 
+    if (emcStatus->task.mode == EMC_TASK_MODE_AUTO) {
+        return 0;
+    }
+
     mode_msg.mode = EMC_TASK_MODE_AUTO;
-    mode_msg.serial_number = ++emcCommandSerialNumber;
-    emcCommandBuffer->write(mode_msg);
-    return emcCommandWaitReceived(emcCommandSerialNumber);
+    return emcCommandSend(mode_msg);
 }
 
 static int sendMdi()
 {
     EMC_TASK_SET_MODE mode_msg;
 
-    mode_msg.mode = EMC_TASK_MODE_MDI;
-    mode_msg.serial_number = ++emcCommandSerialNumber;
-    emcCommandBuffer->write(mode_msg);
-    return emcCommandWaitReceived(emcCommandSerialNumber);
-}
-
-int sendMdiCmd(char *mdi)
-{
-    EMC_TASK_PLAN_EXECUTE emc_task_plan_execute_msg;
-
-    if (emcStatus->task.mode != EMC_TASK_MODE_MDI) {
-	halui_old_mode = emcStatus->task.mode;
-	sendMdi();
+    if (emcStatus->task.mode == EMC_TASK_MODE_MDI) {
+        return 0;
     }
-    strcpy(emc_task_plan_execute_msg.command, mdi);
-    emc_task_plan_execute_msg.serial_number = ++emcCommandSerialNumber;
-    emcCommandBuffer->write(emc_task_plan_execute_msg);
-    halui_sent_mdi = 1;
-    return emcCommandWaitReceived(emcCommandSerialNumber);
+
+    mode_msg.mode = EMC_TASK_MODE_MDI;
+    return emcCommandSend(mode_msg);
 }
 
 static int sendMdiCommand(int n)
 {
-    int r1,r2;
-    halui_old_mode = emcStatus->task.mode;
-    r1 = sendMdi();
-    r2 = sendMdiCmd(mdi_commands[n]);
-    return r1 || r2;
-}
+    EMC_TASK_PLAN_EXECUTE emc_task_plan_execute_msg;
 
+    if (updateStatus()) {
+	return -1;
+    }
+
+    if (!halui_sent_mdi) {
+        // There is currently no MDI command from halui executing, we're
+        // currently starting the first one.  Record what the Task mode is,
+        // so we can restore it when all the MDI commands finish.
+        halui_old_mode = emcStatus->task.mode;
+    }
+
+    // switch to MDI mode if needed
+    if (emcStatus->task.mode != EMC_TASK_MODE_MDI) {
+	if (sendMdi() != 0) {
+            rtapi_print("halui: %s: failed to Set Mode MDI\n", __func__);
+            return -1;
+	}
+	if (updateStatus() != 0) {
+            rtapi_print("halui: %s: failed to update status\n", __func__);
+	    return -1;
+	}
+	if (emcStatus->task.mode != EMC_TASK_MODE_MDI) {
+            rtapi_print("halui: %s: switched mode, but got %d instead of mdi\n", __func__, emcStatus->task.mode);
+	    return -1;
+	}
+    }
+    strcpy(emc_task_plan_execute_msg.command, mdi_commands[n]);
+    if (emcCommandSend(emc_task_plan_execute_msg)) {
+        rtapi_print("halui: %s: failed to send mdi command %d\n", __func__, n);
+	return -1;
+    }
+    halui_sent_mdi = 1;
+    return 0;
+}
 
 static int sendTeleop()
 {
     EMC_TRAJ_SET_TELEOP_ENABLE emc_set_teleop_enable_msg;
 
     emc_set_teleop_enable_msg.enable = 1;
-    emc_set_teleop_enable_msg.serial_number = ++emcCommandSerialNumber;
-    emcCommandBuffer->write(emc_set_teleop_enable_msg);
-    return emcCommandWaitDone(emcCommandSerialNumber);
+    if (emcCommandSend(emc_set_teleop_enable_msg)) {
+        return -1;
+    }
+    return emcCommandWaitDone();
 }
 
 static int sendJoint()
@@ -1110,63 +1169,52 @@ static int sendJoint()
     EMC_TRAJ_SET_TELEOP_ENABLE emc_set_teleop_enable_msg;
 
     emc_set_teleop_enable_msg.enable = 0;
-    emc_set_teleop_enable_msg.serial_number = ++emcCommandSerialNumber;
-    emcCommandBuffer->write(emc_set_teleop_enable_msg);
-    return emcCommandWaitDone(emcCommandSerialNumber);
+    if (emcCommandSend(emc_set_teleop_enable_msg)) {
+        return -1;
+    }
+    return emcCommandWaitDone();
 }
 
 static int sendMistOn()
 {
     EMC_COOLANT_MIST_ON emc_coolant_mist_on_msg;
 
-    emc_coolant_mist_on_msg.serial_number = ++emcCommandSerialNumber;
-    emcCommandBuffer->write(emc_coolant_mist_on_msg);
-    return emcCommandWaitReceived(emcCommandSerialNumber);
+    return emcCommandSend(emc_coolant_mist_on_msg);
 }
 
 static int sendMistOff()
 {
     EMC_COOLANT_MIST_OFF emc_coolant_mist_off_msg;
 
-    emc_coolant_mist_off_msg.serial_number = ++emcCommandSerialNumber;
-    emcCommandBuffer->write(emc_coolant_mist_off_msg);
-    return emcCommandWaitReceived(emcCommandSerialNumber);
+    return emcCommandSend(emc_coolant_mist_off_msg);
 }
 
 static int sendFloodOn()
 {
     EMC_COOLANT_FLOOD_ON emc_coolant_flood_on_msg;
 
-    emc_coolant_flood_on_msg.serial_number = ++emcCommandSerialNumber;
-    emcCommandBuffer->write(emc_coolant_flood_on_msg);
-    return emcCommandWaitReceived(emcCommandSerialNumber);
+    return emcCommandSend(emc_coolant_flood_on_msg);
 }
 
 static int sendFloodOff()
 {
     EMC_COOLANT_FLOOD_OFF emc_coolant_flood_off_msg;
 
-    emc_coolant_flood_off_msg.serial_number = ++emcCommandSerialNumber;
-    emcCommandBuffer->write(emc_coolant_flood_off_msg);
-    return emcCommandWaitReceived(emcCommandSerialNumber);
+    return emcCommandSend(emc_coolant_flood_off_msg);
 }
 
 static int sendLubeOn()
 {
     EMC_LUBE_ON emc_lube_on_msg;
 
-    emc_lube_on_msg.serial_number = ++emcCommandSerialNumber;
-    emcCommandBuffer->write(emc_lube_on_msg);
-    return emcCommandWaitReceived(emcCommandSerialNumber);
+    return emcCommandSend(emc_lube_on_msg);
 }
 
 static int sendLubeOff()
 {
     EMC_LUBE_OFF emc_lube_off_msg;
 
-    emc_lube_off_msg.serial_number = ++emcCommandSerialNumber;
-    emcCommandBuffer->write(emc_lube_off_msg);
-    return emcCommandWaitReceived(emcCommandSerialNumber);
+    return emcCommandSend(emc_lube_off_msg);
 }
 
 // programStartLine is the saved valued of the line that
@@ -1185,19 +1233,15 @@ static int sendProgramRun(int line)
     // save the start line, to compare against active line later
     programStartLine = line;
 
-    emc_task_plan_run_msg.serial_number = ++emcCommandSerialNumber;
     emc_task_plan_run_msg.line = line;
-    emcCommandBuffer->write(emc_task_plan_run_msg);
-    return emcCommandWaitReceived(emcCommandSerialNumber);
+    return emcCommandSend(emc_task_plan_run_msg);
 }
 
 static int sendProgramPause()
 {
     EMC_TASK_PLAN_PAUSE emc_task_plan_pause_msg;
 
-    emc_task_plan_pause_msg.serial_number = ++emcCommandSerialNumber;
-    emcCommandBuffer->write(emc_task_plan_pause_msg);
-    return emcCommandWaitReceived(emcCommandSerialNumber);
+    return emcCommandSend(emc_task_plan_pause_msg);
 }
 
 static int sendSetOptionalStop(bool state)
@@ -1205,9 +1249,7 @@ static int sendSetOptionalStop(bool state)
     EMC_TASK_PLAN_SET_OPTIONAL_STOP emc_task_plan_set_optional_stop_msg;
 
     emc_task_plan_set_optional_stop_msg.state = state;
-    emc_task_plan_set_optional_stop_msg.serial_number = ++emcCommandSerialNumber;
-    emcCommandBuffer->write(emc_task_plan_set_optional_stop_msg);
-    return emcCommandWaitReceived(emcCommandSerialNumber);
+    return emcCommandSend(emc_task_plan_set_optional_stop_msg);
 }
 
 static int sendSetBlockDelete(bool state)
@@ -1215,9 +1257,7 @@ static int sendSetBlockDelete(bool state)
     EMC_TASK_PLAN_SET_BLOCK_DELETE emc_task_plan_set_block_delete_msg;
 
     emc_task_plan_set_block_delete_msg.state = state;
-    emc_task_plan_set_block_delete_msg.serial_number = ++emcCommandSerialNumber;
-    emcCommandBuffer->write(emc_task_plan_set_block_delete_msg);
-    return emcCommandWaitReceived(emcCommandSerialNumber);
+    return emcCommandSend(emc_task_plan_set_block_delete_msg);
 }
 
 
@@ -1225,18 +1265,14 @@ static int sendProgramResume()
 {
     EMC_TASK_PLAN_RESUME emc_task_plan_resume_msg;
 
-    emc_task_plan_resume_msg.serial_number = ++emcCommandSerialNumber;
-    emcCommandBuffer->write(emc_task_plan_resume_msg);
-    return emcCommandWaitReceived(emcCommandSerialNumber);
+    return emcCommandSend(emc_task_plan_resume_msg);
 }
 
 static int sendProgramStep()
 {
     EMC_TASK_PLAN_STEP emc_task_plan_step_msg;
 
-    emc_task_plan_step_msg.serial_number = ++emcCommandSerialNumber;
-    emcCommandBuffer->write(emc_task_plan_step_msg);
-    return emcCommandWaitReceived(emcCommandSerialNumber);
+    return emcCommandSend(emc_task_plan_step_msg);
 }
 
 static int sendSpindleForward()
@@ -1247,9 +1283,7 @@ static int sendSpindleForward()
     } else {
 	emc_spindle_on_msg.speed = +1;
     }
-    emc_spindle_on_msg.serial_number = ++emcCommandSerialNumber;
-    emcCommandBuffer->write(emc_spindle_on_msg);
-    return emcCommandWaitReceived(emcCommandSerialNumber);
+    return emcCommandSend(emc_spindle_on_msg);
 }
 
 static int sendSpindleReverse()
@@ -1261,92 +1295,72 @@ static int sendSpindleReverse()
     } else {
 	emc_spindle_on_msg.speed = -1;
     }
-    emc_spindle_on_msg.serial_number = ++emcCommandSerialNumber;
-    emcCommandBuffer->write(emc_spindle_on_msg);
-    return emcCommandWaitReceived(emcCommandSerialNumber);
+    return emcCommandSend(emc_spindle_on_msg);
 }
 
 static int sendSpindleOff()
 {
     EMC_SPINDLE_OFF emc_spindle_off_msg;
 
-    emc_spindle_off_msg.serial_number = ++emcCommandSerialNumber;
-    emcCommandBuffer->write(emc_spindle_off_msg);
-    return emcCommandWaitReceived(emcCommandSerialNumber);
+    return emcCommandSend(emc_spindle_off_msg);
 }
 
 static int sendSpindleIncrease()
 {
     EMC_SPINDLE_INCREASE emc_spindle_increase_msg;
 
-    emc_spindle_increase_msg.serial_number = ++emcCommandSerialNumber;
-    emcCommandBuffer->write(emc_spindle_increase_msg);
-    return emcCommandWaitReceived(emcCommandSerialNumber);
+    return emcCommandSend(emc_spindle_increase_msg);
 }
 
 static int sendSpindleDecrease()
 {
     EMC_SPINDLE_DECREASE emc_spindle_decrease_msg;
 
-    emc_spindle_decrease_msg.serial_number = ++emcCommandSerialNumber;
-    emcCommandBuffer->write(emc_spindle_decrease_msg);
-    return emcCommandWaitReceived(emcCommandSerialNumber);
+    return emcCommandSend(emc_spindle_decrease_msg);
 }
 
 static int sendSpindleConstant()
 {
     EMC_SPINDLE_CONSTANT emc_spindle_constant_msg;
 
-    emc_spindle_constant_msg.serial_number = ++emcCommandSerialNumber;
-    emcCommandBuffer->write(emc_spindle_constant_msg);
-    return emcCommandWaitReceived(emcCommandSerialNumber);
+    return emcCommandSend(emc_spindle_constant_msg);
 }
 
 static int sendBrakeEngage()
 {
     EMC_SPINDLE_BRAKE_ENGAGE emc_spindle_brake_engage_msg;
 
-    emc_spindle_brake_engage_msg.serial_number = ++emcCommandSerialNumber;
-    emcCommandBuffer->write(emc_spindle_brake_engage_msg);
-    return emcCommandWaitReceived(emcCommandSerialNumber);
+    return emcCommandSend(emc_spindle_brake_engage_msg);
 }
 
 static int sendBrakeRelease()
 {
     EMC_SPINDLE_BRAKE_RELEASE emc_spindle_brake_release_msg;
 
-    emc_spindle_brake_release_msg.serial_number = ++emcCommandSerialNumber;
-    emcCommandBuffer->write(emc_spindle_brake_release_msg);
-    return emcCommandWaitReceived(emcCommandSerialNumber);
+    return emcCommandSend(emc_spindle_brake_release_msg);
 }
 
 static int sendHome(int axis)
 {
     EMC_AXIS_HOME emc_axis_home_msg;
 
-    emc_axis_home_msg.serial_number = ++emcCommandSerialNumber;
     emc_axis_home_msg.axis = axis;
-    emcCommandBuffer->write(emc_axis_home_msg);
-    return emcCommandWaitReceived(emcCommandSerialNumber);
+    return emcCommandSend(emc_axis_home_msg);
 }
 
 static int sendUnhome(int axis)
 {
     EMC_AXIS_UNHOME emc_axis_unhome_msg;
 
-    emc_axis_unhome_msg.serial_number = ++emcCommandSerialNumber;
     emc_axis_unhome_msg.axis = axis;
-    emcCommandBuffer->write(emc_axis_unhome_msg);
-    return emcCommandWaitReceived(emcCommandSerialNumber);
+    return emcCommandSend(emc_axis_unhome_msg);
 }
 
 static int sendAbort()
 {
     EMC_TASK_ABORT task_abort_msg;
 
-    task_abort_msg.serial_number = ++emcCommandSerialNumber;
-    emcCommandBuffer->write(task_abort_msg);
-    return emcCommandWaitReceived(emcCommandSerialNumber);
+    return emcCommandSend(task_abort_msg);
 }
 
 
@@ -1367,17 +1381,11 @@ static int sendJogStop(int axis)
     }
 
     if (emcStatus->motion.traj.mode != EMC_TRAJ_MODE_TELEOP) {
-	emc_axis_abort_msg.serial_number = ++emcCommandSerialNumber;
 	emc_axis_abort_msg.axis = axis;
-	emcCommandBuffer->write(emc_axis_abort_msg);
-
-        return emcCommandWaitReceived(emcCommandSerialNumber);
+	return emcCommandSend(emc_axis_abort_msg);
     } else {
-	emc_set_teleop_vector.serial_number = ++emcCommandSerialNumber;
         ZERO_EMC_POSE(emc_set_teleop_vector.vector);
-	emcCommandBuffer->write(emc_set_teleop_vector);
-
-        return emcCommandWaitReceived(emcCommandSerialNumber);
+	return emcCommandSend(emc_set_teleop_vector);
     }
 }
 
@@ -1436,24 +1444,25 @@ static int sendJogCont(int axis, double speed)
 {
     EMC_AXIS_JOG emc_axis_jog_msg;
 
-    if ((emcStatus->task.state != EMC_TASK_STATE_ON) || (emcStatus->task.mode != EMC_TASK_MODE_MANUAL))
+    if (emcStatus->task.state != EMC_TASK_STATE_ON) {
 	return -1;
+    }
 
     if (axis < 0 || axis >= EMC_AXIS_MAX) {
 	return -1;
     }
 
+    sendManual();
+
     if (emcStatus->motion.traj.mode != EMC_TRAJ_MODE_TELEOP) {
-	emc_axis_jog_msg.serial_number = ++emcCommandSerialNumber;
 	emc_axis_jog_msg.axis = axis;
 	emc_axis_jog_msg.vel = speed / 60.0;
-	emcCommandBuffer->write(emc_axis_jog_msg);
+	return emcCommandSend(emc_axis_jog_msg);
     } else {
     updateTeleopJogCont( axis, speed );
     return 0;
+	emcCommandBuffer->write(emc_set_teleop_vector);
     }
-
-    return emcCommandWaitReceived(emcCommandSerialNumber);
 }
 
 
@@ -1461,22 +1470,22 @@ static int sendJogInc(int axis, double speed, double inc)
 {
     EMC_AXIS_INCR_JOG emc_axis_jog_msg;
 
-    if ((emcStatus->task.state != EMC_TASK_STATE_ON) || (emcStatus->task.mode != EMC_TASK_MODE_MANUAL))
+    if (emcStatus->task.state != EMC_TASK_STATE_ON) {
 	return -1;
+    }
 
     if (axis < 0 || axis >= EMC_AXIS_MAX)
 	return -1;
 
+    sendManual();
+
     if (emcStatus->motion.traj.mode == EMC_TRAJ_MODE_TELEOP)
     	return -1;
 
-    emc_axis_jog_msg.serial_number = ++emcCommandSerialNumber;
     emc_axis_jog_msg.axis = axis;
     emc_axis_jog_msg.vel = speed / 60.0;
     emc_axis_jog_msg.incr = inc;
-    emcCommandBuffer->write(emc_axis_jog_msg);
-
-    return emcCommandWaitReceived(emcCommandSerialNumber);
+    return emcCommandSend(emc_axis_jog_msg);
 }
 
 
@@ -1492,10 +1501,24 @@ static int sendFeedOverride(double override)
 	override = maxFeedOverride;
     }
     
-    emc_traj_set_scale_msg.serial_number = ++emcCommandSerialNumber;
     emc_traj_set_scale_msg.scale = override;
-    emcCommandBuffer->write(emc_traj_set_scale_msg);
-    return emcCommandWaitReceived(emcCommandSerialNumber);
+    return emcCommandSend(emc_traj_set_scale_msg);
+}
+
+static int sendRapidOverride(double override)
+{
+    EMC_TRAJ_SET_RAPID_SCALE emc_traj_set_scale_msg;
+
+    if (override < 0.0) {
+	override = 0.0;
+    }
+
+    if (override > 1.0) {
+	override = 1.0;
+    }
+    
+    emc_traj_set_scale_msg.scale = override;
+    return emcCommandSend(emc_traj_set_scale_msg);
 }
 
 static int sendMaxVelocity(double velocity)
@@ -1510,10 +1533,8 @@ static int sendMaxVelocity(double velocity)
         velocity = maxMaxVelocity;
     }
 
-    mv.serial_number = ++emcCommandSerialNumber;
     mv.velocity = velocity;
-    emcCommandBuffer->write(mv);
-    return emcCommandWaitReceived(emcCommandSerialNumber);
+    return emcCommandSend(mv);
 }
 
 static int sendSpindleOverride(double override)
@@ -1528,10 +1549,8 @@ static int sendSpindleOverride(double override)
 	override = maxSpindleOverride;
     }
     
-    emc_traj_set_spindle_scale_msg.serial_number = ++emcCommandSerialNumber;
     emc_traj_set_spindle_scale_msg.scale = override;
-    emcCommandBuffer->write(emc_traj_set_spindle_scale_msg);
-    return emcCommandWaitReceived(emcCommandSerialNumber);
+    return emcCommandSend(emc_traj_set_spindle_scale_msg);
 }
 
 static int iniLoad(const char *filename)
@@ -1665,6 +1684,7 @@ static void hal_init_pins()
     *(halui_data->joint_selected) = 0; // select joint 0 by default
     
     *(halui_data->fo_scale) = old_halui_data.fo_scale = 0.1; //sane default
+    *(halui_data->ro_scale) = old_halui_data.ro_scale = 0.1; //sane default
     *(halui_data->so_scale) = old_halui_data.so_scale = 0.1; //sane default
 }
 
@@ -1687,13 +1707,31 @@ static void copy_hal_data(const halui_str &i, local_halui_str &j)
 #undef ARRAY
 }
 
+
+// Returns true if any of halui.jog.N.plus, halui.jog.N.minus, or
+// halui.jog.N.analog are true (where N is the passed-in joint number).
+// Otherwise, returns false.
+static bool jogging_joint(local_halui_str &hal, int joint) {
+    return (hal.jog_plus[joint] || hal.jog_minus[joint] || hal.jog_analog[joint]);
+}
+
+
+// Returns true if any of halui.jog.selected.plus,
+// halui.jog.selected.minus, or halui.jog.selected.analog are true.
+// Otherwise, returns false.
+static bool jogging_selected_joint(local_halui_str &hal) {
+    return (hal.jog_plus[num_axes] || hal.jog_minus[num_axes]);
+}
+
+
 // this function looks if any of the hal pins has changed
 // and sends appropiate messages if so
 static void check_hal_changes()
 {
     hal_s32_t counts;
     int select_changed, joint;
-    hal_bit_t bit, js;
+    hal_bit_t bit;
+    int js;
     hal_float_t floatt;
     int jog_speed_changed;
 
@@ -1803,6 +1841,20 @@ static void check_hal_changes()
         old_halui_data.fo_counts = counts;
     }
 
+    //rapid-override stuff
+    counts = new_halui_data.ro_counts;
+    if (counts != old_halui_data.ro_counts) {
+        if (new_halui_data.ro_count_enable) {
+            if (new_halui_data.ro_direct_value) {
+                sendRapidOverride(counts * new_halui_data.ro_scale);
+            } else {
+                sendRapidOverride( new_halui_data.ro_value + (counts - old_halui_data.ro_counts) *
+                    new_halui_data.ro_scale);
+            }
+        }
+        old_halui_data.ro_counts = counts;
+    }
+
     //spindle-override stuff
     counts = new_halui_data.so_counts;
     if (counts != old_halui_data.so_counts) {
@@ -1826,6 +1878,11 @@ static void check_hal_changes()
         sendFeedOverride(new_halui_data.fo_value + new_halui_data.fo_scale);
     if (check_bit_changed(new_halui_data.fo_decrease, old_halui_data.fo_decrease) != 0)
         sendFeedOverride(new_halui_data.fo_value - new_halui_data.fo_scale);
+
+    if (check_bit_changed(new_halui_data.ro_increase, old_halui_data.ro_increase) != 0)
+        sendRapidOverride(new_halui_data.ro_value + new_halui_data.ro_scale);
+    if (check_bit_changed(new_halui_data.ro_decrease, old_halui_data.ro_decrease) != 0)
+        sendRapidOverride(new_halui_data.ro_value - new_halui_data.ro_scale);
 
     if (check_bit_changed(new_halui_data.so_increase, old_halui_data.so_increase) != 0)
         sendSpindleOverride(new_halui_data.so_value + new_halui_data.so_scale);
@@ -1947,7 +2004,7 @@ static void check_hal_changes()
 		*halui_data->joint_selected = joint;
 		select_changed = joint; // flag that we changed the selected joint
 	    } 
-	    old_halui_data.joint_home[joint] = bit;
+	    old_halui_data.joint_nr_select[joint] = bit;
 	}
     }
 
@@ -1977,8 +2034,16 @@ static void check_hal_changes()
 	for (joint = 0; joint < num_axes; joint++) {
 	    if (joint != select_changed) {
 		*(halui_data->joint_is_selected[joint]) = 0;
+                if (jogging_selected_joint(old_halui_data) && !jogging_joint(old_halui_data, joint)) {
+                    sendJogStop(joint);
+                }
     	    } else {
 		*(halui_data->joint_is_selected[joint]) = 1;
+                if (*halui_data->jog_plus[num_axes]) {
+                    sendJogCont(joint, new_halui_data.jog_speed);
+                } else if (*halui_data->jog_minus[num_axes]) {
+                    sendJogCont(joint, -new_halui_data.jog_speed);
+                }
 	    }
 	}
     }
@@ -2101,6 +2166,7 @@ static void modify_hal_pins()
 
     *(halui_data->mv_value) = emcStatus->motion.traj.maxVelocity;
     *(halui_data->fo_value) = emcStatus->motion.traj.scale; //feedoverride from 0 to 1 for 100%
+    *(halui_data->ro_value) = emcStatus->motion.traj.rapid_scale; //rapid override from 0 to 1 for 100%
     *(halui_data->so_value) = emcStatus->motion.traj.spindle_scale; //spindle-speed-override from 0 to 1 for 100%
 
     *(halui_data->mist_is_on) = emcStatus->io.coolant.mist;
@@ -2150,15 +2216,15 @@ static void modify_hal_pins()
     *(halui_data->axis_pos_feedback[6]) = emcStatus->motion.traj.actualPosition.u;
     *(halui_data->axis_pos_feedback[7]) = emcStatus->motion.traj.actualPosition.v;
     *(halui_data->axis_pos_feedback[8]) = emcStatus->motion.traj.actualPosition.w;
-    *(halui_data->axis_pos_relative[0]) = emcStatus->motion.traj.actualPosition.tran.x - emcStatus->task.g5x_offset.tran.x - emcStatus->task.g92_offset.tran.x;	
-    *(halui_data->axis_pos_relative[1]) = emcStatus->motion.traj.actualPosition.tran.y - emcStatus->task.g5x_offset.tran.y - emcStatus->task.g92_offset.tran.y;	
-    *(halui_data->axis_pos_relative[2]) = emcStatus->motion.traj.actualPosition.tran.z - emcStatus->task.g5x_offset.tran.z - emcStatus->task.g92_offset.tran.z;
-    *(halui_data->axis_pos_relative[3]) = emcStatus->motion.traj.actualPosition.a - emcStatus->task.g5x_offset.a - emcStatus->task.g92_offset.a;
-    *(halui_data->axis_pos_relative[4]) = emcStatus->motion.traj.actualPosition.b - emcStatus->task.g5x_offset.b - emcStatus->task.g92_offset.b;
-    *(halui_data->axis_pos_relative[5]) = emcStatus->motion.traj.actualPosition.c - emcStatus->task.g5x_offset.c - emcStatus->task.g92_offset.c;
-    *(halui_data->axis_pos_relative[6]) = emcStatus->motion.traj.actualPosition.u - emcStatus->task.g5x_offset.u - emcStatus->task.g92_offset.u;
-    *(halui_data->axis_pos_relative[7]) = emcStatus->motion.traj.actualPosition.v - emcStatus->task.g5x_offset.v - emcStatus->task.g92_offset.v;
-    *(halui_data->axis_pos_relative[8]) = emcStatus->motion.traj.actualPosition.w - emcStatus->task.g5x_offset.w - emcStatus->task.g92_offset.w;
+    *(halui_data->axis_pos_relative[0]) = emcStatus->motion.traj.actualPosition.tran.x - emcStatus->task.g5x_offset.tran.x - emcStatus->task.g92_offset.tran.x - emcStatus->task.toolOffset.tran.x;
+    *(halui_data->axis_pos_relative[1]) = emcStatus->motion.traj.actualPosition.tran.y - emcStatus->task.g5x_offset.tran.y - emcStatus->task.g92_offset.tran.y - emcStatus->task.toolOffset.tran.y;
+    *(halui_data->axis_pos_relative[2]) = emcStatus->motion.traj.actualPosition.tran.z - emcStatus->task.g5x_offset.tran.z - emcStatus->task.g92_offset.tran.z - emcStatus->task.toolOffset.tran.z;
+    *(halui_data->axis_pos_relative[3]) = emcStatus->motion.traj.actualPosition.a - emcStatus->task.g5x_offset.a - emcStatus->task.g92_offset.a - emcStatus->task.toolOffset.a;
+    *(halui_data->axis_pos_relative[4]) = emcStatus->motion.traj.actualPosition.b - emcStatus->task.g5x_offset.b - emcStatus->task.g92_offset.b - emcStatus->task.toolOffset.b;
+    *(halui_data->axis_pos_relative[5]) = emcStatus->motion.traj.actualPosition.c - emcStatus->task.g5x_offset.c - emcStatus->task.g92_offset.c - emcStatus->task.toolOffset.c;
+    *(halui_data->axis_pos_relative[6]) = emcStatus->motion.traj.actualPosition.u - emcStatus->task.g5x_offset.u - emcStatus->task.g92_offset.u - emcStatus->task.toolOffset.u;
+    *(halui_data->axis_pos_relative[7]) = emcStatus->motion.traj.actualPosition.v - emcStatus->task.g5x_offset.v - emcStatus->task.g92_offset.v - emcStatus->task.toolOffset.v;
+    *(halui_data->axis_pos_relative[8]) = emcStatus->motion.traj.actualPosition.w - emcStatus->task.g5x_offset.w - emcStatus->task.g92_offset.w - emcStatus->task.toolOffset.w;
 
     *(halui_data->joint_is_homed[num_axes]) = emcStatus->motion.axis[*(halui_data->joint_selected)].homed;
     *(halui_data->joint_on_soft_min_limit[num_axes]) = emcStatus->motion.axis[*(halui_data->joint_selected)].minSoftLimit;

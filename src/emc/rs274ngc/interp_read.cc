@@ -14,7 +14,6 @@
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
-#include <boost/python.hpp>
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -28,6 +27,7 @@
 #include "rs274ngc_return.hh"
 #include "interp_internal.hh"
 #include "rs274ngc_interp.hh"
+#include <cmath>
 
 /****************************************************************************/
 
@@ -1002,9 +1002,15 @@ int Interp::read_n_number(char *line, //!< string: line of RS274    code being p
       NCE_BUG_FUNCTION_SHOULD_NOT_HAVE_BEEN_CALLED);
   *counter = (*counter + 1);
   CHP(read_integer_unsigned(line, counter, &value));
-/* This next test is problematic as many CAM systems will exceed this !
+  /* This next test is problematic as many CAM systems will exceed this !
   CHKS((value > 99999), NCE_LINE_NUMBER_GREATER_THAN_99999); */
   block->n_number = value;
+
+  // accept & ignore fractional line numbers
+  if (line[*counter] == '.') {
+      *counter = (*counter + 1);
+      CHP(read_integer_unsigned(line, counter, &value));
+  }
   return INTERP_OK;
 }
 
@@ -1068,9 +1074,9 @@ int Interp::read_m(char *line,   //!< string: line of RS274 code being processed
       return INTERP_OK;
   }
 
-  CHKS((value > 199), NCE_M_CODE_GREATER_THAN_199);
+  CHKS((value > 199), NCE_M_CODE_GREATER_THAN_199,value);
   mode = _ems[value];
-  CHKS((mode == -1), NCE_UNKNOWN_M_CODE_USED);
+  CHKS((mode == -1), NCE_UNKNOWN_M_CODE_USED,value);
   CHKS((block->m_modes[mode] != -1),
       NCE_TWO_M_CODES_USED_FROM_SAME_MODAL_GROUP);
   block->m_modes[mode] = value;
@@ -2695,9 +2701,9 @@ int Interp::read_real_value(char *line,  //!< string: line of RS274/NGC code bei
   else
     CHP(read_real_number(line, counter, double_ptr));
 
-  CHKS(isnan(*double_ptr),
+  CHKS(std::isnan(*double_ptr),
           _("Calculation resulted in 'not a number'"));
-  CHKS(isinf(*double_ptr),
+  CHKS(std::isinf(*double_ptr),
           _("Calculation resulted in 'infinity'"));
 
   return INTERP_OK;

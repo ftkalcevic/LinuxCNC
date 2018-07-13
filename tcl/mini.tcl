@@ -988,7 +988,7 @@ $settingsmenu add separator
 $settingsmenu add command -label [msgcat::mc "Calibration..."] \
     -command "exec $linuxcnc::TCL_BIN_DIR/emccalib.tcl -- -ini $EMC_INIFILE &"
 $settingsmenu add command -label [msgcat::mc "HAL Show..."] \
-    -command "exec $linuxcnc::TCL_BIN_DIR/halshow.tcl -- -ini $EMC_INIFILE &"
+    -command "exec $linuxcnc::TCL_BIN_DIR/halshow.tcl &"
 $settingsmenu add command -label [msgcat::mc "HAL Config..."] \
     -command "exec $linuxcnc::TCL_BIN_DIR/halconfig.tcl -- -ini $EMC_INIFILE &"
 
@@ -1176,7 +1176,6 @@ pack $oridetop $oridebottom -side top -fill x
 
 # Messages are reported here.
 set mview [frame $left.message ]
-pack $mview -side top -fill both -expand yes
 set mbutton [button $mview.button -text [msgcat::mc "-- MESSAGES --"] -bd 2 \
     -command {$mtext delete 1.0 end; set messagenumber 1} ]
 bind "." <Alt-KeyPress-m> {$mtext delete 1.0 end; set messagenumber 1}

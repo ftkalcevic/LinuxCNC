@@ -30,6 +30,8 @@
 */
 
 /* joint data */
+#include "hal.h"
+#include "../motion/motion.h"
 
 typedef struct {
     hal_float_t *coarse_pos_cmd;/* RPI: commanded position, w/o comp */
@@ -67,7 +69,7 @@ typedef struct {
 				         encoder clears: index arrived */
     hal_bit_t *amp_fault;	/* RPI: amp fault input */
     hal_bit_t *amp_enable;	/* WPI: amp enable output */
-    hal_s32_t home_state;	/* RPA: homing state machine state */
+    hal_s32_t *home_state;	/* WPI: homing state machine state */
 
     hal_bit_t *unlock;          /* WPI: command that axis should unlock for rotation */
     hal_bit_t *is_unlocked;     /* RPI: axis is currently unlocked */
@@ -87,8 +89,10 @@ typedef struct {
     hal_bit_t *spindle_index_enable;
     hal_bit_t *spindle_is_atspeed;
     hal_float_t *spindle_revs;
+    hal_bit_t *spindle_inhibit;	/* RPI: set TRUE to stop spindle (non maskable)*/
     hal_float_t *adaptive_feed;	/* RPI: adaptive feedrate, 0.0 to 1.0 */
-    hal_bit_t *feed_hold;	/* RPI: set TRUE to stop motion */
+    hal_bit_t *feed_hold;	/* RPI: set TRUE to stop motion maskable with g53 P1*/
+    hal_bit_t *feed_inhibit;	/* RPI: set TRUE to stop motion (non maskable)*/
     hal_bit_t *motion_enabled;	/* RPI: motion enable for all joints */
     hal_bit_t *in_position;	/* RPI: all joints are in position */
 //    hal_bit_t *inpos_output;	/* WPI: all joints are in position (used to power down steppers for example) */
@@ -98,6 +102,7 @@ typedef struct {
     hal_bit_t *on_soft_limit;	/* RPA: TRUE if outside a limit */
 
     hal_s32_t *program_line;    /* RPA: program line causing current motion */
+    hal_s32_t *motion_type;	/* RPA: type (feed/rapid) of currently commanded motion */
     hal_float_t *current_vel;   /* RPI: velocity magnitude in machine units */
     hal_float_t *requested_vel;   /* RPI: requested velocity magnitude in machine units */
     hal_float_t *distance_to_go;/* RPI: distance to go in current move*/
@@ -138,6 +143,8 @@ typedef struct {
     // output of a prescribed speed (to hook-up to a velocity controller)
     hal_float_t *spindle_speed_out;	/* spindle speed output */
     hal_float_t *spindle_speed_out_rps;	/* spindle speed output */
+    hal_float_t *spindle_speed_out_abs;	/* spindle speed output absolute*/
+    hal_float_t *spindle_speed_out_rps_abs;	/* spindle speed output absolute*/
     hal_float_t *spindle_speed_cmd_rps;	/* spindle speed command without SO applied */
     hal_float_t *spindle_speed_in;	/* spindle speed measured */
     
@@ -203,12 +210,6 @@ extern emcmot_hal_data_t *emcmot_hal_data;
    determined by the init code in motion.c
 */
 extern emcmot_joint_t *joints;
-
-/* flag used to indicate that this is the very first pass thru the
-   code.  Various places in the code use this to set initial conditions
-   and avoid startup glitches.
-*/
-extern int first_pass;
 
 /* Variable defs */
 extern int kinType;
@@ -340,9 +341,7 @@ extern void reportError(const char *fmt, ...) __attribute((format(printf,1,2)));
 
 #define SET_JOINT_FAULT_FLAG(joint,fl) if (fl) (joint)->flag |= EMCMOT_JOINT_FAULT_BIT; else (joint)->flag &= ~EMCMOT_JOINT_FAULT_BIT;
 
-#if defined(LINUX_VERSION_CODE) && !defined(SIM)
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
+#if defined(__KERNEL__)
 #define HAVE_CPU_KHZ
-#endif
 #endif
 #endif /* MOT_PRIV_H */

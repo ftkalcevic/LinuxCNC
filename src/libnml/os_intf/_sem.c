@@ -20,7 +20,7 @@
 #include <stdarg.h>		/* va_list, va_arg(), va_start(), va_end() */
 #include <sys/types.h>
 #include <sys/ipc.h>		/* IPC_CREATE, IPC_NOWAIT */
-#include <linux/version.h>
+#include <inttypes.h>
 
 /* There are two types of posix semaphores named and unnamed.
    unamed semaphores can either have the pshared flag set or not
@@ -113,7 +113,7 @@ rcs_sem_t *rcs_sem_open(key_t name, int oflag, /* int mode */ ...)
     key = name;
 
     if (key < 1) {
-	rcs_print_error("rcs_sem_open: invalid key %d\n", key);
+	rcs_print_error("rcs_sem_open: invalid key %jd\n", (intmax_t)key);
 	return NULL;
     }
 
@@ -143,8 +143,6 @@ int rcs_sem_wait_notimeout(rcs_sem_t * sem)
 {
     int retval = -1;
     struct sembuf sops;
-    union semun sem_arg;
-    sem_arg.val = 0;
     sops.sem_num = 0;
     sops.sem_op = SEM_TAKE;
     sops.sem_flg = 0;
@@ -179,7 +177,7 @@ int rcs_sem_trywait(rcs_sem_t * sem)
        function. 
 #endif
 
-#if !defined (HAVE_SEMTIMEDOP) || LINUX_VERSION_CODE < KERNEL_VERSION(2,4,22)
+#if !defined (HAVE_SEMTIMEDOP)
 #undef HAVE_SEMTIMEDOP
 void itimer_handler(int signum)
 {

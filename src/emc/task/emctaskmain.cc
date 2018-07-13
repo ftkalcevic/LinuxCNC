@@ -59,6 +59,7 @@
 #include <libintl.h>
 #include <locale.h>
 
+
 #if 0
 // Enable this to niftily trap floating point exceptions for debugging
 #include <fpu_control.h>
@@ -80,16 +81,13 @@ fpu_control_t __fpu_control = _FPU_IEEE & ~(_FPU_MASK_IM | _FPU_MASK_ZM | _FPU_M
 #include "task.hh"		// emcTaskCommand etc
 #include "taskclass.hh"
 #include "motion.h"             // EMCMOT_ORIENT_*
+#include "inihal.hh"
 
 /* time after which the user interface is declared dead
  * because it would'nt read any more messages
  */
 #define DEFAULT_EMC_UI_TIMEOUT 5.0
 
-
-// command line args-- global so that other modules can access 
-int Argc;
-char **Argv;
 
 // NML channels
 static RCS_CMD_CHANNEL *emcCommandBuffer = 0;
@@ -132,7 +130,6 @@ NMLmsg *emcTaskCommand = 0;
 // signal handling code to stop main loop
 int done;
 static int emctask_shutdown(void);
-static int pseudoMdiLineNumber = INT_MIN;
 extern void backtrace(int signo);
 int _task = 1; // control preview behaviour when remapping
 
@@ -341,8 +338,6 @@ int emcSystemCmd(char *s)
 	// we're the child
 	// convert string to argc/argv
 	argvize(s, buffer, argv, EMC_SYSTEM_CMD_LEN);
-	// drop any setuid privileges
-	setuid(getuid());
 	execvp(argv[0], argv);
 	// if we get here, we didn't exec
 	if (emc_debug & EMC_DEBUG_TASK_ISSUE) {
@@ -376,6 +371,7 @@ static EMC_AXIS_LOAD_COMP *axis_load_comp_msg;
 //static EMC_AXIS_SET_STEP_PARAMS *set_step_params_msg;
 
 static EMC_TRAJ_SET_SCALE *emcTrajSetScaleMsg;
+static EMC_TRAJ_SET_RAPID_SCALE *emcTrajSetRapidScaleMsg;
 static EMC_TRAJ_SET_MAX_VELOCITY *emcTrajSetMaxVelocityMsg;
 static EMC_TRAJ_SET_SPINDLE_SCALE *emcTrajSetSpindleScaleMsg;
 static EMC_TRAJ_SET_VELOCITY *emcTrajSetVelocityMsg;
@@ -433,6 +429,11 @@ static int mdi_execute_next = 0;
 static int mdi_execute_wait = 0;
 // Side queue to store MDI commands
 static NML_INTERP_LIST mdi_execute_queue;
+
+// MDI input queue
+static NML_INTERP_LIST mdi_input_queue;
+#define  MAX_MDI_QUEUE 10
+static int max_mdi_queued_commands = MAX_MDI_QUEUE;
 
 /*
   checkInterpList(NML_INTERP_LIST *il, EMC_STAT *stat) takes a pointer
@@ -580,12 +581,14 @@ interpret_again:
 			    // record the line number and command
 			    emcStatus->task.readLine = emcTaskPlanLine();
 
-			    interp_list.set_line_number(emcStatus->task.
-							readLine);
 			    emcTaskPlanCommand((char *) &emcStatus->task.
 					       command);
 			    // and execute it
 			    execRetval = emcTaskPlanExecute(0);
+			    // line number may need update after
+			    // returns from subprograms in external
+			    // files
+			    emcStatus->task.readLine = emcTaskPlanLine();
 			    if (execRetval > INTERP_MIN_ERROR) {
 				emcStatus->task.interpState =
 				    EMC_TASK_INTERP_WAITING;
@@ -618,9 +621,9 @@ interpret_again:
 			    // throw the results away if we're supposed to
 			    // read
 			    // through it
-			    if (programStartLine < 0 ||
-				emcStatus->task.readLine <
-				programStartLine) {
+			    if ((programStartLine < 0 ||
+				 emcStatus->task.readLine < programStartLine) &&
+				emcTaskPlanLevel() == 0) {
 				// we're stepping over lines, so check them
 				// for
 				// limits, etc. and clear then out
@@ -637,7 +640,8 @@ interpret_again:
 				interp_list.clear();
 			    }
 
-			    if (emcStatus->task.readLine < programStartLine) {
+			    if (emcStatus->task.readLine < programStartLine &&
+				emcTaskPlanLevel() == 0) {
 			    
 				//update the position with our current position, as the other positions are only skipped through
 				CANON_UPDATE_END_POINT(emcStatus->motion.traj.actualPosition.tran.x,
@@ -674,6 +678,8 @@ interpret_again:
 
 static void mdi_execute_abort(void)
 {
+    int queued_mdi_commands;
+
     // XXX: Reset needed?
     if (mdi_execute_wait || mdi_execute_next)
         emcTaskPlanReset();
@@ -681,7 +687,13 @@ static void mdi_execute_abort(void)
     mdi_execute_wait = 0;
     mdi_execute_next = 0;
 
+    queued_mdi_commands = mdi_execute_queue.len();
+    if (queued_mdi_commands > 0) {
+        rcs_print("mdi_execute_abort: dropping %d queued MDI commands\n", queued_mdi_commands);
+    }
     mdi_execute_queue.clear();
+
+    emcStatus->task.interpState = EMC_TASK_INTERP_IDLE;
 }
 
 static void mdi_execute_hook(void)
@@ -699,9 +711,33 @@ static void mdi_execute_hook(void)
 	return;
     }
 
-    if (mdi_execute_level < 0 && !mdi_execute_wait && mdi_execute_queue.len()) {
+    if (
+        (mdi_execute_level < 0)
+        && (mdi_execute_wait == 0)
+        && (mdi_execute_queue.len() > 0)
+        && (interp_list.len() == 0)
+        && (emcTaskCommand == NULL)
+    ) {
 	interp_list.append(mdi_execute_queue.get());
 	return;
+    }
+
+    // determine when a MDI command actually finishes normally.
+    if (interp_list.len() == 0 &&
+	emcTaskCommand == 0 &&
+	emcStatus->task.execState ==  EMC_TASK_EXEC_DONE && 
+	emcStatus->task.interpState != EMC_TASK_INTERP_IDLE && 
+	emcStatus->motion.traj.queue == 0 &&
+	emcStatus->io.status == RCS_DONE && 
+	!mdi_execute_wait && 
+	!mdi_execute_next) {
+
+	// finished. Check for dequeuing of queued MDI command is done in emcTaskPlan().
+	if (emc_debug & EMC_DEBUG_TASK_ISSUE)
+	    rcs_print("mdi_execute_hook: MDI command '%s' done (remaining: %d)\n",
+		      emcStatus->task.command, mdi_input_queue.len());
+	emcStatus->task.command[0] = 0;
+	emcStatus->task.interpState = EMC_TASK_INTERP_IDLE;
     }
 
     if (!mdi_execute_next) return;
@@ -740,7 +776,6 @@ void readahead_waiting(void)
 		emcStatus->task.interpState = EMC_TASK_INTERP_IDLE;
 	    }
 	    emcStatus->task.readLine = 0;
-	    interp_list.set_line_number(0);
 	} else {
 	    // still executing
         }
@@ -795,6 +830,7 @@ static int emcTaskPlan(void)
 	    case EMC_AXIS_LOAD_COMP_TYPE:
 	    case EMC_AXIS_UNHOME_TYPE:
 	    case EMC_TRAJ_SET_SCALE_TYPE:
+	    case EMC_TRAJ_SET_RAPID_SCALE_TYPE:
 	    case EMC_TRAJ_SET_MAX_VELOCITY_TYPE:
 	    case EMC_TRAJ_SET_SPINDLE_SCALE_TYPE:
 	    case EMC_TRAJ_SET_FO_ENABLE_TYPE:
@@ -898,6 +934,7 @@ static int emcTaskPlan(void)
 	    case EMC_TRAJ_RESUME_TYPE:
 	    case EMC_TRAJ_ABORT_TYPE:
 	    case EMC_TRAJ_SET_SCALE_TYPE:
+	    case EMC_TRAJ_SET_RAPID_SCALE_TYPE:
 	    case EMC_TRAJ_SET_MAX_VELOCITY_TYPE:
 	    case EMC_TRAJ_SET_SPINDLE_SCALE_TYPE:
 	    case EMC_TRAJ_SET_FO_ENABLE_TYPE:
@@ -970,8 +1007,8 @@ static int emcTaskPlan(void)
 		// otherwise we can't handle it
 
 	    default:
-		emcOperatorError(0, _("can't do that (%s) in manual mode"),
-			emc_symbol_lookup(type));
+		emcOperatorError(0, _("can't do that (%s:%d) in manual mode"),
+				 emc_symbol_lookup(type),(int) type);
 		retval = -1;
 		break;
 
@@ -999,6 +1036,7 @@ static int emcTaskPlan(void)
 		case EMC_TRAJ_RESUME_TYPE:
 		case EMC_TRAJ_ABORT_TYPE:
 		case EMC_TRAJ_SET_SCALE_TYPE:
+		case EMC_TRAJ_SET_RAPID_SCALE_TYPE:
 		case EMC_TRAJ_SET_MAX_VELOCITY_TYPE:
 		case EMC_TRAJ_SET_SPINDLE_SCALE_TYPE:
 		case EMC_TRAJ_SET_FO_ENABLE_TYPE:
@@ -1096,6 +1134,7 @@ static int emcTaskPlan(void)
 		case EMC_TRAJ_RESUME_TYPE:
 		case EMC_TRAJ_ABORT_TYPE:
 		case EMC_TRAJ_SET_SCALE_TYPE:
+		case EMC_TRAJ_SET_RAPID_SCALE_TYPE:
                 case EMC_TRAJ_SET_MAX_VELOCITY_TYPE:
 		case EMC_TRAJ_SET_SPINDLE_SCALE_TYPE:
 		case EMC_TRAJ_SET_FO_ENABLE_TYPE:
@@ -1117,6 +1156,12 @@ static int emcTaskPlan(void)
 		case EMC_AUX_INPUT_WAIT_TYPE:
 		case EMC_TRAJ_RIGID_TAP_TYPE:
 		case EMC_SET_DEBUG_TYPE:
+                case EMC_COOLANT_MIST_ON_TYPE:
+                case EMC_COOLANT_MIST_OFF_TYPE:
+                case EMC_COOLANT_FLOOD_ON_TYPE:
+                case EMC_COOLANT_FLOOD_OFF_TYPE:
+                case EMC_LUBE_ON_TYPE:
+                case EMC_LUBE_OFF_TYPE:
 		    retval = emcTaskIssueCommand(emcCommand);
 		    return retval;
 		    break;
@@ -1159,6 +1204,7 @@ static int emcTaskPlan(void)
 		case EMC_TRAJ_RESUME_TYPE:
 		case EMC_TRAJ_ABORT_TYPE:
 		case EMC_TRAJ_SET_SCALE_TYPE:
+		case EMC_TRAJ_SET_RAPID_SCALE_TYPE:
 		case EMC_TRAJ_SET_MAX_VELOCITY_TYPE:
 		case EMC_TRAJ_SET_SPINDLE_SCALE_TYPE:
 		case EMC_TRAJ_SET_FO_ENABLE_TYPE:
@@ -1242,6 +1288,7 @@ static int emcTaskPlan(void)
 		case EMC_TRAJ_RESUME_TYPE:
 		case EMC_TRAJ_ABORT_TYPE:
 		case EMC_TRAJ_SET_SCALE_TYPE:
+		case EMC_TRAJ_SET_RAPID_SCALE_TYPE:
 		case EMC_TRAJ_SET_MAX_VELOCITY_TYPE:
 		case EMC_TRAJ_SET_SPINDLE_SCALE_TYPE:
 		case EMC_TRAJ_SET_FO_ENABLE_TYPE:
@@ -1264,6 +1311,12 @@ static int emcTaskPlan(void)
 		case EMC_AUX_INPUT_WAIT_TYPE:
 	        case EMC_TRAJ_RIGID_TAP_TYPE:
 		case EMC_SET_DEBUG_TYPE:
+                case EMC_COOLANT_MIST_ON_TYPE:
+                case EMC_COOLANT_MIST_OFF_TYPE:
+                case EMC_COOLANT_FLOOD_ON_TYPE:
+                case EMC_COOLANT_FLOOD_OFF_TYPE:
+                case EMC_LUBE_ON_TYPE:
+                case EMC_LUBE_OFF_TYPE:
 		    retval = emcTaskIssueCommand(emcCommand);
 		    break;
 
@@ -1312,6 +1365,7 @@ static int emcTaskPlan(void)
 	    case EMC_AXIS_SET_MIN_FERROR_TYPE:
 	    case EMC_AXIS_UNHOME_TYPE:
 	    case EMC_TRAJ_SET_SCALE_TYPE:
+	    case EMC_TRAJ_SET_RAPID_SCALE_TYPE:
 	    case EMC_TRAJ_SET_MAX_VELOCITY_TYPE:
 	    case EMC_TRAJ_SET_SPINDLE_SCALE_TYPE:
 	    case EMC_TRAJ_SET_FO_ENABLE_TYPE:
@@ -1337,7 +1391,6 @@ static int emcTaskPlan(void)
 	    case EMC_TASK_SET_STATE_TYPE:
 	    case EMC_TASK_PLAN_INIT_TYPE:
 	    case EMC_TASK_PLAN_OPEN_TYPE:
-	    case EMC_TASK_PLAN_EXECUTE_TYPE:
 	    case EMC_TASK_PLAN_PAUSE_TYPE:
 	    case EMC_TASK_PLAN_SET_OPTIONAL_STOP_TYPE:
 	    case EMC_TASK_PLAN_SET_BLOCK_DELETE_TYPE:
@@ -1355,6 +1408,23 @@ static int emcTaskPlan(void)
 		retval = emcTaskIssueCommand(emcCommand);
 		break;
 
+            case EMC_TASK_PLAN_EXECUTE_TYPE:
+                // If there are no queued MDI commands and no commands
+                // in interp_list, then this new incoming MDI command
+                // can just be issued directly.  Otherwise we need to
+                // queue it and deal with it later.
+                if (
+                    (mdi_execute_queue.len() == 0)
+                    && (interp_list.len() == 0)
+                    && (emcTaskCommand == NULL)
+                ) {
+                    retval = emcTaskIssueCommand(emcCommand);
+                } else {
+                    mdi_execute_queue.append(emcCommand);
+                    retval = 0;
+                }
+                break;
+
 	    case EMC_TOOL_LOAD_TOOL_TABLE_TYPE:
 	    case EMC_TOOL_SET_OFFSET_TYPE:
 		// send to IO
@@ -1367,8 +1437,8 @@ static int emcTaskPlan(void)
 
 		// otherwise we can't handle it
 	    default:
-		emcOperatorError(0, _("can't do that (%s) in MDI mode"),
-			emc_symbol_lookup(type));
+		emcOperatorError(0, _("can't do that (%s:%d) in MDI mode"),
+			emc_symbol_lookup(type),(int) type);
 
 		retval = -1;
 		break;
@@ -1695,6 +1765,11 @@ static int emcTaskIssueCommand(NMLmsg * cmd)
     case EMC_TRAJ_SET_SCALE_TYPE:
 	emcTrajSetScaleMsg = (EMC_TRAJ_SET_SCALE *) cmd;
 	retval = emcTrajSetScale(emcTrajSetScaleMsg->scale);
+	break;
+
+    case EMC_TRAJ_SET_RAPID_SCALE_TYPE:
+	emcTrajSetRapidScaleMsg = (EMC_TRAJ_SET_RAPID_SCALE *) cmd;
+	retval = emcTrajSetRapidScale(emcTrajSetRapidScaleMsg->scale);
 	break;
 
     case EMC_TRAJ_SET_MAX_VELOCITY_TYPE:
@@ -2090,26 +2165,26 @@ static int emcTaskIssueCommand(NMLmsg * cmd)
             retval = -1;
             break;
         }
+	// track interpState also during MDI - it might be an oword sub call
+	emcStatus->task.interpState = EMC_TASK_INTERP_READING;
+
 	if (execute_msg->command[0] != 0) {
 	    char * command = execute_msg->command;
 	    if (command[0] == (char) 0xff) {
 		// Empty command recieved. Consider it is NULL
 		command = NULL;
-	    }
-
-	    if ((mdi_execute_level >= 0 || mdi_execute_wait) && command) {
-		mdi_execute_queue.append(execute_msg);
-		break;
+	    } else {
+		// record initial MDI command
+		strcpy(emcStatus->task.command, execute_msg->command);
 	    }
 
 	    int level = emcTaskPlanLevel();
 	    if (emcStatus->task.mode == EMC_TASK_MODE_MDI) {
-		interp_list.set_line_number(++pseudoMdiLineNumber);
 		if (mdi_execute_level < 0)
 		    mdi_execute_level = level;
 	    }
 
-	    execRetval = emcTaskPlanExecute(command, pseudoMdiLineNumber);
+	    execRetval = emcTaskPlanExecute(command, 0);
 
 	    level = emcTaskPlanLevel();
 
@@ -2126,7 +2201,9 @@ static int emcTaskIssueCommand(NMLmsg * cmd)
 		    }
 		}
 	    }
-	    if (execRetval == INTERP_EXECUTE_FINISH) {
+	    switch (execRetval) {
+
+	    case INTERP_EXECUTE_FINISH:
 		// Flag MDI wait
 		mdi_execute_wait = 1;
 		// need to flush execution, so signify no more reading
@@ -2136,10 +2213,28 @@ static int emcTaskIssueCommand(NMLmsg * cmd)
 		emcTaskQueueCommand(&taskPlanSynchCmd);
 		// it's success, so retval really is 0
 		retval = 0;
-	    } else if (execRetval != 0) {
-		// this causes the error msh on M2 in MDI mode - execRetval == INTERP_EXIT which is would be ok (I think). mah
+		break;
+
+	    case INTERP_ERROR:
+		// emcStatus->task.interpState =  EMC_TASK_INTERP_WAITING;
+		interp_list.clear();
+		// abort everything
+		emcTaskAbort();
+		emcIoAbort(EMC_ABORT_INTERPRETER_ERROR_MDI);
+		emcSpindleAbort(); 
+		mdi_execute_abort(); // sets emcStatus->task.interpState to  EMC_TASK_INTERP_IDLE
+		emcAbortCleanup(EMC_ABORT_INTERPRETER_ERROR_MDI, "interpreter error during MDI");
 		retval = -1;
-	    } else {
+		break;
+
+	    case INTERP_EXIT:
+	    case INTERP_ENDFILE:
+	    case INTERP_FILE_NOT_OPEN:
+		// this caused the error msg on M2 in MDI mode - execRetval == INTERP_EXIT which is would be ok (I think). mah
+		retval = -1;
+		break;
+
+	    default:
 		// other codes are OK
 		retval = 0;
 	    }
@@ -2492,25 +2587,6 @@ static int emcTaskExecute(void)
 		emcStatus->task.execState = (enum EMC_TASK_EXEC_ENUM)
 		    emcTaskCheckPreconditions(emcTaskCommand);
 		emcTaskEager = 1;
-	    } else {
-		emcStatus->task.execState = EMC_TASK_EXEC_DONE;
-		emcTaskEager = 1;
-	    }
-	}
-	break;
-
-    case EMC_TASK_EXEC_WAITING_FOR_PAUSE:
-	STEPPING_CHECK();
-	if (emcStatus->task.interpState != EMC_TASK_INTERP_PAUSED) {
-	    if (0 != emcTaskCommand) {
-		if (emcStatus->motion.traj.queue > 0) {
-		    emcStatus->task.execState =
-			EMC_TASK_EXEC_WAITING_FOR_MOTION_QUEUE;
-		} else {
-		    emcStatus->task.execState = (enum EMC_TASK_EXEC_ENUM)
-			emcTaskCheckPreconditions(emcTaskCommand);
-		    emcTaskEager = 1;
-		}
 	    } else {
 		emcStatus->task.execState = EMC_TASK_EXEC_DONE;
 		emcTaskEager = 1;
@@ -3113,6 +3189,11 @@ static int iniLoad(const char *filename)
 	io_error = strdup(inistring);
     }
 
+    // max number of queued MDI commands
+    if (NULL != (inistring = inifile.Find("MDI_QUEUED_COMMANDS", "TASK"))) {
+	max_mdi_queued_commands = atoi(inistring);
+    }
+
     // close it
     inifile.Close();
 
@@ -3127,16 +3208,15 @@ int main(int argc, char *argv[])
     int taskPlanError = 0;
     int taskExecuteError = 0;
     double startTime, endTime, deltaTime;
+    double first_start_time;
+    int num_latency_warnings = 0;
+    int latency_excursion_factor = 10;  // if latency is worse than (factor * expected), it's an excursion
     double minTime, maxTime;
 
     bindtextdomain("linuxcnc", EMC2_PO_DIR);
     setlocale(LC_MESSAGES,"");
     setlocale(LC_CTYPE,"");
     textdomain("linuxcnc");
-
-    // copy command line args
-    Argc = argc;
-    Argv = argv;
 
     // loop until done
     done = 0;
@@ -3210,13 +3290,16 @@ int main(int argc, char *argv[])
     emcStatus->debug = emc_debug;
 
     startTime = etime();	// set start time before entering loop;
+    first_start_time = startTime;
+    endTime = startTime;
     // it will be set at end of loop from now on
     minTime = DBL_MAX;		// set to value that can never be exceeded
     maxTime = 0.0;		// set to value that can never be underset
 
     while (!done) {
+        check_ini_hal_items();
 	// read command
-	if (0 != emcCommandBuffer->peek()) {
+	if (0 != emcCommandBuffer->read()) {
 	    // got a new command, so clear out errors
 	    taskPlanError = 0;
 	    taskExecuteError = 0;
@@ -3304,10 +3387,10 @@ int main(int argc, char *argv[])
 	    // 	emcOperatorError(0, "wait for orient complete timed out");
 	    // }
 
-        // abort everything
-        emcTaskAbort();
-        emcIoAbort(EMC_ABORT_MOTION_OR_IO_RCS_ERROR);
-        emcSpindleAbort();
+            // abort everything
+            emcTaskAbort();
+            emcIoAbort(EMC_ABORT_MOTION_OR_IO_RCS_ERROR);
+            emcSpindleAbort();
 	    mdi_execute_abort();
 	    // without emcTaskPlanClose(), a new run command resumes at
 	    // aborted line-- feature that may be considered later
@@ -3361,6 +3444,7 @@ int main(int argc, char *argv[])
 		   emcStatus->task.execState == EMC_TASK_EXEC_DONE &&
 		   emcStatus->motion.status == RCS_DONE &&
 		   emcStatus->io.status == RCS_DONE &&
+		   mdi_execute_queue.len() == 0 &&
 		   interp_list.len() == 0 &&
 		   emcTaskCommand == 0 &&
 		   emcStatus->task.interpState == EMC_TASK_INTERP_IDLE) {
@@ -3381,15 +3465,19 @@ int main(int argc, char *argv[])
 	// interval if ini file says to run full out via
 	// [TASK] CYCLE_TIME <= 0.0d
 	// emcTaskEager = 0;
-	if (emcTaskNoDelay) {
-	    endTime = etime();
-	    deltaTime = endTime - startTime;
-	    if (deltaTime < minTime)
-		minTime = deltaTime;
-	    else if (deltaTime > maxTime)
-		maxTime = deltaTime;
-	    startTime = endTime;
-	}
+        endTime = etime();
+        deltaTime = endTime - startTime;
+        if (deltaTime < minTime)
+            minTime = deltaTime;
+        else if (deltaTime > maxTime)
+            maxTime = deltaTime;
+        startTime = endTime;
+        if (deltaTime > (latency_excursion_factor * emc_task_cycle_time)) {
+            if (num_latency_warnings < 10) {
+                rcs_print("task: main loop took %.6f seconds\n", deltaTime);
+            }
+            num_latency_warnings ++;
+        }
 
 	if ((emcTaskNoDelay) || (emcTaskEager)) {
 	    emcTaskEager = 0;
@@ -3399,15 +3487,20 @@ int main(int argc, char *argv[])
     }
     // end of while (! done)
 
+    rcs_print(
+        "task: %u cycles, min=%.6f, max=%.6f, avg=%.6f, %u latency excursions (> %dx expected cycle time of %.6fs)\n",
+        emcStatus->task.heartbeat,
+        minTime,
+        maxTime,
+        (emcStatus->task.heartbeat != 0) ?  (endTime - first_start_time) / emcStatus->task.heartbeat : -1.0,
+        num_latency_warnings,
+        latency_excursion_factor,
+        emc_task_cycle_time
+    );
+
     // clean up everything
     emctask_shutdown();
-    /* debugging */
-    if (emcTaskNoDelay) {
-	if (emc_debug & EMC_DEBUG_TASK_ISSUE) {
-	    rcs_print("cycle times (seconds): %f min, %f max\n", minTime,
-	       maxTime);
-	}
-    }
+
     // and leave
     exit(0);
 }

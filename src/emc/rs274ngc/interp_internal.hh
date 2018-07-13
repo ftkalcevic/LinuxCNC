@@ -13,7 +13,7 @@
 #ifndef INTERP_INTERNAL_HH
 #define INTERP_INTERNAL_HH
 
-#include <boost/python.hpp>
+#include <algorithm>
 #include "config.h"
 #include <limits.h>
 #include <stdio.h>
@@ -23,7 +23,8 @@
 #include "canon.hh"
 #include "emcpos.h"
 #include "libintl.h"
-#include "python_plugin.hh"
+#include <boost/python/object_fwd.hpp>
+#include <cmath>
 
 
 #define _(s) gettext(s)
@@ -32,19 +33,18 @@
 /*   COMPILER MACROS  */
 /**********************/
 
-#ifndef R2D
-#define R2D(r) ((r)*180.0/M_PI)
-#endif
-#ifndef D2R
-#define D2R(r) ((r)*M_PI/180.0)
-#endif
-#ifndef SQ
-#define SQ(a) ((a)*(a))
-#endif
+template<class T>
+T R2D(T r) { return r * (180. / M_PI); }
+template<class T>
+T D2R(T r) { return r * (M_PI / 180.); }
+template<class T>
+T SQ(T a) { return a*a; }
 
-#define MAX(x, y)        ((x) > (y) ? (x) : (y))
+template<class T>
+inline int round_to_int(T x) {
+    return (int)std::nearbyint(x);
+}
 
-#define round_to_int(x) ((int) ((x) < 0.0 ? ((x) - 0.5) : ((x) + 0.5)))
 /* how far above hole bottom for rapid return, in inches */
 #define G83_RAPID_DELTA 0.010
 
@@ -54,22 +54,52 @@
  */
 #define MAX_NESTED_REMAPS 10
 
+// English - Metric conversion (long number keeps error buildup down)
+#define MM_PER_INCH 25.4
+//#define INCH_PER_MM 0.039370078740157477
+
 /* numerical constants */
-#define TOLERANCE_INCH 0.0005
-#define TOLERANCE_MM 0.005
+
+/*****************************************************************************
+The default tolerance (if none tighter is specified in the ini file) should be:
+2 * 0.001 * sqrt(2) for inch, and 2 * 0.01 * sqrt(2) for mm.
+This would mean that any valid arc where the endpoints and/or centerpoint
+got rounded or truncated to 0.001 inch or 0.01 mm precision would be accepted.
+
+Tighter tolerance down to a minimum of 1 micron +- also accepted.
+******************************************************************************/
+
+#define CENTER_ARC_RADIUS_TOLERANCE_INCH (2 * 0.001 * M_SQRT2)
+#define MIN_CENTER_ARC_RADIUS_TOLERANCE_INCH 0.00004
+
+// Note: started from original tolerance and divided by 10 here (since that was originally done inside the interpreter)
+#define RADIUS_TOLERANCE_INCH 0.00005
+
+/* Equivalent metric constants */
+
+#define CENTER_ARC_RADIUS_TOLERANCE_MM (2 * 0.01 * M_SQRT2)
+#define MIN_CENTER_ARC_RADIUS_TOLERANCE_MM 0.001
+
+#define RADIUS_TOLERANCE_MM (RADIUS_TOLERANCE_INCH * MM_PER_INCH)
+
+// Modest relative error
+#define SPIRAL_RELATIVE_TOLERANCE 0.001
+
 /* angle threshold for concavity for cutter compensation, in radians */
 #define TOLERANCE_CONCAVE_CORNER 0.05  
 #define TOLERANCE_EQUAL 0.0001 /* two numbers compare EQ if the
 				  difference is less than this */
 
+static inline bool equal(double a, double b)
+{
+    return (fabs(a - b) < TOLERANCE_EQUAL);
+}
+
+
 #define TINY 1e-12              /* for arc_data_r */
 
 // max number of m codes on one line
 #define MAX_EMS  4
-
-// English - Metric conversion (long number keeps error buildup down)
-#define MM_PER_INCH 25.4
-//#define INCH_PER_MM 0.039370078740157477
 
 // feed_mode
 enum feed_mode { UNITS_PER_MINUTE=0, INVERSE_TIME=1, UNITS_PER_REVOLUTION=2 };
@@ -181,9 +211,11 @@ enum SPINDLE_MODE { CONSTANT_RPM, CONSTANT_SURFACE };
 #define G_42_1 421
 #define G_43   430
 #define G_43_1 431
+#define G_43_2 432
 #define G_49   490
 #define G_50   500
 #define G_51   510
+#define G_52   520
 #define G_53   530
 #define G_54   540
 #define G_55   550
@@ -339,6 +371,8 @@ typedef int_remap_map::iterator int_remap_iterator;
 
 typedef struct block_struct
 {
+  block_struct ();
+
   bool a_flag;
   double a_number;
   bool b_flag;
@@ -495,8 +529,9 @@ typedef parameter_map::iterator parameter_map_iterator;
 #define PA_READONLY	1
 #define PA_GLOBAL	2
 #define PA_UNSET	4
-#define PA_USE_LOOKUP	8  // use lookup_named_param() to retrieve value
+#define PA_USE_LOOKUP	8   // use lookup_named_param() to retrieve value
 #define PA_FROM_INI	16  // a variable of the form '_[section]value' was retrieved from the ini file
+#define PA_PYTHON	32  // call namedparams.<varname>() to retrieve the value
 
 // optional 3rd arg to store_named_param()
 // flag initialization of r/o parameter
@@ -505,10 +540,21 @@ typedef parameter_map::iterator parameter_map_iterator;
 #define MAX_REMAPOPTS 20
 // current implementation limits - legal modal groups
 // for M and G codes
-#define M_MODE_OK(m) ((m > 4) && (m < 11))
+#define M_MODE_OK(m) ((m > 3) && (m < 11))
 #define G_MODE_OK(m) (m == 1)
 
+struct pycontext_impl;
+struct pycontext {
+    pycontext();
+    pycontext(const struct pycontext &);
+    pycontext &operator=(const struct pycontext &);
+    ~pycontext();
+    pycontext_impl *impl;
+};
+
 typedef struct context_struct {
+    context_struct();
+
     long position;       // location (ftell) in file
     int sequence_number; // location (line number) in file
     const char *filename;      // name of file for this context
@@ -520,14 +566,8 @@ typedef struct context_struct {
     int saved_m_codes[ACTIVE_M_CODES];  // array of active M codes
     double saved_settings[ACTIVE_SETTINGS];     // array of feed, speed, etc.
     int call_type; // enum call_types
+    pycontext pystuff;
     // Python-related stuff
-    boost::python::object tupleargs; // the args tuple for Py functions
-    boost::python::object kwargs; // the args dict for Py functions
-    int py_return_type;   // type of Python return value - enum retopts 
-    double py_returned_double;
-    int py_returned_int;
-    // generator object next method as returned if Python function contained a yield statement
-    boost::python::object generator_next; 
 } context;
 
 typedef context *context_pointer;
@@ -568,6 +608,9 @@ and is not represented here
 
 typedef struct setup_struct
 {
+  setup_struct();
+  ~setup_struct();
+
   double AA_axis_offset;        // A-axis g92 offset
   double AA_current;            // current A-axis position
   double AA_origin_offset;      // A-axis origin offset
@@ -626,6 +669,8 @@ typedef struct setup_struct
   FILE *file_pointer;           // file pointer for open NC code file
   bool flood;                 // whether flood coolant is on
   CANON_UNITS length_units;     // millimeters or inches
+  double center_arc_radius_tolerance_inch; // modify with ini setting
+  double center_arc_radius_tolerance_mm;   // modify with ini setting
   int line_length;              // length of line last read
   char linetext[LINELEN];       // text of most recent line read
   bool mist;                  // whether mist coolant is on
@@ -714,6 +759,8 @@ typedef struct setup_struct
   bool mdi_interrupt;
   int feature_set; 
 
+  int disable_g92_persistence;
+
 #define FEATURE(x) (_setup.feature_set & FEATURE_ ## x)
 #define FEATURE_RETAIN_G43           0x00000001
 #define FEATURE_OWORD_N_ARGS         0x00000002
@@ -721,18 +768,24 @@ typedef struct setup_struct
 #define FEATURE_HAL_PIN_VARS         0x00000008
     // do not lowercase named params inside comments - for #<_hal[PinName]>
 #define FEATURE_NO_DOWNCASE_OWORD    0x00000010
+#define FEATURE_OWORD_WARNONLY       0x00000020
 
-    boost::python::object pythis;  // boost::cref to 'this'
+    boost::python::object *pythis;  // boost::cref to 'this'
     const char *on_abort_command;
     int_remap_map  g_remapped,m_remapped;
     remap_map remaps;
+#define INIT_FUNC  "__init__"
+#define DELETE_FUNC  "__delete__"
 
+    // task calls upon interp.init() repeatedly
+    // protect init() operations which are not idempotent
+    int init_once;  
 } setup;
 
 typedef setup *setup_pointer;
 // the externally visible singleton instance
 
-extern    PythonPlugin *python_plugin;
+extern class PythonPlugin *python_plugin;
 #define PYUSABLE (((python_plugin) != NULL) && (python_plugin->usable()))
 
 inline bool is_a_cycle(int motion) {
@@ -754,6 +807,7 @@ macros totally crash-proof. If the function call stack is deeper than
 49, the top of the stack will be missing.
 
 */
+
 
 // Just set an error string using printf-style formats, do NOT return
 #define ERM(fmt, ...)                                      \
@@ -831,6 +885,28 @@ macros totally crash-proof. If the function call stack is deeper than
     } while(0)
 
 
+// oword warnings 
+#define OERR(fmt, ...)                                      \
+    do {						    \
+	if (FEATURE(OWORD_WARNONLY))			    \
+	    fprintf(stderr,fmt, ## __VA_ARGS__);	    \
+	else						    \
+	    ERS(fmt, ## __VA_ARGS__);			    \
+    } while(0)
+
+
+//
+// The traverse (in the active plane) to the location of the canned cycle
+// is different on the first repeat vs on all the following repeats.
+//
+// The first traverse happens in the CURRENT_CC plane (which was raised to
+// the R plane earlier, if needed), followed by a traverse down to the R
+// plane.
+//
+// All later positioning moves happen in the CLEAR_CC plane, which is
+// either the R plane or the OLD_CC plane depending on G98/G99.
+//
+
 #define CYCLE_MACRO(call) for (repeat = block->l_number; \
                                repeat > 0; \
                                repeat--) \
@@ -853,9 +929,16 @@ macros totally crash-proof. If the function call stack is deeper than
            aa = radius * cos(theta); \
            bb = radius * sin(theta); \
        } \
-       cycle_traverse(block, plane, aa, bb, current_cc); \
-       if (old_cc != r) \
+       if ((repeat == block->l_number) && (current_cc > r)) { \
+         cycle_traverse(block, plane, aa, bb, current_cc); \
          cycle_traverse(block, plane, aa, bb, r); \
+       } else { \
+         /* we must be at CLEAR_CC already */ \
+         cycle_traverse(block, plane, aa, bb, clear_cc); \
+         if (clear_cc > r) { \
+           cycle_traverse(block, plane, aa, bb, r); \
+         } \
+       } \
        CHP(call); \
      }
 

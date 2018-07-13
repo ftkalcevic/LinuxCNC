@@ -19,6 +19,7 @@
 #include "emcglb.h"		// EMC_AXIS_MAX
 #include "nml_type.hh"
 #include "motion_types.h"
+#include <stdint.h>
 
 // Forward class declarations
 class EMC_AXIS_STAT;
@@ -36,8 +37,8 @@ class CMS;
 class RCS_CMD_CHANNEL;
 class RCS_STAT_CHANNEL;
 class NML;
-class EmcPose;
-class PM_CARTESIAN;
+struct EmcPose;
+struct PM_CARTESIAN;
 
 // ---------------------
 // EMC TYPE DECLARATIONS
@@ -97,7 +98,8 @@ class PM_CARTESIAN;
 
 // defs for termination conditions
 
-#define EMC_TRAJ_TERM_COND_STOP  1
+#define EMC_TRAJ_TERM_COND_STOP  0
+#define EMC_TRAJ_TERM_COND_EXACT 1
 #define EMC_TRAJ_TERM_COND_BLEND 2
 
 #define EMC_TRAJ_SET_AXES_TYPE                       ((NMLTYPE) 201)
@@ -109,6 +111,7 @@ class PM_CARTESIAN;
 #define EMC_TRAJ_SET_MAX_VELOCITY_TYPE               ((NMLTYPE) 207)
 #define EMC_TRAJ_SET_MAX_ACCELERATION_TYPE           ((NMLTYPE) 208)
 #define EMC_TRAJ_SET_SCALE_TYPE                      ((NMLTYPE) 209)
+#define EMC_TRAJ_SET_RAPID_SCALE_TYPE                ((NMLTYPE) 238)
 #define EMC_TRAJ_SET_MOTION_ID_TYPE                  ((NMLTYPE) 210)
 
 #define EMC_TRAJ_INIT_TYPE                           ((NMLTYPE) 211)
@@ -304,7 +307,6 @@ enum EMC_TASK_EXEC_ENUM {
     EMC_TASK_EXEC_WAITING_FOR_MOTION = 3,
     EMC_TASK_EXEC_WAITING_FOR_MOTION_QUEUE = 4,
     EMC_TASK_EXEC_WAITING_FOR_IO = 5,
-    EMC_TASK_EXEC_WAITING_FOR_PAUSE = 6,
     EMC_TASK_EXEC_WAITING_FOR_MOTION_AND_IO = 7,
     EMC_TASK_EXEC_WAITING_FOR_DELAY = 8,
     EMC_TASK_EXEC_WAITING_FOR_SYSTEM_CMD = 9,
@@ -337,6 +339,7 @@ enum EMC_IO_ABORT_REASON_ENUM {
 	EMC_ABORT_TASK_STATE_NOT_ON = 7,
 	EMC_ABORT_TASK_ABORT = 8,
 	EMC_ABORT_INTERPRETER_ERROR = 9,	// interpreter failed during readahead
+	EMC_ABORT_INTERPRETER_ERROR_MDI = 10,	// interpreter failed during MDI execution
 	EMC_ABORT_USER = 100  // user-defined abort codes start here
 };
 // --------------
@@ -347,7 +350,7 @@ enum EMC_IO_ABORT_REASON_ENUM {
 extern int emcFormat(NMLTYPE type, void *buffer, CMS * cms);
 
 // NML Symbol Lookup Function
-extern const char *emc_symbol_lookup(long type);
+extern const char *emc_symbol_lookup(uint32_t type);
 #define emcSymbolLookup(a) emc_symbol_lookup(a)
 
 // decls for command line args-- mains are responsible for setting these
@@ -411,13 +414,14 @@ extern int emcAxisUpdate(EMC_AXIS_STAT stat[], int numAxes);
 extern int emcTrajSetAxes(int axes, int axismask);
 extern int emcTrajSetUnits(double linearUnits, double angularUnits);
 extern int emcTrajSetCycleTime(double cycleTime);
-extern int emcTrajSetMode(int axes);
+extern int emcTrajSetMode(int traj_mode);
 extern int emcTrajSetTeleopVector(EmcPose vel);
 extern int emcTrajSetVelocity(double vel, double ini_maxvel);
 extern int emcTrajSetAcceleration(double acc);
 extern int emcTrajSetMaxVelocity(double vel);
 extern int emcTrajSetMaxAcceleration(double acc);
 extern int emcTrajSetScale(double scale);
+extern int emcTrajSetRapidScale(double scale);
 extern int emcTrajSetFOEnable(unsigned char mode);   //feed override enable
 extern int emcTrajSetFHEnable(unsigned char mode);   //feed hold enable
 extern int emcTrajSetSpindleScale(double scale);
@@ -467,35 +471,6 @@ extern int emcMotionSetDout(unsigned char index, unsigned char start,
 
 extern int emcMotionUpdate(EMC_MOTION_STAT * stat);
 
-// implementation functions for EMC_TASK types
-
-extern int emcTaskInit();
-extern int emcTaskHalt();
-extern int emcTaskAbort();
-extern int emcTaskSetMode(int mode);
-extern int emcTaskSetState(int state);
-extern int emcTaskPlanInit();
-extern int emcTaskPlanSetWait();
-extern int emcTaskPlanIsWait();
-extern int emcTaskPlanClearWait();
-extern int emcTaskPlanSynch();
-extern int emcTaskPlanSetOptionalStop(bool state);
-extern int emcTaskPlanSetBlockDelete(bool state);
-extern int emcTaskPlanExit();
-extern int emcTaskPlanOpen(const char *file);
-extern int emcTaskPlanRead();
-extern int emcTaskPlanExecute(const char *command);
-extern int emcTaskPlanExecute(const char *command, int line_number); //used in case of MDI to pass the pseudo line number to interp
-extern int emcTaskPlanPause();
-extern int emcTaskPlanResume();
-extern int emcTaskPlanClose();
-extern int emcTaskPlanReset();
-
-extern int emcTaskPlanLine();
-extern int emcTaskPlanLevel();
-extern int emcTaskPlanCommand(char *cmd);
-
-extern int emcTaskUpdate(EMC_TASK_STAT * stat);
 extern int emcAbortCleanup(int reason,const char *message = "");
 
 // implementation functions for EMC_TOOL types
@@ -572,6 +547,15 @@ extern int emcIoUpdate(EMC_IO_STAT * stat);
 extern int emcInit();
 extern int emcHalt();
 extern int emcAbort();
+
+int emcSetMaxFeedOverride(double maxFeedScale);
+int emcSetupArcBlends(int arcBlendEnable,
+        int arcBlendFallbackEnable,
+        int arcBlendOptDepth,
+        int arcBlendGapCycles,
+        double arcBlendRampFreq,
+        double arcBlendTangentKinkRatio);
+int emcSetProbeErrorInhibit(int j_inhibit, int h_inhibit);
 
 extern int emcUpdate(EMC_STAT * stat);
 // full EMC status

@@ -246,19 +246,19 @@ sets the EMC_DEBUG global here to the same value. This will make the
 two values the same, since they really ought to be the same.
 .RE
 .P
-\fBset_wait {none|received|done}\fR
+\fBset_wait {received|done}\fR
 .RS
 The set_wait setting controls the wait after receiving a command.
-It can be "none" (return right away), "received" (after the command was
-sent and received), or "done" (after the command was done).  With get,
-any parameter is ignored and the current set_wait setting is returned.
-With set, set the set_wait setting to the specified value.
+It can be "received" (after the command was sent and received) or "done"
+(after the command was done).  With get, any parameter is ignored and the
+current set_wait setting is returned.  With set, set the set_wait setting
+to the specified value.
 .RE
 .P
 \fBwait {received|done}\fR
 .RS
 With set, force a wait for the previous command to be received, or
-done. This lets you wait in the event that "set_wait none" is in effect.
+done.
 .RE
 .P
 \fBset_timeout <timeout>\fR
@@ -480,7 +480,9 @@ With set, initializes the program interpreter.
 .P
 \fBopen <filename>\fR
 .RS
-With set, opens the named file.
+With set, opens the named file.  The <filename> is opened by linuxcnc,
+so it should either be an absolute path or a relative path starting in
+the linuxcnc working directory (the directory of the active .ini file).
 .RE
 .P
 \fBrun [<StartLine>]\fR
@@ -665,7 +667,7 @@ The user connects to linuxcncrsh, handshakes with the server (hello), enables
 machine commanding from this session (set enable), brings the machine
 out of estop (set estop off) and turns it on (set machine on), homes all
 the axes, switches the machine to mdi mode, sends an MDI g-code command,
-then disconnects and shuts down emc.
+then disconnects and shuts down LinuxCNC.
 .P
 > \fBtelnet localhost 5007\fR
 .br

@@ -181,14 +181,15 @@ def main():
 
     #try loading as a libglade project
     try:
-        builder = gtk.glade.XML(xmlname)
-        builder = GladeBuilder(builder)
+        builder = gtk.Builder()
+        builder.add_from_file(xmlname)
     except:
         try:
             # try loading as a gtk.builder project
-            dbg("**** GLADE VCP INFO:    Not a libglade project, trying to load as a GTK builder project")
-            builder = gtk.Builder()
-            builder.add_from_file(xmlname)
+            dbg("**** GLADE VCP INFO:    Not a builder project, trying to load as a lib glade project")
+            builder = gtk.glade.XML(xmlname)
+            builder = GladeBuilder(builder)
+
         except Exception,e:
             print >> sys.stderr, "**** GLADE VCP ERROR:    With xml file: %s : %s" % (xmlname,e)
             sys.exit(0)
@@ -273,7 +274,10 @@ def main():
         window.window.maximize()
 
     if opts.halfile:
-        cmd = ["halcmd", "-f", opts.halfile]
+        if opts.halfile[-4:] == ".tcl":
+            cmd = ["haltcl", opts.halfile]
+        else:
+            cmd = ["halcmd", "-f", opts.halfile]
         res = subprocess.call(cmd, stdout=sys.stdout, stderr=sys.stderr)
         if res:
             print >> sys.stderr, "'%s' exited with %d" %(' '.join(cmd), res)

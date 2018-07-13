@@ -4,9 +4,11 @@
 rtapi_app_main \- User-provided function to initialize a component
 
 .SH SYNTAX
+.nf
+.B #include <rtapi_app.h>
 .HP
-#include "rtapi_app.h"
-int \fBrtapi_app_main\fR(void) { \fI...\fR }
+.BI "int rtapi_app_main(void) {" ... "}"
+.fi
 .SH ARGUMENTS
 None
 

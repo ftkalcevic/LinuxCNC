@@ -320,11 +320,13 @@ int Interp::convert_cycle_g85(block_pointer block,
                               CANON_PLANE plane, //!< selected plane                  
                               double x,  //!< x-value where cycle is executed 
                               double y,  //!< y-value where cycle is executed 
+                              double r,  // retract plane
                               double clear_z,    //!< z-value of clearance plane      
                               double bottom_z)   //!< value of z at bottom of cycle   
 {
   cycle_feed(block, plane, x, y, bottom_z);
-  cycle_feed(block, plane, x, y, clear_z);
+  cycle_feed(block, plane, x, y, r);
+  cycle_traverse(block, plane, x, y, clear_z);
 
   return INTERP_OK;
 }
@@ -860,11 +862,14 @@ int Interp::convert_cycle_xy(int motion, //!< a g-code between G_81 and G_89, a 
     ERS(NCE_BUG_DISTANCE_MODE_NOT_G90_OR_G91);
   CHKS((r < cc), NCE_R_LESS_THAN_Z_IN_CYCLE_IN_XY_PLANE);
 
+  // First motion of a canned cycle (maybe): if we're below the R plane,
+  // rapid straight up to the R plane.
   if (old_cc < r) {
     STRAIGHT_TRAVERSE(block->line_number, settings->current_x, settings->current_y, r,
                       settings->AA_current, settings->BB_current, settings->CC_current, 
                       settings->u_current, settings->v_current, settings->w_current);
     old_cc = r;
+    current_cc = old_cc;
   }
   clear_cc = (settings->retract_mode == R_PLANE) ? r : old_cc;
 
@@ -909,7 +914,7 @@ int Interp::convert_cycle_xy(int motion, //!< a g-code between G_81 and G_89, a 
                                   settings->spindle_turning,
                                   settings->speed_feed_mode)) break;
   case G_85:
-      CYCLE_MACRO(convert_cycle_g85(block, CANON_PLANE_XY, aa, bb, clear_cc, cc))
+      CYCLE_MACRO(convert_cycle_g85(block, CANON_PLANE_XY, aa, bb, r, clear_cc, cc))
       break;
   case G_86:
     CHKS(((settings->motion_mode != G_86) && (block->p_number == -1.0)),
@@ -1035,6 +1040,7 @@ int Interp::convert_cycle_uv(int motion, //!< a g-code between G_81 and G_89, a 
                       settings->AA_current, settings->BB_current, settings->CC_current, 
                       settings->u_current, settings->v_current, r);
     old_cc = r;
+    current_cc = old_cc;
   }
   clear_cc = (settings->retract_mode == R_PLANE) ? r : old_cc;
 
@@ -1079,7 +1085,7 @@ int Interp::convert_cycle_uv(int motion, //!< a g-code between G_81 and G_89, a 
                                   settings->spindle_turning,
                                   settings->speed_feed_mode)) break;
   case G_85:
-    CYCLE_MACRO(convert_cycle_g85(block, CANON_PLANE_UV, aa, bb, clear_cc, cc))
+    CYCLE_MACRO(convert_cycle_g85(block, CANON_PLANE_UV, aa, bb, r, clear_cc, cc))
       break;
   case G_86:
     CHKS(((settings->motion_mode != G_86) && (block->p_number == -1.0)),
@@ -1251,6 +1257,7 @@ int Interp::convert_cycle_yz(int motion, //!< a g-code between G_81 and G_89, a 
                       settings->AA_current, settings->BB_current, settings->CC_current,
                       settings->u_current, settings->v_current, settings->w_current);
     old_cc = r;
+    current_cc = old_cc;
   }
   clear_cc = (settings->retract_mode == R_PLANE) ? r : old_cc;
 
@@ -1295,7 +1302,7 @@ int Interp::convert_cycle_yz(int motion, //!< a g-code between G_81 and G_89, a 
                                   settings->spindle_turning,
                                   settings->speed_feed_mode)) break;
   case G_85:
-    CYCLE_MACRO(convert_cycle_g85(block, CANON_PLANE_YZ, aa, bb, clear_cc, cc))
+    CYCLE_MACRO(convert_cycle_g85(block, CANON_PLANE_YZ, aa, bb, r, clear_cc, cc))
       break;
   case G_86:
     CHKS(((settings->motion_mode != G_86) && (block->p_number == -1.0)),
@@ -1384,7 +1391,7 @@ int Interp::convert_cycle_vw(int motion, //!< a g-code between G_81 and G_89, a 
 
   plane = CANON_PLANE_VW;
   if (settings->motion_mode != motion) {
-    CHKS((!block->x_flag),
+    CHKS((!block->u_flag),
         _readers[(int)'u']? NCE_U_VALUE_UNSPECIFIED_IN_VW_PLANE_CANNED_CYCLE: _("G19.1 canned cycle is not possible on a machine without U axis"));
   }
   block->u_number =
@@ -1419,6 +1426,7 @@ int Interp::convert_cycle_vw(int motion, //!< a g-code between G_81 and G_89, a 
                       settings->AA_current, settings->BB_current, settings->CC_current,
                       r, settings->v_current, settings->w_current);
     old_cc = r;
+    current_cc = old_cc;
   }
   clear_cc = (settings->retract_mode == R_PLANE) ? r : old_cc;
 
@@ -1463,7 +1471,7 @@ int Interp::convert_cycle_vw(int motion, //!< a g-code between G_81 and G_89, a 
                                   settings->spindle_turning,
                                   settings->speed_feed_mode)) break;
   case G_85:
-    CYCLE_MACRO(convert_cycle_g85(block, CANON_PLANE_VW, aa, bb, clear_cc, cc))
+    CYCLE_MACRO(convert_cycle_g85(block, CANON_PLANE_VW, aa, bb, r, clear_cc, cc))
       break;
   case G_86:
     CHKS(((settings->motion_mode != G_86) && (block->p_number == -1.0)),
@@ -1644,6 +1652,7 @@ int Interp::convert_cycle_zx(int motion, //!< a g-code between G_81 and G_89, a 
                       settings->AA_current, settings->BB_current, settings->CC_current,
                       settings->u_current, settings->v_current, settings->w_current);
     old_cc = r;
+    current_cc = old_cc;
   }
   clear_cc = (settings->retract_mode == R_PLANE) ? r : old_cc;
 
@@ -1688,7 +1697,7 @@ int Interp::convert_cycle_zx(int motion, //!< a g-code between G_81 and G_89, a 
                                   settings->spindle_turning,
                                   settings->speed_feed_mode)) break;
   case G_85:
-    CYCLE_MACRO(convert_cycle_g85(block, CANON_PLANE_XZ, aa, bb, clear_cc, cc))
+    CYCLE_MACRO(convert_cycle_g85(block, CANON_PLANE_XZ, aa, bb, r, clear_cc, cc))
       break;
   case G_86:
     CHKS(((settings->motion_mode != G_86) && (block->p_number == -1.0)),
@@ -1811,6 +1820,7 @@ int Interp::convert_cycle_wu(int motion, //!< a g-code between G_81 and G_89, a 
                       settings->AA_current, settings->BB_current, settings->CC_current,
                       settings->u_current, r, settings->w_current);
     old_cc = r;
+    current_cc = old_cc;
   }
   clear_cc = (settings->retract_mode == R_PLANE) ? r : old_cc;
 
@@ -1855,7 +1865,7 @@ int Interp::convert_cycle_wu(int motion, //!< a g-code between G_81 and G_89, a 
                                   settings->spindle_turning,
                                   settings->speed_feed_mode)) break;
   case G_85:
-    CYCLE_MACRO(convert_cycle_g85(block, CANON_PLANE_UW, aa, bb, clear_cc, cc))
+    CYCLE_MACRO(convert_cycle_g85(block, CANON_PLANE_UW, aa, bb, r, clear_cc, cc))
       break;
   case G_86:
     CHKS(((settings->motion_mode != G_86) && (block->p_number == -1.0)),

@@ -23,10 +23,9 @@
 //
 
 
-#include <linux/slab.h>
+#include <rtapi_slab.h>
 
 #include "rtapi.h"
-#include "rtapi_app.h"
 #include "rtapi_string.h"
 #include "rtapi_math.h"
 
@@ -123,14 +122,14 @@ int hm2_resolver_parse_md(hostmot2_t *hm2, int md_index) {
         // If there were multiple resolver function instances, this would need
         // to be the number of resolvers for that particular instance
         r = hm2_register_tram_read_region(hm2, hm2->resolver.status_addr,
-                                          sizeof(u32),
+                                          sizeof(rtapi_u32),
                                           &hm2->resolver.status_reg);
         r += hm2_register_tram_read_region(hm2, hm2->resolver.position_addr,
-                                          (hm2->resolver.num_resolvers * sizeof(u32)),
+                                          (hm2->resolver.num_resolvers * sizeof(rtapi_u32)),
                                           &hm2->resolver.position_reg);
         r += hm2_register_tram_read_region(hm2, hm2->resolver.velocity_addr,
-                                          (hm2->resolver.num_resolvers * sizeof(u32)),
-                                          (u32**)&hm2->resolver.velocity_reg);
+                                          (hm2->resolver.num_resolvers * sizeof(rtapi_u32)),
+                                          (rtapi_u32**)&hm2->resolver.velocity_reg);
         if (r < 0) {
             HM2_ERR("error registering tram read region for Resolver "
                     "register (%d)\n", i);
@@ -260,8 +259,17 @@ int hm2_resolver_parse_md(hostmot2_t *hm2, int md_index) {
                 HM2_ERR("error adding param '%s', aborting\n", name);
                 goto fail1;
             }
-            
-            
+
+            rtapi_snprintf(name, sizeof(name), "%s.resolver.%02d.index-divisor",
+                           hm2->llio->name, i);
+            ret= hal_param_u32_new(name, HAL_RW,
+                                     &(hm2->resolver.instance[i].hal.param.index_div),
+                                     hm2->llio->comp_id);
+            if (ret < 0) {
+                HM2_ERR("error adding param '%s', aborting\n", name);
+                goto fail1;
+            }
+
             //
             // init the hal objects that need it
             // the things not initialized here will be set by hm2_resolver_tram_init()
@@ -270,6 +278,7 @@ int hm2_resolver_parse_md(hostmot2_t *hm2, int md_index) {
             *hm2->resolver.instance[i].hal.pin.reset = 0;
             hm2->resolver.instance[i].hal.param.scale = 1.0;
             hm2->resolver.instance[i].hal.param.vel_scale = 1.0;
+            hm2->resolver.instance[i].hal.param.index_div = 1;
             hm2->resolver.hal->param.excitation_khz = -1; // don't-write
             hm2->resolver.kHz = (hm2->resolver.clock_frequency / 5000);
         }
@@ -279,7 +288,7 @@ int hm2_resolver_parse_md(hostmot2_t *hm2, int md_index) {
     return hm2->resolver.num_instances;
     
 fail1:
-    // This is where we would kfree anything kmalloced. 
+    // This is where we would rtapi_kfree anything rtapi_kmalloced.
     
     
 fail0:
@@ -310,10 +319,23 @@ void hm2_resolver_process_tram_read(hostmot2_t *hm2, long period) {
         
         // PROCESS THE REGISTERS, SET THE PINS
         
-        res->accum += (signed long)(hm2->resolver.position_reg[i] - res->old_reg );
-        if (*res->hal.pin.index_enable){
-            if ((res->old_reg ^ hm2->resolver.position_reg[i]) & 0x80000000){
-                res->offset = res->accum & 0xFFFFFFFF00000000LL;
+        res->accum += (rtapi_s32)(hm2->resolver.position_reg[i] - res->old_reg );
+        
+        if ((res->old_reg > hm2->resolver.position_reg[i]) && (res->old_reg - hm2->resolver.position_reg[i] > 0x80000000)){
+            res->index_cnts++;
+            if (*res->hal.pin.index_enable){
+                int r = (res->index_cnts % res->hal.param.index_div);
+                if ((res->hal.param.index_div  > 1 && r == 1) 
+                 || (res->hal.param.index_div == 1 && r == 0)){
+                    res->offset = (res->accum - hm2->resolver.position_reg[i]);
+                    *res->hal.pin.index_enable = 0;
+                }
+            }
+        }
+        else if ((res->old_reg < hm2->resolver.position_reg[i]) && (hm2->resolver.position_reg[i] - res->old_reg > 0x80000000)){
+            res->index_cnts--;
+            if (*res->hal.pin.index_enable && (res->index_cnts % res->hal.param.index_div == 0)){
+                res->offset = (res->accum - hm2->resolver.position_reg[i] + 0x100000000LL);
                 *res->hal.pin.index_enable = 0;
             }
         }
@@ -335,12 +357,13 @@ void hm2_resolver_process_tram_read(hostmot2_t *hm2, long period) {
     }
 }
 
+// This function needs to be modified so that it does not call llio->read, which hurts performance on hm2-eth
 void hm2_resolver_write(hostmot2_t *hm2, long period){
     //This function needs to handle comms handshaking, so is written as a state machine
     static int state = 0;
-    static u32 cmd_val, data_val;
-    static u32 timer;
-    u32 buff;
+    static rtapi_u32 cmd_val, data_val;
+    static rtapi_u32 timer;
+    rtapi_u32 buff;
     
     if (hm2->resolver.num_instances <= 0) return;
     
@@ -373,7 +396,7 @@ void hm2_resolver_write(hostmot2_t *hm2, long period){
             break;
         case 10: // wait for comand register clear before setting params
             hm2->llio->read(hm2->llio,hm2->resolver.command_addr, 
-                            &buff, sizeof(u32));
+                            &buff, sizeof(rtapi_u32));
             if (buff){
                 timer += period;
                 if (timer > 1e9){
@@ -383,15 +406,15 @@ void hm2_resolver_write(hostmot2_t *hm2, long period){
                 return;
             }
             hm2->llio->write(hm2->llio, hm2->resolver.data_addr,
-                             &data_val,sizeof(u32));
+                             &data_val,sizeof(rtapi_u32));
             hm2->llio->write(hm2->llio, hm2->resolver.command_addr,
-                             &cmd_val,sizeof(u32));            
+                             &cmd_val,sizeof(rtapi_u32));
             state = 20;
             timer = 0;
             return;
         case 20: // wait for command to clear before processing any more params
             hm2->llio->read(hm2->llio,hm2->resolver.command_addr, 
-                            &buff, sizeof(u32));
+                            &buff, sizeof(rtapi_u32));
             if (buff){
                 timer += period;
                 if (timer > 1e9){
@@ -411,7 +434,7 @@ void hm2_resolver_write(hostmot2_t *hm2, long period){
     
 void hm2_resolver_cleanup(hostmot2_t *hm2) {
     if (hm2->resolver.num_instances <= 0) return;
-    // nothing kmallocced, so nothing to kfree
+    // nothing rtapi_kmallocced, so nothing to rtapi_kfree
 }
 
 
