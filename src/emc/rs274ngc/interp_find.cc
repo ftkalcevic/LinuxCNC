@@ -22,6 +22,7 @@
 #include <ctype.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include "rtapi_math.h"
 #include "rs274ngc.hh"
 #include "interp_return.hh"
 #include "interp_internal.hh"
@@ -163,7 +164,7 @@ int Interp::find_ends(block_pointer block,       //!< pointer to a block of RS27
     middle = !s->cutter_comp_firstmove;
     comp = (s->cutter_comp_side);
 
-    if (block->g_modes[0] == G_53) {      /* distance mode is absolute in this case */
+    if (block->g_modes[GM_MODAL_0] == G_53) {      /* distance mode is absolute in this case */
 #ifdef DEBUG_EMC
         COMMENT("interpreter: offsets temporarily suspended");
 #endif

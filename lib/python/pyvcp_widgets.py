@@ -23,7 +23,7 @@
 #
 #    You should have received a copy of the GNU General Public License
 #    along with this program; if not, write to the Free Software
-#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+#    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 """ A widget library for pyVCP 
     
@@ -586,17 +586,21 @@ class pyvcp_jogwheel(Canvas):
         <choices>["one","two","three"]</choices>    labels next to each button
         <halpin>"radio"</halpin>                    pin giving index of active button
         <initval>0</initval>                        index of button pin to set true at start
+        <orient>HORIZONTAL</orient>                 add horizontal tag default is vertical
     </radiobutton>
     """
 ################################################################################
 
 class pyvcp_radiobutton(Frame):
     n=0
-    def __init__(self,master,pycomp,halpin=None,initval=0,choices=[],**kw):
+    def __init__(self,master,pycomp,halpin=None,initval=0,orient=None,choices=[],**kw):
         f=Frame.__init__(self,master,bd=2,relief=GROOVE)
         self.v = IntVar()
         self.v.set(1)
         self.choices=choices
+        self.side = 'top'
+        if orient != None:
+            self.side = 'left'
         if halpin == None:
             halpin = "radiobutton."+str(pyvcp_radiobutton.n)
             pyvcp_radiobutton.n += 1
@@ -605,7 +609,7 @@ class pyvcp_radiobutton(Frame):
         n=0
         for c in choices:
             b=Radiobutton(self,f, text=str(c),variable=self.v, value=pow(2,n))
-            b.pack()
+            b.pack(side=self.side)
             if n==initval: 
                 b.select()
             c_halpin=halpin+"."+str(c)
@@ -871,7 +875,7 @@ class pyvcp_spinbox(Spinbox):
             [ <halpin>"my-spinbox"</halpin> ]
             [ <min_>55</min_> ]   sets the minimum value to 55
             [ <max_>123</max_> ]  sets the maximum value to 123
-            [ <initval>100</initval> ]  sets intial value to 100  TJP 12 04 2007
+            [ <initval>100</initval> ]  sets initial value to 100  TJP 12 04 2007
             [ <param_pin>1</param_pin>] creates param pin if > 0, set to initval, value can then be set externally, ArcEye 2013            
         </spinbox>
     """
@@ -1108,23 +1112,34 @@ class pyvcp_bar(Canvas):
         <min_>0</min_>
         <max_>150</max_>
         <bgcolor>"grey"</bgcolor>
- 	    <range1>(0,100,"green")</range1>
+        <range1>(0,100,"green")</range1>
         <range2>(101,129,"orange")</range2>
         <range3>(130,150,"red")</range3>
         <fillcolor>"green"</fillcolor>
+        <canvas_width>200</canvas_width>
+        <canvas_height>50</canvas_height>
+        <bar_height>30</bar_height>
+        <bar_width>150</bar_width>
+        <format>"3.1f"</format>
     </bar>
     """
     n=0
 
     def __init__(self,master,pycomp,fillcolor="green",bgcolor="grey",
-               halpin=None,min_=0.0,max_=100.0,range1=None,range2=None,range3=None,**kw):
-    
-        self.cw=200    # canvas width
-        self.ch=50     # canvas height
-        self.bh=30     # bar height
-        self.bw=150    # bar width
+               halpin=None,min_=0.0,max_=100.0,range1=None,range2=None,
+               range3=None,format='3.1f', canvas_width=200,
+               canvas_height=50, bar_height=30, bar_width=150,**kw):
+
+        self.cw=canvas_width
+        self.ch=canvas_height
+        self.bh=bar_height
+        self.bw=bar_width
+        #self.cw=200    # canvas width
+        #self.ch=50     # canvas height
+        #self.bh=30     # bar height
+        #self.bw=150    # bar width
         self.pad=((self.cw-self.bw)/2)
-		
+
         Canvas.__init__(self,master,width=self.cw,height=self.ch)
 
         if halpin == None:
@@ -1133,7 +1148,7 @@ class pyvcp_bar(Canvas):
         self.halpin=halpin
         self.endval=max_
         self.startval=min_
-
+        self.format = "%" + format
 
         pycomp.newpin(halpin, HAL_FLOAT, HAL_IN)
         
@@ -1205,7 +1220,7 @@ class pyvcp_bar(Canvas):
         newvalue=pycomp[self.halpin]
         if newvalue != self.value:
             self.value = newvalue
-            valtext = str( "%(b)3.1f" % {'b':self.value} )
+            valtext = str(self.format % self.value)
             self.itemconfig(self.val_text,text=valtext)
             # set bar colour
             if self.ranges:
@@ -1332,7 +1347,7 @@ class pyvcp_checkbutton(Checkbutton):
         <checkbutton>
             [ <halpin>"my-checkbutton"</halpin> ]
             [ <text>"Name of Button"</text>]  text set in widget
-            [ <initval>1</initval> ]  sets intial value to 1, all values >=0.5 are assumed to be 1
+            [ <initval>1</initval> ]  sets initial value to 1, all values >=0.5 are assumed to be 1
         </checkbutton>
     """
     n=0
@@ -1441,7 +1456,7 @@ class pyvcp_scale(Scale):
             [ <orient>HORIZONTAL</orient>  ] aligns the scale horizontal
             [ <min_>-33</min_> ] sets the minimum value to -33
             [ <max_>26</max_> ] sets the maximum value to 26
-            [ <initval>10</initval> ]  sets intial value to 10
+            [ <initval>10</initval> ]  sets initial value to 10
             [ <param_pin>1</param_pin>] creates param pin if > 0, set to initval, value can then be set externally, ArcEye 2013
         </scale>
 
@@ -1509,8 +1524,33 @@ class pyvcp_scale(Scale):
 
 
 class pyvcp_table(Frame):
-    def __init__(self, master, pycomp, flexible_rows=[], flexible_columns=[], uniform_columns="", uniform_rows=""):
-        Frame.__init__(self, master)
+    """ Grid layout widget with rows and columns.
+        * flexible_columns - list of column indexes that should be flexible width
+        * flexible_rows - list of row indexes that should be flexible width
+        * uniform_columns - string of characters for each column, in order. Columns with the same character will be the same width.
+        * uniform_rows - string of characters for each row, in order. Rows with the same character will be the same height.
+        * (also accepts Tk options for Frame)
+
+        <table flexible_rows="[3]" flexible_columns="[3]" uniform_columns="aab" uniform_rows="aab" highlightthickness="10" highlightbackground="#CCCCCC">
+            <tablesticky sticky="nwes"/>
+            <!-- row 1 -->
+            <tablerow/>
+            <label text="AAAAAAAAA" />
+            <label text="BBBBBBBBB" />
+            <label text="CCCCCCCCC" />
+            <!-- row 2 -->
+            <tablerow/>
+            <label text="A" />
+            <label text="B" />
+            <label text="C" />
+            <!-- row 3 -->
+            <tablerow/>
+            <tablespan columns="3"/>
+            <label text="Merged columns" />
+        </table>
+    """
+    def __init__(self, master, pycomp, flexible_rows=[], flexible_columns=[], uniform_columns="", uniform_rows="", **kw):
+        Frame.__init__(self, master, **kw)
         for r in flexible_rows:
             self.grid_rowconfigure(r, weight=1)
         for c in flexible_columns:

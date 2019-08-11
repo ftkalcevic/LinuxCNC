@@ -12,12 +12,13 @@
 //
 //    You should have received a copy of the GNU General Public License
 //    along with this program; if not, write to the Free Software
-//    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+//    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 #ifndef RS274NGC_INTERP_H
 #define RS274NGC_INTERP_H
 #include "rs274ngc.hh"
 #include "interp_internal.hh"
+#include "interp_return.hh"
 
 class Interp : public InterpBase {
 
@@ -43,6 +44,7 @@ public:
 
 // get ready to run
  int init();
+ void set_loop_on_main_m99(bool state);
 
 // load a tool table
  int load_tool_table();
@@ -267,22 +269,22 @@ public:
  int convert_cycle_g83(block_pointer block, CANON_PLANE plane, double x, double y,
                              double r, double clear_z, double bottom_z,
                              double delta);
- int convert_cycle_g84(block_pointer block, CANON_PLANE plane, double x, double y,
+ int convert_cycle_g74_g84(block_pointer block, CANON_PLANE plane, double x, double y,
                              double clear_z, double bottom_z,
-                             CANON_DIRECTION direction,
-                             CANON_SPEED_FEED_MODE mode);
+                             CANON_DIRECTION direction, CANON_SPEED_FEED_MODE mode,
+                             int motion, double dwell, int spindle);
  int convert_cycle_g85(block_pointer block, CANON_PLANE plane, double x, double y,
                              double r, double clear_z, double bottom_z);
  int convert_cycle_g86(block_pointer block, CANON_PLANE plane, double x, double y,
                              double clear_z, double bottom_z, double dwell,
-                             CANON_DIRECTION direction);
+                             CANON_DIRECTION direction, int spindle);
  int convert_cycle_g87(block_pointer block, CANON_PLANE plane, double x, double offset_x,
                              double y, double offset_y, double r,
                              double clear_z, double middle_z, double bottom_z,
-                             CANON_DIRECTION direction);
+                             CANON_DIRECTION direction, int spindle);
  int convert_cycle_g88(block_pointer block, CANON_PLANE plane, double x, double y,
                              double bottom_z, double dwell,
-                             CANON_DIRECTION direction);
+                             CANON_DIRECTION direction, int spindle);
  int convert_cycle_g89(block_pointer block, CANON_PLANE plane, double x, double y,
                              double clear_z, double bottom_z, double dwell);
  int convert_cycle_xy(int motion, block_pointer block,
@@ -319,8 +321,8 @@ public:
  int convert_setup(block_pointer block, setup_pointer settings);
  int convert_setup_tool(block_pointer block, setup_pointer settings);
  int convert_set_plane(int g_code, setup_pointer settings);
- int convert_speed(block_pointer block, setup_pointer settings);
-     int convert_spindle_mode(block_pointer block, setup_pointer settings);
+ int convert_speed(int spindle, block_pointer block, setup_pointer settings);
+ int convert_spindle_mode(int spindle, block_pointer block, setup_pointer settings);
  int convert_stop(block_pointer block, setup_pointer settings);
  int convert_straight(int move, block_pointer block,
                             setup_pointer settings);
@@ -411,6 +413,8 @@ public:
  int read_semicolon(char *line, int *counter, block_pointer block,
                         double *parameters);
  int read_d(char *line, int *counter, block_pointer block,
+                  double *parameters);
+int read_dollar(char *line, int *counter, block_pointer block,
                   double *parameters);
  int read_e(char *line, int *counter, block_pointer block,
                   double *parameters);
@@ -517,6 +521,16 @@ public:
   block_pointer block,       /* pointer to a block of RS274/NGC instructions */
   setup_pointer settings);   /* pointer to machine settings */
 
+ int control_save_offset(
+  block_pointer block,
+  const char *o_name,        /* o_name key */
+  setup_pointer settings);
+
+ int control_find_oword(     /* ARGUMENTS                   */
+  const char *o_name,        /* o-word name                 */
+  setup_pointer settings,    /* pointer to machine settings */
+  offset_pointer *ppo);
+
  int control_find_oword(     /* ARGUMENTS                   */
   block_pointer block,       /* block pointer to get (o-word) name        */
   setup_pointer settings,    /* pointer to machine settings */
@@ -536,6 +550,7 @@ public:
     //int execute_pycall(setup_pointer settings, const char *name, int call_phase);
  int execute_call(setup_pointer settings, context_pointer current_frame, int call_type);  
  int execute_return(setup_pointer settings,  context_pointer current_frame, int call_type);  
+ void loop_to_beginning(setup_pointer settings);
     //int execute_remap(setup_pointer settings, int call_phase);   // remap call state machine
     int handler_returned( setup_pointer settings, 
 			  context_pointer active_frame, const char *name, bool osub);
@@ -587,7 +602,14 @@ int read_inputs(setup_pointer settings);
      (m == 61) ||					\
      (m == 0) ||					\
      (m == 1) ||					\
-     (m == 60))
+     (m == 60) ||					\
+     (m == 62) ||					\
+     (m == 63) ||					\
+     (m == 64) ||					\
+     (m == 65) ||					\
+     (m == 66) ||					\
+     (m == 67) ||					\
+     (m == 68))
 
 
 
@@ -646,8 +668,8 @@ int read_inputs(setup_pointer settings);
     int unwind_call(int status, const char *file, int line, const char *function);
 
 
- int convert_straight_indexer(int, block*, setup*);
- int issue_straight_index(int, double, int, setup*);
+ int convert_straight_indexer(int anum, int jnum, block* blk, setup* settings);
+ int issue_straight_index(int anum, int jnum, double end, int lineno, setup* settings);
 
  void doLog(unsigned int flags, const char *file, int line,
 	    const char *fmt, ...) __attribute__((format(printf,5,6)));
@@ -675,6 +697,8 @@ int read_inputs(setup_pointer settings);
      AXIS_MASK_A =   8, AXIS_MASK_B =  16, AXIS_MASK_C =  32,
      AXIS_MASK_U =  64, AXIS_MASK_V = 128, AXIS_MASK_W = 256,
  };
+
+ InterpReturn check_g74_g84_spindle(GCodes motion, CANON_DIRECTION dir);
 };
 
 #endif

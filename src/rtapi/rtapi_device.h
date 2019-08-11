@@ -12,7 +12,7 @@
 //
 //    You should have received a copy of the GNU General Public License
 //    along with this program; if not, write to the Free Software
-//    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+//    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #ifndef RTAPI_DEVICE_H
 #define RTAPI_DEVICE_H
 
@@ -37,8 +37,9 @@
 
 RTAPI_BEGIN_DECLS
 
+#define RTAPI_DEVICE_NAME_LEN 47
 struct rtapi_device {
-    char    name[HAL_NAME_LEN+1];
+    char    name[RTAPI_DEVICE_NAME_LEN + 1];
     void    (*release)(struct rtapi_device *dev);
 };
 

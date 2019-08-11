@@ -47,6 +47,14 @@ pin out bit isnan-out;
 pin in float isinf-in;
 pin out bit isinf-out;
 
+pin in float exp-in;
+pin out float exp-out;
+
+pin in float fmod-in;
+pin out float fmod-out;
+
+pin out float nan-out;
+
 function _;
 
 license "GPL";
@@ -71,5 +79,8 @@ FUNCTION(_) {
     floor_out = floor(floor_in);
     isnan_out = isnan(isnan_in);
     isinf_out = isinf(isinf_in);
+    exp_out = exp(exp_in);
+    fmod_out = fmod(fmod_in,fmod_in);
+    nan_out = nan("");
 }
 

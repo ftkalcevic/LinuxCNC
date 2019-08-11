@@ -17,16 +17,23 @@
 # Copyright (c) 2004-2009 All rights reserved.
 ################################################################################
 
+# -1. Get all rip-environment items if we are RIP
+if test "xyes" = "x@RUN_IN_PLACE@"; then
+    if test "${EMC2_HOME:-}" != "@EMC2_HOME@"; then
+        exec @EMC2_HOME@/scripts/rip-environment linuxcnc "$@"
+    fi
+fi
+
 ################################################################################
 # 0. Values that come from configure
 ################################################################################
 prefix=@prefix@
 exec_prefix=@exec_prefix@
 
-LSMOD=@LSMOD@
 PIDOF="@PIDOF@ -x"
 PS=@PS@
 AWK=@AWK@
+GREP=@GREP@
 IPCS=@IPCS@
 KILL=@KILL@
 
@@ -44,6 +51,14 @@ LINUXCNC_IMAGEDIR=@EMC2_IMAGE_DIR@
 LINUXCNC_TCL_LIB_DIR=@EMC2_TCL_LIB_DIR@
 HALLIB_DIR=@HALLIB_DIR@; export HALLIB_DIR
 HALLIB_PATH=.:$HALLIB_DIR; export HALLIB_PATH
+
+# put ~.local/bin in PATH if missing. See:
+# https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=839155
+if [ -d $HOME/.local/bin ]; then
+    if [[ "$PATH" != *".local/bin"* ]]; then
+        PATH=$HOME/.local/bin:$PATH
+    fi
+fi
 
 #put the LINUXCNC_BIN_DIR in PATH
 PATH=$LINUXCNC_BIN_DIR:$PATH
@@ -66,8 +81,6 @@ else
 fi
 export PYTHONPATH
 
-XFILESEARCHPATH=%D:@EMC2_HOME@/%T/%N%C:@EMC2_HOME@/%T/%N
-export XFILESEARCHPATH
 
 MODULE_EXT=@MODEXT@ # module extension, used when insmod'ing
 
@@ -275,7 +288,7 @@ function handle_includes () {
   hdr="# handle_includes():"
   inifile="$1"
   cd "$(dirname $inifile)" ;# for the function() subprocess only
-  grep "^#INCLUDE" "$inifile" >/dev/null
+  $GREP "^#INCLUDE" "$inifile" >/dev/null
   status=$?
   if [ $status -ne 0 ] ; then
     echo "$inifile" ;# just use the input
@@ -424,7 +437,31 @@ function GetFromIniEx {
     retval="$1"
 }
 
+# 2.1.5 check version
+GetFromIni VERSION EMC
+if [ "$retval" != "1.1" ]; then
+    if [ -z "$DISPLAY" ]; then
+        echo "ini file [EMC]VERSION indicates update is needed, but the update GUI can't run without an X display"
+        exit 1
+    fi
+    update_ini -d "$INIFILE"
+    exitval=$?
+    case "$exitval" in
+    0) ;;
+    42) echo "update_ini cancelled by user" ; exit 0;;
+    *) echo "update script failed in an unexpected way."; exit $exitval ;;
+    esac
+fi
+
+@TCLSH@ $HALLIB_DIR/check_config.tcl "$INIFILE"
+exitval=$?
+case "$exitval" in
+  0) ;;
+  1) echo "check_config validation failed"; exit $exitval ;;
+  *) echo "check_config validation failed in an unexpected way."; exit $exitval ;;
+esac
 # 2.2. get param file
+
 GetFromIni PARAMETER_FILE RS274NGC 
 RS274NGC_PARAMFILE=$retval
 
@@ -458,13 +495,21 @@ EMCDISPLAYARGS=`(set -- $retval ; shift ; echo $* )`
 
 case $EMCDISPLAY in
     tkemc) EMCDISPLAY=tklinuxcnc ;;
-    xemc) EMCDISPLAY=xlinuxcnc ;;
 esac
 
 # 2.9. get NML config information
 GetFromIniEx NML_FILE LINUXCNC NML_FILE EMC @DEFAULT_NMLFILE@
 NMLFILE=$retval
 export NMLFILE
+
+# 2.10. INI information that may be needed by other apps in process tree
+GetFromIni COORDINATES TRAJ
+TRAJ_COORDINATES=$retval
+export TRAJ_COORDINATES
+
+GetFromIni KINEMATICS KINS
+KINS_KINEMATICS=$retval
+export KINS_KINEMATICS
 
 ################################################################################
 # 3. Done gathering information, define a few functions
@@ -486,15 +531,20 @@ function KillTaskWithTimeout() {
 	echo "Could not find pid(s) for task $KILL_TASK"
 	return -1
     fi
+    local NPROCS
     for KILL_PID in $KILL_PIDS ; do
-	echo "Killing task $KILL_TASK, PID=$KILL_PID" >>$PRINT_FILE
+        if $PS -o comm= $KILL_PID | $GREP -q '<defunct>'; then
+            echo "Skipping defunct task $KILL_TASK, PID=$KILL_PID" >>$PRINT_FILE
+            continue
+        fi
 	# first a "gentle" kill with signal TERM
 	$KILL $KILL_PID
 	WAIT=$KILL_TIMEOUT
 	# wait and see if it dissappears
 	while [ $WAIT -gt 1 ] ; do
 	    # see if it's still alive
-	    if $PS $KILL_PID >>$DEBUG_FILE ; then
+            NPROCS=$($PS -o comm= $KILL_PID | $GREP -v '<defunct>' | wc -l)
+            if [ $NPROCS -gt 0 ]; then
 		WAIT=$(($WAIT-1))
 		sleep .1
 	    else
@@ -509,7 +559,8 @@ function KillTaskWithTimeout() {
 	    # wait and see if it dissappears
 	    while [ $WAIT -gt 1 ] ; do
 		# see if it's still alive
-		if $PS $KILL_PID >>$DEBUG_FILE ; then
+                NPROCS=$($PS -o comm= $KILL_PID | $GREP -v '<defunct>' | wc -l)
+                if [ $NPROCS -gt 0 ]; then
 		    WAIT=$(($WAIT-1))
 		    sleep .1
 		else
@@ -520,9 +571,9 @@ function KillTaskWithTimeout() {
 	if [ $WAIT -gt 0 ] ; then
 	    echo "Could not kill task $KILL_TASK, PID=$KILL_PID"
 	fi
-	KILL_PIDS=
-	KILL_TASK=
     done
+    KILL_PIDS=
+    KILL_TASK=
 }
 
 
@@ -538,7 +589,7 @@ function Cleanup() {
     echo "Shutting down and cleaning up LinuxCNC..."
     # Kill displays first - that should cause an orderly
     #   shutdown of the rest of linuxcnc
-    for KILL_TASK in xlinuxcnc ylinuxcnc linuxcncpanel keystick iosh linuxcncsh linuxcncrsh linuxcnctop mdi debuglevel; do
+    for KILL_TASK in linuxcncpanel iosh linuxcncsh linuxcncrsh linuxcnctop mdi debuglevel gmoccapy gscreen; do
 	if $PIDOF $KILL_TASK >>$DEBUG_FILE ; then
 	    KillTaskWithTimeout
 	fi
@@ -843,8 +894,8 @@ run_applications
 echo "Starting DISPLAY program: $EMCDISPLAY" >>$PRINT_FILE
 result=0
 case $EMCDISPLAY in
-  tklinuxcnc|mini)
-    # tklinuxcnc and mini are in the tcl directory, not the bin directory
+  tklinuxcnc)
+    # tklinuxcnc is in the tcl directory, not the bin directory
     if [ ! -x $LINUXCNC_TCL_DIR/$EMCDISPLAY.tcl ] ; then
 	echo "Can't execute DISPLAY program $LINUXCNC_TCL_DIR/$EMCDISPLAY.tcl $EMCDISPLAYARGS"
 	Cleanup
@@ -858,18 +909,8 @@ case $EMCDISPLAY in
     echo "DUMMY DISPLAY MODULE, press <ENTER> to continue."
     read foo;
   ;;
-  keystick)
-    if ! program_available keystick ; then
-	echo "Can't execute DISPLAY program $EMCDISPLAY $EMCDISPLAYARGS $EXTRA_ARGS"
-	Cleanup
-	exit 1
-    fi
-    if [ ! -z "$DISPLAY" ]; then
-        xterm -xrm 'XTerm*metaSendsEscape:false' -ls -e keystick -ini "$INIFILE"
-    else
-        keystick -ini "$INIFILE"
-    fi
-    result=$?
+  linuxcncrsh)
+    $EMCDISPLAY $EMCDISPLAYARGS $EXTRA_ARGS -- -ini "$INIFILE"
   ;;
   *)
     # all other displays are assumed to be commands on the PATH

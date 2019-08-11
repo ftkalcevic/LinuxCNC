@@ -2,6 +2,7 @@
 # GladeVcp Widget - tooledit
 #
 # Copyright (c) 2012 Chris Morley
+# Modified 2016 Jim Craig <jimcraig5615  at  windstream dot  net>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -13,7 +14,7 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 
-import sys, os, pango, linuxcnc, hashlib
+import sys, os, pango, linuxcnc, hashlib, glib
 datadir = os.path.abspath(os.path.dirname(__file__))
 KEYWORDS = ['S','T', 'P', 'X', 'Y', 'Z', 'A', 'B', 'C', 'U', 'V', 'W', 'D', 'I', 'J', 'Q', ';']
 try:
@@ -71,6 +72,9 @@ class ToolEdit(gtk.VBox):
             }
         self.wTree.connect_signals( dic )
 
+        self.treeview1 = self.wTree.get_object("treeview1")
+        self.treeview1.connect("key-release-event", self.on_tree_navigate_key_press, None)
+
         # for raw view 1:
 
         # toggle button useable
@@ -83,6 +87,8 @@ class ToolEdit(gtk.VBox):
             #print name,col
             renderer = self.wTree.get_object(name+'1')
             renderer.connect( 'edited', self.col_editted, col+1, None)
+            renderer.props.editable = True
+        self.all_label = self.wTree.get_object("all_label")
 
         # for lathe wear view2:
 
@@ -92,8 +98,10 @@ class ToolEdit(gtk.VBox):
         for name,col in temp:
             renderer = self.wTree.get_object(name)
             renderer.connect( 'edited', self.col_editted, col, 'wear' )
+            renderer.props.editable = True
         # Hide columns we don't want to see
         self.set_col_visible(list='spyabcuvwdijq', bool= False, tab= '2')
+        self.wear_label = self.wTree.get_object("wear_label")
 
         # for tool offsets view 3:
 
@@ -103,8 +111,10 @@ class ToolEdit(gtk.VBox):
         for name,col in temp:
             renderer = self.wTree.get_object(name)
             renderer.connect( 'edited', self.col_editted, col, 'tool' )
+            renderer.props.editable = True
         # Hide columns we don't want to see
         self.set_col_visible(list='spyabcuvwdij', bool= False, tab= '3')
+        self.tool_label = self.wTree.get_object("tool_label")
 
         # global references
         self.model = self.wTree.get_object("liststore1")
@@ -122,11 +132,13 @@ class ToolEdit(gtk.VBox):
             return cmp(value1,value2)
         model = self.view1.get_model()
         model.set_sort_func(12, compare)
-        self.view2.connect('button_press_event', self.on_treeview2_button_press_event)
+        #self.view2.connect('button_press_event', self.on_treeview2_button_press_event)
+        self.view2.connect("key-release-event", self.on_tree_navigate_key_press, 'wear')
         self.selection = self.view2.get_selection()
         self.selection.set_mode(gtk.SELECTION_SINGLE)
         self.view3 = self.wTree.get_object("treeview3")
-        self.view3.connect('button_press_event', self.on_treeview2_button_press_event)
+        #self.view3.connect('button_press_event', self.on_treeview2_button_press_event)
+        self.view3.connect("key-release-event", self.on_tree_navigate_key_press, 'tool')
         self.apply = self.wTree.get_object("apply")
         self.buttonbox = self.wTree.get_object("buttonbox")
         self.tool_filter = self.wTree.get_object("tool_modelfilter")
@@ -209,7 +221,7 @@ class ToolEdit(gtk.VBox):
                 liststore.set_value(liststore.get_iter(pathlist[0]),0,1)
                 treeselection.select_path(pathlist[0])
         except:
-            print "tooledit_widget error: cannot select tool number",toolnumber
+            print _("tooledit_widget error: cannot select tool number"),toolnumber
 
     def add(self,widget,data=[1,0,0,'0','0','0','0','0','0','0','0','0','0','0','0','0',"comment"]):
         self.model.append(data)
@@ -228,7 +240,7 @@ class ToolEdit(gtk.VBox):
         self.model.clear()
         #print "toolfile:",self.toolfile
         if not os.path.exists(self.toolfile):
-            print "Toolfile does not exist"
+            print _("Toolfile does not exist")
             return
         logfile = open(self.toolfile, "r").readlines()
         self.toolinfo = []
@@ -262,12 +274,12 @@ class ToolEdit(gtk.VBox):
                             try:
                                 array[offset]= int(word.lstrip(i))
                             except:
-                                print "Tooledit widget int error"
+                                print _("Tooledit widget int error")
                         else:
                             try:
-                                array[offset]= "%10.4f"% float(word.lstrip(i))
+                                array[offset]= locale.format("%10.4f", float(word.lstrip(i)))
                             except:
-                                print "Tooledit_widget float error"
+                                print _("Tooledit_widget float error")
                         break
             if toolinfo_flag:
                 self.toolinfo = array
@@ -304,7 +316,7 @@ class ToolEdit(gtk.VBox):
         try:
             linuxcnc.command().load_tool_table()
         except:
-            print "Reloading tooltable into linuxcnc failed"
+            print _("Reloading tooltable into linuxcnc failed")
 
         # This is for changing the display after tool editor was loaded using the style button
         # note that it toggles the display
@@ -339,6 +351,32 @@ class ToolEdit(gtk.VBox):
                 for col,name in enumerate(self.tool_cell_list):
                     temp2 = self.wTree.get_object(name+tab[i])
                     temp2.set_property('font', value)
+        self.set_title_font(value, tab)
+        self.set_tab_font(value, tab)
+
+    # set font of the column titles
+    def set_title_font(self, value, tab='123'):
+        objectlist = "s","t","p","x","y","z","a","b","c","u","v","w","d","i","j","q",";"
+        for i in range(0, len(tab)):
+            if tab[i] in ('1','2','3'):
+                for j in objectlist:
+                    column = self.wTree.get_object(j+tab[i])
+                    label = gtk.Label(column.get_title())
+                    label.modify_font(pango.FontDescription(value))
+                    label.show()
+                    column.set_widget(label)
+
+    def set_tab_font (self, value, tab='123'):
+        for i in range(0, len(tab)):
+            if tab[i] in ('1','2','3'):
+                if tab[i] =='1':
+                    self.all_label.modify_font(pango.FontDescription(value))
+                elif tab[i] =='2':
+                    self.wear_label.modify_font(pango.FontDescription(value))
+                elif tab[i] =='3':
+                    self.tool_label.modify_font(pango.FontDescription(value))
+                else:
+                    pass
 
     # for legacy interface
     def set_visible(self,list,bool):
@@ -438,8 +476,9 @@ class ToolEdit(gtk.VBox):
 
         # you could overload this to do something else.
     def toolfile_stale(self):
-        print "Tool file was modified since it was last read"
+        print _("Tool file was modified since it was last read")
         self.reload(None)
+        self.set_selected_tool(self.toolinfo_num)
 
         # Returns the tool information array of the requested toolnumber
         # or current tool if no tool number is specified
@@ -494,6 +533,119 @@ class ToolEdit(gtk.VBox):
             except:
                 pass
 
+    # define the callback for keypress events
+    def on_tree_navigate_key_press(self, treeview, event, filter):
+        keyname = gtk.gdk.keyval_name(event.keyval)
+        path, col = treeview.get_cursor()
+        columns = [c for c in treeview.get_columns()]
+        colnum = columns.index(col)
+
+        focuschild = treeview.focus_child
+
+        if filter == 'wear':
+            store_path = self.wear_filter.convert_path_to_child_path(path)
+            path = store_path
+        elif filter == 'tool':
+            store_path = self.tool_filter.convert_path_to_child_path(path)
+            path = store_path
+
+        if keyname == 'Tab' or keyname == 'Right':
+
+            cont = True
+            cont2 = True
+            i = 0
+            while cont:
+                i += 1
+                if colnum + i < len(columns):
+                    if columns[colnum + i].props.visible:
+                        renderer = columns[colnum + i].get_cell_renderers()
+                        if renderer[0].props.editable:
+                            next_column = columns[colnum + i]
+                            cont = False
+
+                else:
+                    i = 1
+                    while cont2:
+                        renderer = columns[i].get_cell_renderers()
+                        if renderer[0].props.editable:
+                            next_column = columns[i]
+                            cont2 = False
+                        else:
+                            i += 1
+                    cont = False
+
+            if keyname == 'Right':
+                renderer = columns[colnum].get_cell_renderers()
+                if type(focuschild) is gtk.Entry:
+                    self.col_editted(renderer[0], path, treeview.focus_child.props.text, colnum, filter)
+            glib.timeout_add(50,
+                             treeview.set_cursor,
+                             path, next_column, True)
+
+        elif keyname == 'Left':
+
+            cont = True
+            cont2 = True
+            i = 0
+            while cont:
+                i -= 1
+                if colnum + i > 0:
+                    if columns[colnum + i].props.visible:
+                        renderer = columns[colnum + i].get_cell_renderers()
+                        if renderer[0].props.editable:
+                            next_column = columns[colnum + i]
+                            cont = False
+
+                else:
+                    i = -1
+                    while cont2:
+                        renderer = columns[i].get_cell_renderers()
+                        if renderer[0].props.editable:
+                            next_column = columns[i]
+                            cont2 = False
+                        else:
+                            i -= 1
+                    cont = False
+
+            renderer = columns[colnum].get_cell_renderers()
+            if type(focuschild) is gtk.Entry:
+                self.col_editted(renderer[0], path, treeview.focus_child.props.text, colnum, filter)
+            glib.timeout_add(50,
+                             treeview.set_cursor,
+                             path, next_column, True)
+
+        elif keyname == 'Return' or keyname == 'KP_Enter' or keyname == 'Down':
+
+            model = treeview.get_model()
+            # Check if currently in last row of Treeview
+            if path[0] + 1 == len(model):
+                path = (0, )
+                # treeview.set_cursor(path, columns[colnum], True)
+                glib.timeout_add(50,
+                                 treeview.set_cursor,
+                                 path, columns[colnum], True)
+            else:
+                newpath = path[0] + 1
+                # treeview.set_cursor(path, columns[colnum], True)
+                glib.timeout_add(50,
+                                 treeview.set_cursor,
+                                 newpath, columns[colnum], True)
+
+        elif keyname == 'Up':
+            model = treeview.get_model()
+            if path[0] == 0:
+                newpath = len(model)-1
+            else:
+                newpath = path[0] - 1
+            glib.timeout_add(50,
+                             treeview.set_cursor,
+                             newpath, columns[colnum], True)
+
+
+        else:
+            pass
+
+
 # for testing without glade editor:
 # for what ever reason tooledit always shows both display lists,
 # in the glade editor it shows only one at a time (as it should)
@@ -510,8 +662,9 @@ def main(filename=None):
     window.vbox.add(tooledit)
     window.connect("destroy", gtk.main_quit)
     tooledit.set_col_visible("abcUVW", False, tab='1')
-    tooledit.set_filename("/home/chris/emc2-dev/configs/sim/gscreen/gscreen_custom/lathe-fanucy.tbl")
-    #tooledit.set_filename("/home/chris/emc2-dev/configs/sim/gscreen/test.tbl")
+    # uncommented the below line for testing.
+    tooledit.set_filename("/home/jim/linuxcnc/configs/sim.gmoccapy/tool.tbl")
+    #tooledit.set_filename("/home/chris/emc2-dev/configs/sim/lathe.tbl")
     tooledit.set_font("sans 16",tab='23')
     window.show_all()
     #tooledit.set_lathe_display(True)
