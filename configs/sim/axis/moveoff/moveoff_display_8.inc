@@ -1,7 +1,7 @@
 [DISPLAY]
 
-EMBED_TAB_NAME=moveoff gladevcp demo
-EMBED_TAB_COMMAND=halcmd loadusr -Wn gladevcp8 gladevcp -c gladevcp8 -t Redmond -x {XID} ./moveoff_gladevcp_8.ui
+EMBED_TAB_NAME= moveoff gladevcp demo
+EMBED_TAB_COMMAND= halcmd loadusr -Wn gladevcp8 gladevcp -c gladevcp8 -t Redmond -x {XID} ./moveoff_gladevcp_8.ui
 EMBED_TAB_LOCATION = vcp_box
 # halcmd options used:
 #       -Wn NAME   wait for named component (must agree with names in moveoff_display_8.hal)
@@ -24,7 +24,7 @@ DEFAULT_LINEAR_VELOCITY = .25
          PROGRAM_PREFIX = ../../nc_files/
           INTRO_GRAPHIC = linuxcnc.gif
              INTRO_TIME = 5
-                 EDITOR = gedit
+                 #EDITOR = gedit
             TOOL_EDITOR = tooledit
              INCREMENTS = 1 in, 0.1 in, 10 mil, 1 mil, 1mm, .1mm, 1/8000 in
 

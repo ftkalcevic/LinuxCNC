@@ -22,7 +22,7 @@
  *
  *  You should have received a copy of the GNU General Public
  *  License along with this library; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111 USA
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  *
  *  THE AUTHORS OF THIS LIBRARY ACCEPT ABSOLUTELY NO LIABILITY FOR
  *  ANY HARM OR LOSS RESULTING FROM ITS USE.  IT IS _EXTREMELY_ UNWISE
@@ -90,6 +90,7 @@ static void save_signals(FILE *dst, int only_unlinked);
 static void save_links(FILE *dst, int arrows);
 static void save_nets(FILE *dst, int arrows);
 static void save_params(FILE *dst);
+static void save_unconnected_input_pin_values(FILE *dst);
 static void save_threads(FILE *dst);
 static void print_help_commands(void);
 
@@ -183,7 +184,7 @@ int do_linkpp_cmd(char *first_pin_name, char *second_pin_name)
     rtapi_mutex_give(&(hal_data->mutex));
     
     /* check that both pins have the same type, 
-       don't want to create a sig, which after that won't be usefull */
+       don't want to create a sig, which after that won't be useful */
     if (first_pin->type != second_pin->type) {
 	halcmd_error("pins '%s' and '%s' not of the same type\n",
                 first_pin_name, second_pin_name);
@@ -620,6 +621,8 @@ int do_newsig_cmd(char *name, char *type)
 	retval = hal_signal_new(name, HAL_U32);
     } else if (strcasecmp(type, "s32") == 0) {
 	retval = hal_signal_new(name, HAL_S32);
+    } else if (strcasecmp(type, "port") == 0) {
+	retval = hal_signal_new(name, HAL_PORT);
     } else {
 	halcmd_error("Unknown signal type '%s'\n", type);
 	retval = -EINVAL;
@@ -636,6 +639,7 @@ static int set_common(hal_type_t type, void *d_ptr, char *value) {
     double fval;
     long lval;
     unsigned long ulval;
+    unsigned uval;
     char *cp = value;
 
     switch (type) {
@@ -680,6 +684,20 @@ static int set_common(hal_type_t type, void *d_ptr, char *value) {
 	    *((hal_u32_t *) (d_ptr)) = ulval;
 	}
 	break;
+    case HAL_PORT:
+        uval = strtoul(value, &cp, 0);
+        if ((*cp != '\0') && (!isspace(*cp))) {
+            halcmd_error("value '%s' invalid for PORT\n", value);
+            retval = -EINVAL;
+        } else {
+            if((*((hal_port_t*)d_ptr) != 0) && (hal_port_buffer_size(*((hal_port_t*)d_ptr)) > 0)) {
+                halcmd_error("port is already allocated with %u bytes.\n", hal_port_buffer_size(*((hal_port_t*)d_ptr)));
+                retval = -EINVAL;
+        } else {
+            *((hal_port_t*) (d_ptr)) = hal_port_alloc(uval);
+        }
+    }
+    break;
     default:
 	/* Shouldn't get here, but just in case... */
 	halcmd_error("bad type %d\n", type);
@@ -848,8 +866,8 @@ int do_sets_cmd(char *name, char *value)
 	halcmd_error("signal '%s' not found\n", name);
 	return -EINVAL;
     }
-    /* found it - does it have a writer? */
-    if (sig->writers > 0) {
+    /* found it - it have a writer? if it is a port we can set its buffer size */
+    if ((sig->type != HAL_PORT) && (sig->writers > 0)) {
 	rtapi_mutex_give(&(hal_data->mutex));
 	halcmd_error("signal '%s' already has writer(s)\n", name);
 	return -EINVAL;
@@ -934,6 +952,7 @@ static int get_type(char ***patterns) {
     if(strcmp(typestr, "u32") == 0) return HAL_U32;
     if(strcmp(typestr, "signed") == 0) return HAL_S32;
     if(strcmp(typestr, "unsigned") == 0) return HAL_U32;
+    if(strcmp(typestr, "port") == 0) return HAL_PORT;
     return -1;
 }
 
@@ -1384,6 +1403,29 @@ static char *guess_comp_name(char *prog_name)
     return name;
 }
 
+static void reset_getopt_state() {
+/*
+
+It turns out that it is not portable to reset the state of getopt, so that
+a different argv list can be parsed.
+
+https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=192834
+
+(though that thread ends with the bug being closed as fixed in lenny, it
+is not fixed or has regressed by debian jessie)
+*/
+
+#ifdef __GNU_LIBRARY__
+    optind = 0;
+#else
+    optind = 1;
+#endif
+
+#ifdef HAVE_OPTRESET
+    optreset = 1;
+#endif
+}
+
 int do_loadusr_cmd(char *args[])
 {
     int wait_flag, wait_comp_flag, ignore_flag;
@@ -1406,7 +1448,7 @@ int do_loadusr_cmd(char *args[])
     prog_name = NULL;
 
     /* check for options (-w, -i, and/or -r) */
-    optind = 0;
+    reset_getopt_state();
     while (1) {
 	int c = getopt(argc, args, "+wWin:");
 	if(c == -1) break;
@@ -1545,8 +1587,8 @@ int do_waitusr_cmd(char *comp_name)
     comp = halpr_find_comp_by_name(comp_name);
     if (comp == NULL) {
 	rtapi_mutex_give(&(hal_data->mutex));
-	halcmd_error("component '%s' not found\n", comp_name);
-	return -EINVAL;
+	halcmd_info("component '%s' not found or already exited\n", comp_name);
+	return 0;
     }
     if (comp->type != 0) {
 	rtapi_mutex_give(&(hal_data->mutex));
@@ -2155,6 +2197,9 @@ static const char *data_type(int type)
     case HAL_U32:
 	type_str = "u32  ";
 	break;
+    case HAL_PORT:
+	type_str = "port ";
+	break;
     default:
 	/* Shouldn't get here, but just in case... */
 	type_str = "undef";
@@ -2178,6 +2223,9 @@ static const char *data_type2(int type)
 	break;
     case HAL_U32:
 	type_str = "u32";
+	break;
+    case HAL_PORT:
+	type_str = "port";
 	break;
     default:
 	/* Shouldn't get here, but just in case... */
@@ -2297,6 +2345,10 @@ static char *data_value(int type, void *valptr)
 	snprintf(buf, 14, "  0x%08lX", (unsigned long)*((hal_u32_t *) valptr));
 	value_str = buf;
 	break;
+    case HAL_PORT:
+	snprintf(buf, 14, "  %10u", hal_port_buffer_size(*((hal_port_t*) valptr)));
+	value_str = buf;
+	break;
     default:
 	/* Shouldn't get here, but just in case... */
 	value_str = "   undef    ";
@@ -2330,6 +2382,11 @@ static char *data_value2(int type, void *valptr)
 	snprintf(buf, 14, "%ld", (unsigned long)*((hal_u32_t *) valptr));
 	value_str = buf;
 	break;
+    case HAL_PORT:
+	snprintf(buf, 14, "%u", hal_port_buffer_size(*((hal_port_t*) valptr)));
+	value_str = buf;
+	break;
+
     default:
 	/* Shouldn't get here, but just in case... */
 	value_str = "unknown_type";
@@ -2357,13 +2414,17 @@ int do_save_cmd(char *type, char *filename)
     if (type == 0 || *type == '\0') {
 	type = "all";
     }
-    if (strcmp(type, "all" ) == 0) {
+    if (   (strcmp(type, "all")  == 0)
+	|| (strcmp(type, "allu") == 0) ) {
 	/* save everything */
 	save_comps(dst);
 	save_aliases(dst);
-        save_signals(dst, 1);
-        save_nets(dst, 3);
+	save_signals(dst, 1);
+	save_nets(dst, 3);
 	save_params(dst);
+	if (strcmp(type,"allu") == 0) {
+	    save_unconnected_input_pin_values(dst);
+	}
 	save_threads(dst);
     } else if (strcmp(type, "comp") == 0) {
 	save_comps(dst);
@@ -2393,6 +2454,8 @@ int do_save_cmd(char *type, char *filename)
 	save_params(dst);
     } else if (strcmp(type, "thread") == 0) {
 	save_threads(dst);
+    } else if (strcmp(type, "unconnectedinpins") == 0) {
+	save_unconnected_input_pin_values(dst);
     } else {
 	halcmd_error("Unknown 'save' type '%s'\n", type);
         if (dst != stdout) fclose(dst);
@@ -2663,6 +2726,25 @@ static void save_threads(FILE *dst)
     rtapi_mutex_give(&(hal_data->mutex));
 }
 
+static void save_unconnected_input_pin_values(FILE *dst)
+{
+    hal_pin_t *pin;
+    void *dptr;
+    int next;
+    fprintf(dst, "# unconnected pin values\n");
+    for(next = hal_data->pin_list_ptr; next; next=pin->next_ptr)
+    {
+        pin = SHMPTR(next);
+        if (   (pin->signal == 0)
+            && ( (pin->dir == HAL_IN) || (pin->dir == HAL_IO) )
+           ) {
+            dptr = &(pin->dummysig);
+            fprintf(dst, "setp %s %s\n",
+                   pin->name, data_value((int) pin->type, dptr));
+        }
+    }
+}
+
 int do_setexact_cmd() {
     int retval = 0;
     rtapi_mutex_get(&(hal_data->mutex));
@@ -2753,7 +2835,7 @@ int do_help_cmd(char *command)
     } else if (strcmp(command, "newsig") == 0) {
 	printf("newsig signame type\n");
 	printf("  Creates a new signal called 'signame'.  Type\n");
-	printf("  is 'bit', 'float', 'u32', or 's32'.\n");
+	printf("  is 'bit', 'float', 'port', 'u32', or 's32'.\n");
     } else if (strcmp(command, "delsig") == 0) {
 	printf("delsig signame\n");
 	printf("  Deletes signal 'signame'.  If 'signame is 'all',\n");
@@ -2776,7 +2858,9 @@ int do_help_cmd(char *command)
 #endif
     } else if (strcmp(command, "sets") == 0) {
 	printf("sets signame value\n");
-	printf("  Sets signal 'signame' to 'value' (if signal has no writers).\n");
+	printf("  Sets a non-port signal 'signame' to 'value' (if signal has no writers).\n");
+    printf("  If 'signame' is a port signal (that has not previously been allocated),\n");
+    printf("  then 'value' is the new maximum size in bytes of that port.\n");
     } else if (strcmp(command, "getp") == 0) {
 	printf("getp paramname\n");
 	printf("getp pinname\n");
@@ -2788,6 +2872,7 @@ int do_help_cmd(char *command)
     } else if (strcmp(command, "gets") == 0) {
 	printf("gets signame\n");
 	printf("  Gets the value of signal 'signame'.\n");
+    printf("  If signal 'signame' is a port, returns the buffer size of that port.\n");
     } else if (strcmp(command, "stype") == 0) {
 	printf("stype signame\n");
 	printf("  Gets the type of signal 'signame'\n");
@@ -2833,10 +2918,15 @@ int do_help_cmd(char *command)
 	printf("  Prints HAL state to 'filename' (or stdout), as a series\n");
 	printf("  of HAL commands.  State can later be restored by using\n");
 	printf("  \"halcmd -f filename\".\n");
-	printf("  Type can be 'comp', 'sig', 'link[a]', 'net[a]', 'netl', 'param',\n");
-	printf("  or 'thread'.  ('linka' and 'neta' show arrows for pin\n");
-	printf("  direction.)  If 'type' is omitted or 'all', does the\n");
-	printf("  equivalent of 'comp', 'netl', 'param', and 'thread'.\n");
+	printf("  Type can be 'comp', 'alias', 'sig[u]', 'signal', 'link[a]'\n");
+        printf("  'net[a]', 'netl', 'netla', netal', 'param', 'parameter,\n");
+	printf("  'unconnectedinpins', 'all, 'allu', or 'thread'.\n");
+        printf("  (A final 'a' character (like 'neta' means show arrows for pin direction.)\n");
+        printf("  If 'type' is 'allu'), does the equivalent of:\n");
+	printf("  'comp', 'alias', 'sigu', 'netla', 'param', 'unconnectedinpins' and 'thread'.\n\n");
+        printf("  If 'type' is omitted (or type is 'all'), does the equivalent of:\n");
+	printf("  'comp', 'alias', 'sigu', 'netla', 'param', and 'thread'.\n\n");
+        printf("  See the man page ($man halcmd) for save option details\n");
     } else if (strcmp(command, "start") == 0) {
 	printf("start\n");
 	printf("  Starts all realtime threads.\n");

@@ -9,8 +9,6 @@
 * System: Linux
 *    
 * Copyright (c) 2004 All rights reserved.
-*
-* Last change:
 ********************************************************************/
 #ifndef TC_TYPES_H
 #define TC_TYPES_H
@@ -41,6 +39,11 @@ typedef enum {
     TC_SYNC_VELOCITY,
     TC_SYNC_POSITION
 } tc_spindle_sync_t;
+
+typedef enum {
+    TC_DIR_FORWARD = 0,
+    TC_DIR_REVERSE
+} tc_direction_t;
 
 #define TC_GET_PROGRESS 0
 #define TC_GET_STARTPOINT 1
@@ -106,6 +109,7 @@ typedef struct {
     PmCartesian abc;
     PmCartesian uvw;
     double reversal_target;
+    double reversal_scale;
     double spindlerevs_at_reversal;
     RIGIDTAP_STATE state;
 } PmRigidTap;
@@ -125,6 +129,8 @@ typedef struct {
     double finalvel;        // velocity to aim for at end of segment
     double term_vel;        // actual velocity at termination of segment
     double kink_vel;        // Temporary way to store our calculation of maximum velocity we can handle if this segment is declared tangent with the next
+    double kink_accel_reduce_prev; // How much to reduce the allowed tangential acceleration to account for the extra acceleration at an approximate tangent intersection.
+    double kink_accel_reduce; // How much to reduce the allowed tangential acceleration to account for the extra acceleration at an approximate tangent intersection.
 
     //Acceleration
     double maxaccel;        // accel calc'd by task

@@ -77,7 +77,7 @@
 
     You should have received a copy of the GNU General Public
     License along with this library; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111 USA
+    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
     THE AUTHORS OF THIS LIBRARY ACCEPT ABSOLUTELY NO LIABILITY FOR
     ANY HARM OR LOSS RESULTING FROM ITS USE.  IT IS _EXTREMELY_ UNWISE
@@ -188,7 +188,7 @@ int rtapi_app_main(void)
     } else {
         howmany = 0;
         for (i = 0; i < MAX_CHAN; i++) {
-            if (names[i] == NULL) {
+            if ( (names[i] == NULL) || (*names[i] == 0) ){
                 break;
             }
             howmany = i + 1;

@@ -3,7 +3,7 @@
 
 = Introduction à HAL
 
-[[cha:HAL-Introduction]] (((Introduction à HAL)))
+[[cha:HAL-Introduction]]
 
 HAL(((HAL))) est le sigle de Hardware Abstraction Layer, le terme
 Anglais pour Couche d'Abstraction Matériel.footnote:[Note du 
@@ -366,10 +366,6 @@ hal_vti:: (((hal-vti)))
 
 halcmd:: (((halcmd)))
      Ligne de commande pour la configuration et les réglages. 
-
-halgui:: (((halgui)))
-     Outil graphique pour la configuration et les réglages. (pas encore
-    implémenté).
 
 halmeter:: (((halmeter)))
       Un multimètre pour les signaux HAL. Plus de détails pour utiliser 

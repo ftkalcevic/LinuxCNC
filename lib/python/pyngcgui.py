@@ -33,7 +33,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
-# Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #------------------------------------------------------------------------------
 """ python classes to implement an ngcgui-like application
 
@@ -570,7 +570,7 @@ def spath_from_files(pre_file,sub_files,pst_file):
     # when there is no ini file for path because
     #   linuxcnc not running
     # and
-    #   no ini specifed on cmd line
+    #   no ini specified on cmd line
     l = []
 
     slist = []
@@ -2147,6 +2147,9 @@ class ControlPanel():
         intfc = self.mypg.nset.intfc
 
         global g_gcmc_exe
+        if g_gcmc_exe is None:
+            if not find_gcmc():
+                return False ;# fail
         xcmd = []
         xcmd.append(g_gcmc_exe)
 
