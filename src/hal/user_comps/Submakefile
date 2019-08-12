@@ -28,8 +28,19 @@ $(call TOOBJSDEPS, $(GS2_SRCS)) : EXTRAFLAGS += $(GS2_CCFLAGS)
 	$(ECHO) Linking $(notdir $@)
 	$(Q)$(CC) -o $@ $^ $(LDFLAGS) $(GS2_LDFLAGS)
 
-USERSRCS += $(GS2_SRCS)
-TARGETS += ../bin/gs2_vfd
+SJ200_SRCS := hal/user_comps/sj200_vfd.c hal/user_comps/modbus.c
+SJ200_LDFLAGS := $(GLIB_LIBS) $(LIBMODBUS_LIBS)
+SJ200_CCFLAGS := $(GLIB_CFLAGS) $(LIBMODBUS_CFLAGS)
+
+$(call TOOBJSDEPS, $(SJ200_SRCS)) : EXTRAFLAGS += $(SJ200_CCFLAGS)
+
+../bin/sj200_vfd: $(call TOOBJS, $(SJ200_SRCS)) ../lib/liblinuxcnchal.so.0
+	$(ECHO) Linking $(notdir $@)
+	$(Q)$(CC) -o $@ $^ $(LDFLAGS) $(SJ200_LDFLAGS)
+
+
+USERSRCS += $(GS2_SRCS) $(SJ200_SRCS)
+TARGETS += ../bin/gs2_vfd ../bin/sj200_vfd
 
 HY_GT_SRCS := hal/user_comps/hy_gt_vfd.c
 HY_GT_LDFLAGS := $(LIBMODBUS_LIBS)
