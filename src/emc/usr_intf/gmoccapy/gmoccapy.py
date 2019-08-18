@@ -89,7 +89,7 @@ if debug:
 
 # constants
 #         # gmoccapy  #"
-_RELEASE = " 3.0.7.2"
+_RELEASE = " 3.0.8"
 _INCH = 0                         # imperial units are active
 _MM = 1                           # metric units are active
 
@@ -475,6 +475,7 @@ class gmoccapy(object):
                       "btn_select_tool_by_no", "btn_spindle_100", "spc_rapid", "spc_spindle",
                       "btn_tool_touchoff_x", "btn_tool_touchoff_z"
         ]
+        # 
         self._sensitize_widgets(widgetlist, False)
 
         # this must be done last, otherwise we will get wrong values
@@ -693,19 +694,24 @@ class gmoccapy(object):
 
     def _get_button_with_image(self, name, filepath, stock):
         image = gtk.Image()
-        image.set_size_request(48,48)
-        btn = self._get_button(name, image)
-        if filepath:
-            image.set_from_file(filepath)
-        else:
-            image.set_from_stock(stock, 48)
-        return btn
-
-    def _get_button(self, name, image):
+        image.set_size_request(72,48)
         btn = gtk.Button()
         btn.set_size_request(85,56)
-        btn.add(image)
         btn.set_property("name", name)
+        try:
+            if filepath:
+                pixbuf = gtk.gdk.pixbuf_new_from_file_at_size(filepath, 72, 48)
+                image.set_from_pixbuf(pixbuf)
+            else:
+                image.set_from_stock(stock, 48)
+            btn.add(image)
+        except:
+            message = _("**** GMOCCAPY ERROR ****\n")
+            message += _("**** could not resolv the image path '{0}' given for macro button '{1}' ****".format(filepath, name))
+            print(message)
+            image.set_from_stock(gtk.STOCK_MISSING_IMAGE, 48)
+            btn.add(image)
+        
         btn.show_all()
         return btn
 
@@ -927,8 +933,7 @@ class gmoccapy(object):
         self.widgets.hbtb_touch_off.pack_start(btn)
         btn.show()
 
-        name = "touch_back"
-        btn = self._get_button_with_image(name, None, gtk.STOCK_UNDO)
+        btn = self._get_button_with_image("touch_back", None, gtk.STOCK_UNDO)
         btn.set_property("tooltip-text", _("Press to return to main button list"))
         btn.connect("clicked", self._on_btn_home_back_clicked)
         self.widgets.hbtb_touch_off.pack_start(btn)
@@ -1172,25 +1177,33 @@ class gmoccapy(object):
 
         btn = self._get_button_with_image("previous_button", None, gtk.STOCK_GO_BACK)
         btn.hide()
-        btn.set_property("tooltip-text", _("Press to display previous button"))
+        btn.set_property("tooltip-text", _("Press to display previous macro button"))
         btn.connect("clicked", self._on_btn_previous_macro_clicked)
         self.widgets.hbtb_MDI.pack_start(btn)
 
         for pos in range(0, num_macros):
             name = macros[pos]
-            lbl = name.split()[0]
-            # shorten / break line of the name if it is to long
-            if len(lbl) > 11:
-                lbl = lbl[0:10] + "\n" + lbl[11:20]
-            btn = gtk.Button(lbl, None, False)
-            btn.set_property("name","macro_{0}".format(pos))
+
+            image = self._check_macro_for_image(name)
+            if image:
+                print("Macro {0} has image link".format(name))
+                print("Image = {0}".format(image))
+                btn = self._get_button_with_image("macro_{0}".format(pos), image, None)
+            else:
+                lbl = name.split()[0]
+                # shorten / break line of the name if it is to long
+                if len(lbl) > 11:
+                    lbl = lbl[0:10] + "\n" + lbl[11:20]
+                btn = gtk.Button(lbl, None, False)
+                btn.set_property("name","macro_{0}".format(pos))
+            btn.set_property("tooltip-text", _("Press to run macro {0}".format(name)))
             btn.connect("pressed", self._on_btn_macro_pressed, name)
             btn.position = pos
             btn.show()
             self.widgets.hbtb_MDI.pack_start(btn, True, True, 0)
 
         btn = self._get_button_with_image("next_button", None, gtk.STOCK_GO_FORWARD)
-        btn.set_property("tooltip-text", _("Press to display next button"))
+        btn.set_property("tooltip-text", _("Press to display next macro button"))
         btn.connect("clicked", self._on_btn_next_macro_clicked)
         btn.hide()
         self.widgets.hbtb_MDI.pack_start(btn)
@@ -1227,6 +1240,33 @@ class gmoccapy(object):
             for pos in range(8, num_macros):
                 self.macro_dic["macro_{0}".format(pos)].hide()
 
+    def _check_macro_for_image(self, name):
+        image = False
+        for path in self.get_ini_info.get_subroutine_paths().split(":"):
+            file = path + "/" + name.split()[0] + ".ngc"
+            if os.path.isfile(file):
+                macrofile = open(file, "r")
+                lines = macrofile.readlines()
+                macrofile.close()
+                for line in lines:
+                    if line[0] == ";":
+                        continue
+                    if "image" in line.lower():
+                        image = True
+                        break
+                
+        # should be like that in ngc file
+        # (IMAGE, /home/my_home/my_image_dir/my_image.png)
+        # so we need to get the correct image path
+        if image:
+            image = line.split(",")[1]
+            image = image.strip()
+            image = image.replace(")","")
+            if "~" in image:
+                image = image.replace("~", os.path.expanduser("~"))
+            image = os.path.abspath(image)
+            
+        return image
 
     # if this is a lathe we need to rearrange some button and add a additional DRO
     def _make_lathe(self):
@@ -2659,7 +2699,6 @@ class gmoccapy(object):
         file = self.prefs.getpref("open_file", "", str)
         if file:
             self.widgets.file_to_load_chooser.set_filename(file)
-            # self.command.program_open(file)
             self.widgets.hal_action_open.load_file(file)
 
         # check how to start the GUI
@@ -3916,31 +3955,27 @@ class gmoccapy(object):
 
     def on_tbtn_edit_offsets_toggled(self, widget, data=None):
         state = widget.get_active()
-        self.widgets.offsetpage1.edit_button.set_active( state )
-        widgetlist = ["btn_zero_x", "btn_zero_y", "btn_zero_z", "btn_set_value_x", "btn_set_value_y",
-                      "btn_set_value_z", "btn_set_selected", "ntb_jog", "btn_set_selected", "btn_zero_g92",
-                      "rbt_mdi","rbt_auto","tbtn_setup"
-        ]
+        self.widgets.offsetpage1.edit_button.set_active(state)
+        self.widgets.ntb_preview.set_current_page(1)
+
+        if self.widgets.rbtn_show_preview.get_active() and not state:
+            self.widgets.ntb_preview.set_current_page(0)
+
+        widgetlist = ["ntb_jog", "rbt_mdi","rbt_auto","tbtn_setup"]
 
         if self.widgets.tbtn_user_tabs.get_sensitive():
             widgetlist.append("tbtn_user_tabs")
         self._sensitize_widgets( widgetlist, not state )
 
-        if state:
-            self.widgets.ntb_preview.set_current_page(1)
-        else:
-            self.widgets.ntb_preview.set_current_page(0)
+        for element in self.touch_button_dic:
+            if self.touch_button_dic[element].name in ["edit_offsets", "touch_back"]:
+                continue
+            self.touch_button_dic[element].set_sensitive(not state)
 
-        # we have to replace button calls in our list to make all hardware button
-        # activate the correct button call
-        if state and self.widgets.chk_use_tool_measurement.get_active():
-            self.widgets.btn_zero_g92.show()
-            self.widgets.btn_block_height.hide()
-            self._replace_list_item(4, "btn_block_height", "btn_zero_g92")
-        elif not state and self.widgets.chk_use_tool_measurement.get_active():
-            self.widgets.btn_zero_g92.hide()
-            self.widgets.btn_block_height.show()
-            self._replace_list_item(4, "btn_zero_g92", "btn_block_height")
+        # if no system is selected we will set the button not sensitive
+        system, name = self.widgets.offsetpage1.get_selected()
+        if not system:
+            self.touch_button_dic["set_active"].set_sensitive(False)
 
         if not state:  # we must switch back to manual mode, otherwise jogging is not possible
             self.command.mode(linuxcnc.MODE_MANUAL)
