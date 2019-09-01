@@ -1,7 +1,7 @@
 #ifndef GLINTERP_H
 #define GLINTERP_H
 
-#include "interpbase.hh"
+#include "interpbaseclass.hh"
 
 
 namespace MoveType
@@ -18,7 +18,7 @@ namespace MoveType
 }
 
 
-class GLInterp: public InterpBase
+class GLInterp: public InterpBaseClass
 {
 private:
     struct GLLineStrip

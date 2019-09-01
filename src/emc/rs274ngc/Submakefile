@@ -71,9 +71,10 @@ PYTARGETS += $(GCODEMODULE)
 
 
 LIBINTERPBASESRCS := $(addprefix emc/rs274ngc/, \
-	interpbase.cc \
+	interpbaseclass.cc \
 	interp_arc.cc \
 	interp_array.cc \
+        interp_base.cc \
 	interp_check.cc \
 	interp_convert.cc \
 	interp_queue.cc \
@@ -83,6 +84,7 @@ LIBINTERPBASESRCS := $(addprefix emc/rs274ngc/, \
 	interp_internal.cc \
 	interp_inverse.cc \
 	interp_read.cc \
+	interp_setup.cc \
 	interp_write.cc \
 	interp_o_word.cc \
 	nurbs_additional_functions.cc \
@@ -90,13 +92,13 @@ LIBINTERPBASESRCS := $(addprefix emc/rs274ngc/, \
 	interp_python.cc \
 	interp_remap.cc \
 	rs274ngc_pre.cc)
-USERSRCS += emc/rs274ngc/interpbase.cc
+USERSRCS += emc/rs274ngc/interpbaseclass.cc
 
 $(call TOOBJSDEPS, $(LIBINTERPBASESRCS)) : EXTRAFLAGS=-fPIC $(BOOST_DEBUG_FLAGS) 
 
-TARGETS += ../lib/libinterpbase.so.0 ../lib/libinterpbase.so
+TARGETS += ../lib/libinterpbaseclass.so.0 ../lib/libinterpbaseclass.so
 
-../lib/libinterpbase.so.0: $(patsubst %.cc,objects/%.o,$(LIBINTERPBASESRCS)) \
+../lib/libinterpbaseclass.so.0: $(patsubst %.cc,objects/%.o,$(LIBINTERPBASESRCS)) \
 	../lib/liblinuxcncini.so ../lib/libpyplugin.so ../lib/liblinuxcnchal.so.0
 	$(ECHO) Linking $(notdir $@)
 	@mkdir -p ../lib

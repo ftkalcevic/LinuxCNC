@@ -300,6 +300,7 @@ HEADERS := \
     emc/rs274ngc/interp_base.hh \
     emc/rs274ngc/rs274ngc.hh \
     emc/rs274ngc/interpbase.hh \
+    emc/rs274ngc/interpbaseclass.hh \
     hal/hal.h \
     hal/hal_parport.h \
     libnml/buffer/locmem.hh \
@@ -921,10 +922,10 @@ genserkins-objs := emc/kinematics/genserkins.o
 genserkins-objs += libnml/posemath/gomath.o
 genserkins-objs += libnml/posemath/sincos.o $(MATHSTUB)
 
-obj-m += ikfastkins.o
-ikfastkins-objs := emc/kinematics/ikfastkins.o
-ikfastkins-objs += libnml/posemath/_posemath.o
-ikfastkins-objs += libnml/posemath/sincos.o $(MATHSTUB)
+#obj-m += ikfastkins.o
+#ikfastkins-objs := emc/kinematics/ikfastkins.o
+#ikfastkins-objs += libnml/posemath/_posemath.o
+#ikfastkins-objs += libnml/posemath/sincos.o $(MATHSTUB)
 #ikfastkins-objs += emc/kinematics/lapack/lapack/blas/daxpy.o emc/kinematics/lapack/lapack/blas/dcopy.o emc/kinematics/lapack/lapack/blas/ddot.o emc/kinematics/lapack/lapack/blas/dgemv.o emc/kinematics/lapack/lapack/blas/dger.o emc/kinematics/lapack/lapack/blas/dnrm2.o emc/kinematics/lapack/lapack/blas/drot.o emc/kinematics/lapack/lapack/blas/dscal.o emc/kinematics/lapack/lapack/blas/dswap.o emc/kinematics/lapack/lapack/blas/dtrmm.o emc/kinematics/lapack/lapack/blas/dtrmv.o emc/kinematics/lapack/lapack/blas/dtrsm.o emc/kinematics/lapack/lapack/blas/idamax.o emc/kinematics/lapack/lapack/double/dgebak.o emc/kinematics/lapack/lapack/double/dgebal.o emc/kinematics/lapack/lapack/double/dgeev.o emc/kinematics/lapack/lapack/double/dgehd2.o emc/kinematics/lapack/lapack/double/dgehrd.o emc/kinematics/lapack/lapack/double/dgetf2.o emc/kinematics/lapack/lapack/double/dgetrf.o emc/kinematics/lapack/lapack/double/dgetrs.o emc/kinematics/lapack/lapack/double/dhseqr.o emc/kinematics/lapack/lapack/double/disnan.o emc/kinematics/lapack/lapack/double/dlabad.o emc/kinematics/lapack/lapack/double/dlacpy.o emc/kinematics/lapack/lapack/double/dladiv.o emc/kinematics/lapack/lapack/double/dlaexc.o emc/kinematics/lapack/lapack/double/dlahqr.o emc/kinematics/lapack/lapack/double/dlahr2.o emc/kinematics/lapack/lapack/double/dlaisnan.o emc/kinematics/lapack/lapack/double/dlaln2.o emc/kinematics/lapack/lapack/double/dlange.o emc/kinematics/lapack/lapack/double/dlanv2.o emc/kinematics/lapack/lapack/double/dlapy2.o emc/kinematics/lapack/lapack/double/dlaqr0.o emc/kinematics/lapack/lapack/double/dlaqr1.o emc/kinematics/lapack/lapack/double/dlaqr2.o emc/kinematics/lapack/lapack/double/dlaqr3.o emc/kinematics/lapack/lapack/double/dlaqr4.o emc/kinematics/lapack/lapack/double/dlaqr5.o emc/kinematics/lapack/lapack/double/dlarfb.o emc/kinematics/lapack/lapack/double/dlarfg.o emc/kinematics/lapack/lapack/double/dlarf.o emc/kinematics/lapack/lapack/double/dlarft.o emc/kinematics/lapack/lapack/double/dlarfx.o emc/kinematics/lapack/lapack/double/dlartg.o emc/kinematics/lapack/lapack/double/dlascl.o emc/kinematics/lapack/lapack/double/dlaset.o emc/kinematics/lapack/lapack/double/dlassq.o emc/kinematics/lapack/lapack/double/dlaswp.o emc/kinematics/lapack/lapack/double/dlasy2.o emc/kinematics/lapack/lapack/double/dorg2r.o emc/kinematics/lapack/lapack/double/dorghr.o emc/kinematics/lapack/lapack/double/dorgqr.o emc/kinematics/lapack/lapack/double/dorm2r.o emc/kinematics/lapack/lapack/double/dormhr.o emc/kinematics/lapack/lapack/double/dormqr.o emc/kinematics/lapack/lapack/double/dtrevc.o emc/kinematics/lapack/lapack/double/dtrexc.o emc/kinematics/lapack/lapack/lapack_routine/dlamch.o emc/kinematics/lapack/lapack/lapack_routine/ieeeck.o emc/kinematics/lapack/lapack/lapack_routine/iladlc.o emc/kinematics/lapack/lapack/lapack_routine/iladlr.o emc/kinematics/lapack/lapack/lapack_routine/ilaenv.o emc/kinematics/lapack/lapack/lapack_routine/iparmq.o emc/kinematics/lapack/lapack/lapack_routine/lsame.o emc/kinematics/lapack/lapack/lapack_routine/xerbla.o emc/kinematics/lapack/lapack/blas/dgemm.o emc/kinematics/lapack/lapack/gfortranlib/string_intrinsics.o emc/kinematics/lapack/lapack/gfortranlib/stop.o emc/kinematics/lapack/lapack/gfortranlib/others.o
 #IKFASTLIBS := -llapack
 

@@ -1,12 +1,12 @@
 #include "stdafx.h"
 #include "glinterp.h"
 
-#include <GL/glut.h>
+//#include <GL/glut.h>
 #include <math.h>
 
 
 GLInterp::GLInterp()
-    : InterpBase( CANON_UNITS_MM )
+    : InterpBaseClass( CANON_UNITS_MM )
     , m_units( CANON_UNITS_MM )
 {
     m_extentsMin.pts[0] = m_extentsMin.pts[1] = m_extentsMin.pts[2] = 0;
@@ -184,12 +184,12 @@ void GLInterp::rs274_arc_to_segments( int line_number, double x1, double y1, dou
     int X, Y, Z;
     int max_segments = 128;
     
-    int plane = InterpBase::Plane(); 
-    double rotation_cos = cos(InterpBase::XYRotation());  
-    double rotation_sin = sin(InterpBase::XYRotation()); 
-    EmcPose2Array( InterpBase::CurrentPos(), o );
-    EmcPose2Array( InterpBase::g5xOffset(), g5xoffset );
-    EmcPose2Array( InterpBase::g92Offset(), g92offset );
+    int plane = InterpBaseClass::Plane(); 
+    double rotation_cos = cos(InterpBaseClass::XYRotation());  
+    double rotation_sin = sin(InterpBaseClass::XYRotation()); 
+    EmcPose2Array( InterpBaseClass::CurrentPos(), o );
+    EmcPose2Array( InterpBaseClass::g5xOffset(), g5xoffset );
+    EmcPose2Array( InterpBaseClass::g92Offset(), g92offset );
 
 
     if ( plane == CANON_PLANE_XY ) 
@@ -308,7 +308,7 @@ void GLInterp::parse_file( const char *filename )
     m_extentsMin.pts[0] = m_extentsMin.pts[1] = m_extentsMin.pts[2] = -0.5;
     m_extentsMax.pts[0] = m_extentsMax.pts[1] = m_extentsMax.pts[2] = 1.5;
     
-    InterpBase::parse_file( filename );
+    InterpBaseClass::parse_file( filename );
     
     ComputeSizeAndMid();
 }
