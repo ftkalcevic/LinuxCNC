@@ -922,7 +922,7 @@ void GET_EXTERNAL_PARAMETER_FILE_NAME(char *name, int max_size)
         name[0] = 0;
     pInterpBase->GetExternalParameterFileName(name, max_size);
 }
-int GET_EXTERNAL_LENGTH_UNIT_TYPE() 
+CANON_UNITS GET_EXTERNAL_LENGTH_UNIT_TYPE() 
 { 
     return pInterpBase->GetExternalLengthUnitType();
 }

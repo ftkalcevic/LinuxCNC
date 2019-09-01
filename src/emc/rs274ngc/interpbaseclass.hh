@@ -15,7 +15,7 @@
 class InterpBaseClass
 {
 public:
-    InterpBaseClass( CANON_UNITS units = 0 );
+    InterpBaseClass( CANON_UNITS units = CANON_UNITS_MM );
 
     void parse_file( const char *filename );
 
@@ -122,15 +122,15 @@ public:
                            double x, double y, double z) {}
     virtual void InitCanon() {}
     virtual void GetExternalParameterFileName(char *name, int max_size) {}
-    virtual int GetExternalLengthUnitType() { return CANON_UNITS_MM; }
-    virtual CANON_TOOL_TABLE GetExternalToolTable(int pocket) { CANON_TOOL_TABLE t = {-1,{{0,0,0},0,0,0,0,0,0},0,0,0,0}; return t; }
+    virtual CANON_UNITS GetExternalLengthUnitType() { return CANON_UNITS_MM; }
+    virtual CANON_TOOL_TABLE GetExternalToolTable(int pocket) { CANON_TOOL_TABLE t = {-1,-1,{{0,0,0},0,0,0,0,0,0},0,0,0,0}; return t; }
     virtual int GetExternalDigitalInput(int index, int def) { return def; }
     virtual int GetExternalAnalogInput(int index, double def) { return def; }
     virtual int Wait(int index, int input_type, int wait_type, double timeout) { return 0; }
     virtual void UserDefinedFunction(int num, double arg1, double arg2)  {}
     virtual void SetFeedReference( int ref ) {}
     virtual bool GetExternalQueueEmpty() { return true; }
-    virtual CANON_DIRECTION GetExternalSpindle() { return 0; }  // ? not valid value
+    virtual CANON_DIRECTION GetExternalSpindle() { return CANON_STOPPED; }
     virtual int GetExternalToolSlot() { return 0; }
     virtual int GetExternalSelectedToolSlot() {return 0; }
     virtual double GetExternalFeedRate() { return 1.0; }
