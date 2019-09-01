@@ -12,9 +12,9 @@
 #
 #    You should have received a copy of the GNU General Public License
 #    along with this program; if not, write to the Free Software
-#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+#    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-import rs274.OpenGLTk, Tkinter, signal
+import rs274.OpenGLTk, Tkinter, signal, hal
 from minigl import *
 from math import *
 import glnav
@@ -183,11 +183,20 @@ class Track(Collection):
 
 class CoordsBase(object):
     def __init__(self, *args):
+	if args and isinstance(args[0], hal.component):
+	   self.comp = args[0]
+	   args = args[1:]
+	else:
+	   self.comp = None
 	self._coords = args
 	self.q = gluNewQuadric()
 
     def coords(self):
-	return self._coords
+	return map(self._coord, self._coords)
+
+    def _coord(self, v):
+	if isinstance(v, str): return self.comp[v]
+	return v
 
 # give endpoint X values and radii
 # resulting cylinder is on the X axis
@@ -761,7 +770,7 @@ class O(rs274.OpenGLTk.Opengl):
 	#self.q2 = gluNewQuadric()
 	#self.q3 = gluNewQuadric()
 	self.plotdata = []
-	self.plotlen = 4000
+	self.plotlen = 16000
 	#does not show HUD by default
 	self.hud = Hud()
 
@@ -911,7 +920,7 @@ class AsciiSTL:
                         dx2 = t[2][0] - t[0][0]
                         dy2 = t[2][1] - t[0][1]
                         dz2 = t[2][2] - t[0][2]
-                        n = [y1*z2 - y2*z1, z1*x2 - z2*x1, y1*x2 - y2*x1]
+                        n = [dy1*dz2 - dy2*dz1, dz1*dx2 - dz2*dx1, dy1*dx2 - dy2*dx1]
                     d.append((n, t))
                     t = []
                     n = [0,0,0]

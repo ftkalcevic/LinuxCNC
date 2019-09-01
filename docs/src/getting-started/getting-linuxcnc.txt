@@ -1,4 +1,4 @@
-[[cha:getting-linuxcnc]] (((Getting LinuxCNC)))
+[[cha:getting-linuxcnc]]
 
 = Getting LinuxCNC
 
@@ -34,7 +34,7 @@ Image.
 
 Download the Live/Install CD by clicking here:
 
-http://www.linuxcnc.org/linuxcnc-2.7-wheezy.iso
+http://www.linuxcnc.org/iso/linuxcnc-2.7.14-wheezy.iso
 
 
 === Download using zsync
@@ -47,7 +47,7 @@ method.
 
 .zsync in Linux
 
-. Install zsync using Synaptic or, by running the following in a terminal
+. Install zsync using Synaptic or, by running the following in a <<faq:terminal,terminal>>
 +
 ----
 sudo apt-get install zsync
@@ -55,7 +55,7 @@ sudo apt-get install zsync
 . Then run this command to download the iso to your computer
 +
 ----
-zsync http://www.linuxcnc.org/linuxcnc-2.7-wheezy.iso.zsync
+zsync http://www.linuxcnc.org/iso/linuxcnc-2.7.14-wheezy.iso.zsync
 ----
 
 .zsync in Windows
@@ -72,15 +72,19 @@ https://www.assembla.com/spaces/zsync-windows/documents
 . After downloading, verify the checksum of the image to ensure integrity.
 +
 ----
-md5sum linuxcnc-2.7-wheezy.iso
+md5sum linuxcnc-2.7.14-wheezy.iso
+----
++
 or
-sha256sum linuxcnc-2.7-wheezy.iso
++
+----
+sha256sum linuxcnc-2.7.14-wheezy.iso
 ----
 . Then compare to these checksums
 +
 -----
-md5sum: 978ca074c51194e72f93e8c8d7110cfa
-sha256sum: a3c29850cbc44da7b1ecdbe584a915f158c0b84428acfbcf3271df85c24e34aa
+md5sum: bdd85ad00f05d7c67e5037a72bae4934
+sha256sum: 079ba1fae48861b0814187b8048d6f2f299f943427d8c4806b65519f3a560d48
 -----
 
 .Verify md5sum on Windows or Mac
@@ -95,7 +99,8 @@ The LinuxCNC Live/Install Image is a hybrid ISO image which can be written
 directly to a USB storage device (flash drive) or a DVD and used to boot
 a computer.  The image is too large to fit on a CD.
 
-. Writing the image to a USB storage device in Linux
+.Writing the image to a USB storage device in Linux
+
 . Connect a USB storage device (for example a flash drive or thumb
   drive type device).
 . Determine the device file corresponding to the USB flash drive.
@@ -106,7 +111,7 @@ a computer.  The image is too large to fit on a CD.
   then use this command:
 +
 -----
-dd if=linuxcnc-2.7-wheezy.iso of=/dev/sde
+dd if=linuxcnc-2.7.14-wheezy.iso of=/dev/sde
 -----
 
 .Writing the image to a DVD in Linux
@@ -213,8 +218,8 @@ and `linux-image-rt-686-pae`.
 WARNING: Do not enter a root password, if you do sudo is disabled and you won't
 be able to complete the following steps.
 
-. Run the following in a terminal to bring the machine up to date with the
-  latest packages.
+. Run the following in a <<faq:terminal,terminal>> to bring the machine up to
+  date with the latest packages.
 +
 ----
 sudo apt-get update
@@ -229,12 +234,16 @@ or
 sudo apt-get install linux-image-rt-686-pae
 ----
 
-. Reboot, and make sure you boot into the Preempt-RT kernel. When you
-  log in, verify that the following includes `PREEMPT` and `RT`.
+. Reboot, and select the Linux 3.2.0-4-rt-686-pae kernel. When you
+  log in, verify that `PREEMPT RT`is reported by the following command.
 +
 ----
 uname -v
 ----
+
+. Open Applications Menu > System > Synaptic Package Manager search for
+  'linux-image' and right click on 'linux-image-3.2.0-4-686-pae' and select
+  'Mark for Complete Removal'. Do the same for 'linux-image-686-pae'. Reboot.
 
 . Add the LinuxCNC Archive Signing Key to your apt keyring by running
 +
@@ -242,12 +251,10 @@ uname -v
 sudo apt-key adv --keyserver hkp://keys.gnupg.net --recv-key 3cb9fd148f374fef
 ----
 
-. Add a new apt source that looks like this:
+. Add a the apt repository:
 +
 ----
 sudo add-apt-repository "deb http://linuxcnc.org/ wheezy base 2.7-uspace"
-or
-sudo add-apt-repository "deb http://linuxcnc.org/ jessie base 2.7-uspace"
 ----
 
 . Update the package list from linuxcnc.org
@@ -256,7 +263,7 @@ sudo add-apt-repository "deb http://linuxcnc.org/ jessie base 2.7-uspace"
 sudo apt-get update
 ----
 
-. Install uspace
+. Install uspace (a reboot may be required prior to installing uspace)
 +
 ----
 sudo apt-get install linuxcnc-uspace

@@ -15,7 +15,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
-# Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 #
 # As standalone tool table editor
@@ -882,11 +882,11 @@ proc ::tooledit::showerr {msg} {
   foreach item $msg {set text "$text\n$item"}
   $l configure -text $text
   pack $l -side top
-  set b [button $w.b -text Dismiss -command "destroy $w"]
+  set b [button $w.b -text [_ "Dismiss"] -command "destroy $w"]
   pack $b -side top
   focus $b
   wm withdraw $w
-  wm title    $w Error
+  wm title    $w [_ "Error"]
   update idletasks
   set x [expr [winfo screenwidth $w]/2 \
             - [winfo reqwidth $w]/2  - [winfo vrootx [winfo parent $w]]]
@@ -903,7 +903,7 @@ proc ::tooledit::bye {} {
               "[_ "Save Modifications to File?"]" \
               {} \
               0 \
-              Yes No]
+              [_ "Yes"] [_ "No"]]
     if {$ans == 0} {
       ::tooledit::writefile $::te(filename)
     }

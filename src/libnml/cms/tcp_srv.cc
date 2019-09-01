@@ -303,7 +303,7 @@ static void handle_pipe_error(int signum)
 
 void CMS_SERVER_REMOTE_TCP_PORT::run()
 {
-    unsigned long bytes_ready;
+    int bytes_ready;
     int ready_descriptors;
     if (NULL == client_ports) {
 	rcs_print_error("CMS_SERVER: List of client ports is NULL.\n");
@@ -422,7 +422,7 @@ void CMS_SERVER_REMOTE_TCP_PORT::run()
 		    if (client_port_to_check->blocking) {
 			if (client_port_to_check->threadId > 0) {
 			    rcs_print_debug(PRINT_SERVER_THREAD_ACTIVITY,
-				"Data recieved from %s:%d when it should be blocking (bytes_ready=%ld).\n",
+				"Data received from %s:%d when it should be blocking (bytes_ready=%d).\n",
 				inet_ntoa
 				(client_port_to_check->address.
 				    sin_addr),
@@ -700,7 +700,7 @@ void CMS_SERVER_REMOTE_TCP_PORT::handle_request(CLIENT_TCP_PORT *
     buffer_number = ntohl(*((uint32_t *) temp_buffer + 2));
 
     rcs_print_debug(PRINT_ALL_SOCKET_REQUESTS,
-	"TCPSVR request recieved: fd = %d, serial_number=%ld, request_type=%ld, buffer_number=%ld\n",
+	"TCPSVR request received: fd = %d, serial_number=%ld, request_type=%ld, buffer_number=%ld\n",
 	_client_tcp_port->socket_fd,
 	_client_tcp_port->serial_number, request_type, buffer_number);
 
@@ -1212,22 +1212,23 @@ void CMS_SERVER_REMOTE_TCP_PORT::switch_function(CLIENT_TCP_PORT *
 		return;
 	    }
 	}
-	server->write_reply =
+	REMOTE_WRITE_REPLY *reply;
+	server->write_reply = reply =
 	    (REMOTE_WRITE_REPLY *) server->process_request(&server->
 	    write_req);
 	if (((min_compatible_version < 2.58) && (min_compatible_version > 1e-6)) || server->write_reply->confirm_write) {
 	    if (NULL == server->write_reply) {
 		rcs_print_error("Server could not process request.\n");
-		putbe32(temp_buffer, _client_tcp_port->serial_number);
+	        putbe32(temp_buffer, reply->write_id);
 		putbe32(temp_buffer + 4, CMS_SERVER_SIDE_ERROR);
 		putbe32(temp_buffer + 8, 0);	/* was_read */
 		sendn(_client_tcp_port->socket_fd, temp_buffer, 12, 0,
 		    dtimeout);
 		return;
 	    }
-	    putbe32(temp_buffer, _client_tcp_port->serial_number);
-	    putbe32(temp_buffer + 4, server->write_reply->status);
-	    putbe32(temp_buffer + 8, server->write_reply->was_read);
+	    putbe32(temp_buffer, reply->write_id);
+	    putbe32(temp_buffer + 4, reply->status);
+	    putbe32(temp_buffer + 8, reply->was_read);
 	    if (sendn
 		(_client_tcp_port->socket_fd, temp_buffer, 12, 0,
 		    dtimeout) < 0) {

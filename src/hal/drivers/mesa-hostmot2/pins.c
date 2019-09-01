@@ -216,6 +216,18 @@ static const char* hm2_get_pin_secondary_name(hm2_pin_t *pin) {
             }
             break;
 
+        case HM2_GTAG_PKTUART_RX:
+            switch (sec_pin) {
+                case 0x1: return "RX Data";
+            }
+            break;
+        case HM2_GTAG_PKTUART_TX:    
+            switch (sec_pin) {
+                case 0x1: return "TX Data";
+                case 0x2: return "Drv Enable";
+            }
+            break;
+
         case HM2_GTAG_DPLL: // Not Supported Currently
             switch (sec_pin) {
                 case 0x1: return "SynchIn";
@@ -289,7 +301,17 @@ static const char* hm2_get_pin_secondary_name(hm2_pin_t *pin) {
              return unknown;
              break;
 
-}
+        case HM2_GTAG_SSR:
+            if ((sec_pin >= 1) && (sec_pin <= 31)) {
+                sprintf(unknown, "Out-%02d",sec_pin - 1);
+                return unknown;
+            } else if (sec_pin == 32) {
+                sprintf(unknown, "AC Ref (internal)");
+                return unknown;
+            }
+            break;
+    }
+
     rtapi_snprintf(unknown, sizeof(unknown), "unknown-pin-%d", sec_pin & 0x7F);
     return unknown;
 }
@@ -472,6 +494,18 @@ const char* hm2_get_pin_secondary_hal_name(const hm2_pin_t *pin) {
             }
             break;
 
+        case HM2_GTAG_PKTUART_RX:
+            switch (sec_pin) {
+                case 0x1: return "rx";
+            }
+            break;
+        case HM2_GTAG_PKTUART_TX:
+            switch (sec_pin) {
+                case 0x1: return "tx";
+                case 0x2: return "tx-drive-enable";
+            }
+            break;
+
     }
     return NULL;
 }
@@ -541,7 +575,7 @@ int hm2_read_pin_descriptors(hostmot2_t *hm2) {
         if (pin->primary_tag == 0) {
             // oops, found the Zero sentinel before the promised number of pins
             HM2_ERR(
-                "pin %d primary tag is 0 (end-of-list sentinel), expected %d!\n",
+                "pin %d primary tag is 0 (end-of-list sentinel), expected %d pins!\n",
                 i,
                 hm2->num_pins
             );
@@ -587,7 +621,7 @@ int hm2_read_pin_descriptors(hostmot2_t *hm2) {
                 pin->port_pin = i + 1;
                 break;
             default:
-                HM2_ERR("hm2_print_pin_usage: invalid port width %d\n", hm2->idrom.port_width);
+                HM2_ERR("%s: invalid port width %d\n", __FUNCTION__, hm2->idrom.port_width);
         }
         
         addr += 4;
@@ -655,26 +689,33 @@ void hm2_print_pin_usage(hostmot2_t *hm2) {
     HM2_PRINT("%d I/O Pins used:\n", hm2->num_pins);
 
     for (i = 0; i < hm2->num_pins; i ++) {
-        
         hm2_pin_t *pin = &(hm2->pin[i]);
-        
+        char connector_pin_name[100];
+
+        if (hm2->llio->io_connector_pin_names == NULL) {
+            snprintf(connector_pin_name, sizeof(connector_pin_name), "%s-%02d", hm2->llio->ioport_connector_name[pin->port_num], pin->port_pin);
+        } else {
+            if (hm2->llio->io_connector_pin_names[i] == NULL) {
+                continue;
+            }
+            snprintf(connector_pin_name, sizeof(connector_pin_name), "%s", hm2->llio->io_connector_pin_names[i]);
+        }
+
         if (pin->gtag == pin->sec_tag) {
             if(pin->sec_unit & 0x80)
                 HM2_PRINT(
-                    "    IO Pin %03d (%s-%02d): %s (all), pin %s (%s)\n",
+                    "    IO Pin %03d (%s): %s (all), pin %s (%s)\n",
                     i,
-                    hm2->llio->ioport_connector_name[pin->port_num],
-                    pin->port_pin,
+                    connector_pin_name,
                     hm2_get_general_function_name(pin->gtag),
                     hm2_get_pin_secondary_name(&hm2->pin[i]),
                     ((pin->sec_pin & 0x80) ? "Output" : "Input")
                 );
             else
                 HM2_PRINT(
-                    "    IO Pin %03d (%s-%02d): %s #%d, pin %s (%s)\n",
+                    "    IO Pin %03d (%s): %s #%d, pin %s (%s)\n",
                     i,
-                    hm2->llio->ioport_connector_name[pin->port_num],
-                    pin->port_pin,
+                    connector_pin_name,
                     hm2_get_general_function_name(pin->gtag),
                     pin->sec_unit,
                     hm2_get_pin_secondary_name(pin),
@@ -682,10 +723,9 @@ void hm2_print_pin_usage(hostmot2_t *hm2) {
                 );
         } else {
             HM2_PRINT(
-                "    IO Pin %03d (%s-%02d): %s\n",
+                "    IO Pin %03d (%s): %s\n",
                 i,
-                hm2->llio->ioport_connector_name[pin->port_num],
-                pin->port_pin,
+                connector_pin_name,
                 hm2_get_general_function_name(pin->gtag)
             );
         }
@@ -766,12 +806,16 @@ void hm2_configure_pins(hostmot2_t *hm2) {
     hm2_pins_allocate_all(hm2, HM2_GTAG_BSPI,  hm2->bspi.num_instances);
     hm2_pins_allocate_all(hm2, HM2_GTAG_UART_RX,  hm2->uart.num_instances);
     hm2_pins_allocate_all(hm2, HM2_GTAG_UART_TX ,  hm2->uart.num_instances);
-    hm2_pins_allocate_all(hm2, HM2_GTAG_SMARTSERIAL,  hm2->sserial.num_instances);
+    hm2_pins_allocate_all(hm2, HM2_GTAG_PKTUART_RX,  hm2->pktuart.num_instances);
+    hm2_pins_allocate_all(hm2, HM2_GTAG_PKTUART_TX ,  hm2->pktuart.num_instances);
+    // smart-serial might also not be contiguous
+    hm2_pins_allocate_all(hm2, HM2_GTAG_SMARTSERIAL,  HM2_SSERIAL_MAX_PORTS);
     // muxed encoder gets the sel pins
     hm2_pins_allocate_all(hm2, HM2_GTAG_MUXED_ENCODER_SEL, hm2->encoder.num_instances);
     // and about half as many I/Os as you'd expect
     hm2_pins_allocate_all(hm2, HM2_GTAG_MUXED_ENCODER, (hm2->encoder.num_instances+1)/2);
     hm2_pins_allocate_all(hm2, HM2_GTAG_HM2DPLL, hm2->dpll.num_instances);
+    hm2_pins_allocate_all(hm2, HM2_GTAG_SSR, hm2->ssr.num_instances);
 }
 
 const char *hm2_get_general_function_hal_name(int gtag) {
@@ -792,6 +836,8 @@ const char *hm2_get_general_function_hal_name(int gtag) {
         case HM2_GTAG_BSPI:     return "bspi";
         case HM2_GTAG_UART_RX:  return "uart";
         case HM2_GTAG_UART_TX:  return "uart";
+        case HM2_GTAG_PKTUART_RX:  return "uart";
+        case HM2_GTAG_PKTUART_TX:  return "uart";
 
         default: return NULL;
     }

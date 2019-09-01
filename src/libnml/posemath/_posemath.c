@@ -523,13 +523,13 @@ int pmMatZyxConvert(PmRotationMatrix const * const m, PmEulerZyx * const zyx)
 {
     zyx->y = atan2(-m->x.z, pmSqrt(pmSq(m->x.x) + pmSq(m->x.y)));
 
-    if (fabs(zyx->y - (2 * PM_PI)) < ZYX_Y_FUZZ) {
+    if (fabs(zyx->y - PM_PI_2) < ZYX_Y_FUZZ) {
 	zyx->z = 0.0;
-	zyx->y = (2 * PM_PI);	/* force it */
+	zyx->y = PM_PI_2;	/* force it */
 	zyx->x = atan2(m->y.x, m->y.y);
-    } else if (fabs(zyx->y + (2 * PM_PI)) < ZYX_Y_FUZZ) {
+    } else if (fabs(zyx->y + PM_PI_2) < ZYX_Y_FUZZ) {
 	zyx->z = 0.0;
-	zyx->y = -(2 * PM_PI);	/* force it */
+	zyx->y = -PM_PI_2;	/* force it */
 	zyx->x = -atan2(m->y.z, m->y.y);
     } else {
 	zyx->z = atan2(m->x.y, m->x.x);
@@ -543,13 +543,13 @@ int pmMatRpyConvert(PmRotationMatrix const * const m, PmRpy * const rpy)
 {
     rpy->p = atan2(-m->x.z, pmSqrt(pmSq(m->x.x) + pmSq(m->x.y)));
 
-    if (fabs(rpy->p - (2 * PM_PI)) < RPY_P_FUZZ) {
+    if (fabs(rpy->p - PM_PI_2) < RPY_P_FUZZ) {
 	rpy->r = atan2(m->y.x, m->y.y);
-	rpy->p = (2 * PM_PI);	/* force it */
+	rpy->p = PM_PI_2;	/* force it */
 	rpy->y = 0.0;
-    } else if (fabs(rpy->p + (2 * PM_PI)) < RPY_P_FUZZ) {
-	rpy->r = -atan2(m->y.z, m->y.y);
-	rpy->p = -(2 * PM_PI);	/* force it */
+    } else if (fabs(rpy->p + PM_PI_2) < RPY_P_FUZZ) {
+	rpy->r = -atan2(m->y.x, m->y.y);
+	rpy->p = -PM_PI_2;	/* force it */
 	rpy->y = 0.0;
     } else {
 	rpy->r = atan2(m->y.z, m->z.z);
@@ -822,6 +822,12 @@ int pmCartCartCross(PmCartesian const * const v1, PmCartesian const * const v2,
     vout->y = v1->z * v2->x - v1->x * v2->z;
     vout->z = v1->x * v2->y - v1->y * v2->x;
 
+    return pmErrno = 0;
+}
+
+int pmCartInfNorm(PmCartesian const * v, double * out)
+{
+    *out = fmax(fabs(v->x),fmax(fabs(v->y),fabs(v->z)));
     return pmErrno = 0;
 }
 
@@ -1646,7 +1652,6 @@ int pmLinePoint(PmLine const * const line, double len, PmPose * const point)
 int pmCartLineInit(PmCartLine * const line, PmCartesian const * const start, PmCartesian const * const end)
 {
     int r1 = 0, r2 = 0;
-    double tmag = 0.0;
 
     if (0 == line) {
         return (pmErrno = PM_ERR);
@@ -1659,16 +1664,20 @@ int pmCartLineInit(PmCartLine * const line, PmCartesian const * const start, PmC
         return r1;
     }
 
-    pmCartMag(&line->uVec, &tmag);
-    if (IS_FUZZ(tmag, CART_FUZZ)) {
+    pmCartMag(&line->uVec, &line->tmag);
+    // NOTE: use the same criteria for "zero" length vectors as used by canon
+    double max_xyz=0;
+    pmCartInfNorm(&line->uVec, &max_xyz);
+
+    if (IS_FUZZ(max_xyz, CART_FUZZ)) {
         line->uVec.x = 1.0;
         line->uVec.y = 0.0;
         line->uVec.z = 0.0;
+        line->tmag_zero = 1;
     } else {
-        r2 = pmCartUnit(&line->uVec, &line->uVec);
+        r2 = pmCartUnitEq(&line->uVec);
+        line->tmag_zero = 0;
     }
-    line->tmag = tmag;
-    line->tmag_zero = (line->tmag <= CART_FUZZ);
 
     /* return PM_NORM_ERR if uVec has been set to 1, 0, 0 */
     return pmErrno = (r1 || r2) ? PM_NORM_ERR : 0;

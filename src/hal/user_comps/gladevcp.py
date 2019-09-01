@@ -16,7 +16,7 @@
 #
 #    You should have received a copy of the GNU General Public License
 #    along with this program; if not, write to the Free Software
-#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+#    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 """ Python / GLADE based Virtual Control Panel for EMC
 
@@ -30,10 +30,11 @@
 
     myfile.glade is an XML file which specifies the layout of the VCP.
 
-    -g option allows setting of the inital position of the panel
+    -g option allows setting of the initial position of the panel
 """
 import sys, os, subprocess
 import traceback
+import warnings
 
 import hal
 from optparse import Option, OptionParser
@@ -45,6 +46,8 @@ import signal
 import gladevcp.makepins
 from gladevcp.gladebuilder import GladeBuilder
 from gladevcp import xembed
+from hal_glib import GStat
+GSTAT = GStat()
 
 options = [ Option( '-c', dest='component', metavar='NAME'
                   , help="Set component name to NAME. Default is basename of UI file")
@@ -63,19 +66,23 @@ use -g WIDTHxHEIGHT for just setting size or -g +XOFFSET+YOFFSET for just positi
           , Option( '-t', dest='theme', default="", help="Set gtk theme. Default is system theme")
           , Option( '-x', dest='parent', type=int, metavar='XID'
                   , help="Reparent gladevcp into an existing window XID instead of creating a new top level window")
+          , Option( '--xid', action='store_true', dest='push_XID'
+                  , help="reparent window into a plug add push the plug xid number to standardout")
           , Option( '-u', dest='usermod', action='append', default=[], metavar='FILE'
                   , help='Use FILEs as additional user defined modules with handlers')
           , Option( '-U', dest='useropts', action='append', metavar='USEROPT', default=[]
                   , help='pass USEROPTs to Python modules')
+          , Option( '--always_above', action='store_true', dest='always_above_flag'
+                  , help="Request the window To always be above other windows")
           ]
 
 signal_func = 'on_unix_signal'
 
 gladevcp_debug = 0
-def dbg(str):
+def dbg(string):
     global gladevcp_debug
     if not gladevcp_debug: return
-    print str
+    print string
 
 def on_window_destroy(widget, data=None):
         gtk.main_quit()
@@ -111,7 +118,7 @@ def load_handlers(usermod,halcomp,builder,useropts):
             mod = __import__(basename)
         except ImportError,msg:
             print "module '%s' skipped - import error: %s" %(basename,msg)
-	    continue
+            continue
         dbg("module '%s' imported OK" % mod.__name__)
         try:
             # look for 'get_handlers' function
@@ -167,7 +174,6 @@ def main():
     parser.add_options(options)
 
     (opts, args) = parser.parse_args()
-
     if not args:
         parser.print_help()
         sys.exit(1)
@@ -211,7 +217,33 @@ def main():
 
     builder.connect_signals(handlers)
 
+    # This option puts the gladevcp panel into a plug and pushed the plug's
+    # X window id number to standard output - so it can be reparented exterally
+    # it also forwards events to qtvcp
+    if opts.push_XID:
+        if not opts.debug:
+            # supress warnings when x window closes
+            warnings.filterwarnings("ignore")
+        # block X errors since gdk error handling silently exits the
+        # program without even the atexit handler given a chance
+        gtk.gdk.error_trap_push()
+
+        window = xembed.add_plug(window)
+        window.realize()
+        gdkwin = window.get_window()
+        w_id = gdkwin.xid
+        print >> sys.stdout,w_id
+        sys.stdout.flush()
+        forward = os.environ.get('QTVCP_FORWARD_EVENTS_TO', None)
+        if forward:
+            xembed.keyboard_forward(window, forward)
+
+    # This option reparents gladevcp in a given X window id.
+    # it also forwards keyboard events from gladevcp to AXIS
     if opts.parent:
+        if not opts.debug:
+            # supress warnings when x window closes
+            warnings.filterwarnings("ignore")
         # block X errors since gdk error handling silently exits the
         # program without even the atexit handler given a chance
         gtk.gdk.error_trap_push()
@@ -272,7 +304,8 @@ def main():
     # This needs to be done after geometry moves so on dual screens the window maxumizes to the actual used screen size.
     if opts.maximum:
         window.window.maximize()
-
+    if opts.always_above_flag:
+        window.set_keep_above(True)
     if opts.halfile:
         if opts.halfile[-4:] == ".tcl":
             cmd = ["haltcl", opts.halfile]
@@ -285,7 +318,7 @@ def main():
 
     # User components are set up so report that we are ready
     halcomp.ready()
-
+    GSTAT.forced_update()
     if handlers.has_key(signal_func):
         dbg("Register callback '%s' for SIGINT and SIGTERM" %(signal_func))
         signal.signal(signal.SIGTERM, handlers[signal_func])
@@ -298,10 +331,10 @@ def main():
     finally:
         halcomp.exit()
 
-    if opts.parent:
+    if opts.parent or opts.push_XID:
         gtk.gdk.flush()
         error = gtk.gdk.error_trap_pop()
-        if error:
+        if error and opts.debug:
             print >> sys.stderr, "**** GLADE VCP ERROR:    X Protocol Error: %s" % str(error)
 
 

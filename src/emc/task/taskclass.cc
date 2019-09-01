@@ -36,6 +36,7 @@
 #include "python_plugin.hh"
 #include "taskclass.hh"
 
+#define BOOST_PYTHON_MAX_ARITY 4
 #include <boost/python/dict.hpp>
 #include <boost/python/extract.hpp>
 #include <boost/python/object.hpp>
@@ -532,9 +533,6 @@ int Task::emcIoAbort(int reason)
     ioAbortMsg.reason = reason;
     // send abort command to emcio
     sendCommand(&ioAbortMsg);
-
-    // call abort o-word sub handler if defined
-    emcAbortCleanup(reason);
 
     return 0;
 }

@@ -12,7 +12,7 @@
 //
 //    You should have received a copy of the GNU General Public License
 //    along with this program; if not, write to the Free Software
-//    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+//    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #ifndef RTAPI_PARPORT_H
 #define RTAPI_PARPORT_H
 
@@ -42,56 +42,56 @@ typedef struct rtapi_parport_t
 
 RTAPI_BEGIN_DECLS
 
-inline int rtapi_parport_data_read(rtapi_parport_t *t) {
+static inline int rtapi_parport_data_read(rtapi_parport_t *t) {
     return rtapi_inb(RTAPI_PARPORT_DATA_PORT(t));
 }
 
-inline int rtapi_parport_control_read(rtapi_parport_t *t) {
+static inline int rtapi_parport_control_read(rtapi_parport_t *t) {
     return rtapi_inb(RTAPI_PARPORT_CONTROL_PORT(t));
 }
 
-inline int rtapi_parport_status_read(rtapi_parport_t *t) {
+static inline int rtapi_parport_status_read(rtapi_parport_t *t) {
     return rtapi_inb(RTAPI_PARPORT_STATUS_PORT(t));
 }
 
-inline unsigned char rtapi_parport_epp_data_readb(rtapi_parport_t *t) {
+static inline unsigned char rtapi_parport_epp_data_readb(rtapi_parport_t *t) {
     return rtapi_inb(RTAPI_PARPORT_EPP_DATA_PORT(t));
 }
 
-inline unsigned long rtapi_parport_epp_data_readl(rtapi_parport_t *t) {
+static inline unsigned long rtapi_parport_epp_data_readl(rtapi_parport_t *t) {
     return rtapi_inl(RTAPI_PARPORT_EPP_DATA_PORT(t));
 }
 
-inline unsigned long rtapi_parport_ecr_read(rtapi_parport_t *t) {
+static inline unsigned long rtapi_parport_ecr_read(rtapi_parport_t *t) {
     return rtapi_inb(RTAPI_PARPORT_ECR_PORT(t));
 }
 
 
-inline void rtapi_parport_data_write(rtapi_parport_t *t, unsigned char v) {
+static inline void rtapi_parport_data_write(rtapi_parport_t *t, unsigned char v) {
     rtapi_outb(v, RTAPI_PARPORT_DATA_PORT(t));
 }
 
-inline void rtapi_parport_control_write(rtapi_parport_t *t, unsigned char v) {
+static inline void rtapi_parport_control_write(rtapi_parport_t *t, unsigned char v) {
     rtapi_outb(v, RTAPI_PARPORT_CONTROL_PORT(t));
 }
 
-inline void rtapi_parport_status_write(rtapi_parport_t *t, unsigned char v) {
+static inline void rtapi_parport_status_write(rtapi_parport_t *t, unsigned char v) {
     rtapi_outb(v, RTAPI_PARPORT_STATUS_PORT(t));
 }
 
-inline void rtapi_parport_epp_addr_write(rtapi_parport_t *t, unsigned char v) {
+static inline void rtapi_parport_epp_addr_write(rtapi_parport_t *t, unsigned char v) {
     rtapi_outb(v, RTAPI_PARPORT_EPP_ADDR_PORT(t));
 }
 
-inline void rtapi_parport_epp_data_writeb(rtapi_parport_t *t, unsigned char v) {
+static inline void rtapi_parport_epp_data_writeb(rtapi_parport_t *t, unsigned char v) {
     rtapi_outb(v, RTAPI_PARPORT_EPP_DATA_PORT(t));
 }
 
-inline void rtapi_parport_epp_data_writel(rtapi_parport_t *t, unsigned long v) {
+static inline void rtapi_parport_epp_data_writel(rtapi_parport_t *t, unsigned long v) {
     rtapi_outl(v, RTAPI_PARPORT_EPP_DATA_PORT(t));
 }
 
-inline void rtapi_parport_ecr_write(rtapi_parport_t *t, unsigned char v) {
+static inline void rtapi_parport_ecr_write(rtapi_parport_t *t, unsigned char v) {
     rtapi_outb(v, RTAPI_PARPORT_EPP_ADDR_PORT(t));
 }
 

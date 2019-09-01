@@ -15,6 +15,10 @@
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
+
+#ifndef INTERP_BASE_HH
+#define INTERP_BASE_HH
+
 #include <stdlib.h>
 #include <boost/noncopyable.hpp>
 
@@ -53,7 +57,10 @@ public:
     virtual void active_m_codes(int active_mcodes[ACTIVE_M_CODES]) = 0;
     virtual void active_settings(double active_settings[ACTIVE_SETTINGS]) = 0;
     virtual void set_loglevel(int level) = 0;
+    virtual void set_loop_on_main_m99(bool state) = 0;
 };
 
 InterpBase *interp_from_shlib(const char *shlib);
 extern "C" InterpBase *makeInterp();
+
+#endif
