@@ -62,7 +62,6 @@ static int read_config(void) {
     int colour = 0;
     int decimal = 0;
 
-    rtapi_print_msg(RTAPI_MSG_ERR, "rgblookup: mapping=%s\n", mapping);
     data[0] = data[1] = data[2] = 0;
     while ( *ptr != '\0' ) {
         switch ( *ptr )
