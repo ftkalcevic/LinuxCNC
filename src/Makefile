@@ -802,6 +802,8 @@ obj-$(CONFIG_STEPGEN) += stepgen.o
 stepgen-objs := hal/components/stepgen.o $(MATHSTUB)
 obj-$(CONFIG_LCD) += lcd.o
 lcd-objs := hal/components/lcd.o $(MATHSTUB)
+obj-$(CONFIG_RGBLOOKUP) += rgblookup.o
+rgblookup-objs := hal/components/rgblookup.o $(MATHSTUB)
 obj-$(CONFIG_MATRIX_KB) += matrix_kb.o
 matrix_kb-objs := hal/components/matrix_kb.o $(MATHSTUB)
 obj-$(CONFIG_MUX_GENERIC) += mux_generic.o
@@ -1082,6 +1084,7 @@ endif
 ../rtlib/encoder_ratio$(MODULE_EXT): $(addprefix objects/rt,$(encoder_ratio-objs))
 ../rtlib/stepgen$(MODULE_EXT): $(addprefix objects/rt,$(stepgen-objs))
 ../rtlib/lcd$(MODULE_EXT): $(addprefix objects/rt,$(lcd-objs))
+../rtlib/rgblookup$(MODULE_EXT): $(addprefix objects/rt,$(rgblookup-objs))
 ../rtlib/matrix_kb$(MODULE_EXT): $(addprefix objects/rt,$(matrix_kb-objs))
 ../rtlib/mux_generic$(MODULE_EXT): $(addprefix objects/rt,$(mux_generic-objs))
 ../rtlib/pwmgen$(MODULE_EXT): $(addprefix objects/rt,$(pwmgen-objs))
