@@ -13,10 +13,18 @@
 #
 #    You should have received a copy of the GNU General Public License
 #    along with this program; if not, write to the Free Software
-#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+#    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 import math, gcode
 
 class Translated:
+    g92_offset_x = g92_offset_y = g92_offset_z = 0
+    g92_offset_a = g92_offset_b = g92_offset_c = 0
+    g92_offset_u = g92_offset_v = g92_offset_w = 0
+    g5x_offset_x = g5x_offset_y = g5x_offset_z = 0
+    g5x_offset_a = g5x_offset_b = g5x_offset_c = 0
+    g5x_offset_u = g5x_offset_v = g5x_offset_w = 0
+    rotation_xy = 0
+
     def rotate_and_translate(self, x,y,z,a,b,c,u,v,w):
         x += self.g92_offset_x
         y += self.g92_offset_y

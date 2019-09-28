@@ -48,12 +48,14 @@
 
 #include <linux/types.h>
 
+/*
 #ifndef __KERNEL__
     typedef int bool;
     #define true 1
     #define false 0
 
 #endif
+*/
 
 #define DBL_EPSILON     __DBL_EPSILON__
 
@@ -73,12 +75,13 @@
     #define rtapi_exit  exit
     #define rtapi_print printf
 #else
+#define complex		_Complex
     #define _Complex_I	(__extension__ 1.0iF)
     #undef I
     #define I _Complex_I
-    inline double cimag( double complex z) { return __imag__ z; }
-    inline double creal( double complex z) { return __real__ z; }
-    inline double cabs( double complex z) { return __builtin_cabs(z); }
+    static inline double cimag( double complex z) { return __imag__ z; }
+    static inline double creal( double complex z) { return __real__ z; }
+    static inline double cabs( double complex z) { return __builtin_cabs(z); }
 
 #define INFINITY    CONCAT2(__builtin_inf, CEXT) ()
 #define isfinite(x) __builtin_expect (!isnan((x) - (x)), 1)
@@ -255,7 +258,7 @@ struct IkSingleDOFSolution
 };
 typedef struct IkSingleDOFSolution IkSingleDOFSolution;
 
-inline void IkSingleDOFSolution_Init( IkSingleDOFSolution *base, size_t count )
+static inline void IkSingleDOFSolution_Init( IkSingleDOFSolution *base, size_t count )
 {
     int i;
     for ( i = 0; i < count; i++, base++ )
@@ -284,7 +287,7 @@ struct IkSolution
 typedef struct IkSolution IkSolution;
 
 
-inline void IkSolution_Set( IkSolution *sol, const IkSingleDOFSolution *vinfos, int vinfos_count, const int *vfree, int vfree_count )
+static inline void IkSolution_Set( IkSolution *sol, const IkSingleDOFSolution *vinfos, int vinfos_count, const int *vfree, int vfree_count )
 {
     int i;
     for ( i = 0; i < vinfos_count; i++ )
@@ -296,7 +299,7 @@ inline void IkSolution_Set( IkSolution *sol, const IkSingleDOFSolution *vinfos, 
 }
 
 // Extract joints and free values from a solution
-inline void IkSolution_GetSolution(IkSolution *sol, IkReal* solution, int *count, const IkReal* freevalues) 
+static inline void IkSolution_GetSolution(IkSolution *sol, IkReal* solution, int *count, const IkReal* freevalues) 
 {
     size_t i;
     *count =  sol->vbasesol_count;
@@ -315,11 +318,11 @@ inline void IkSolution_GetSolution(IkSolution *sol, IkReal* solution, int *count
     }
 }
 
-inline const int* IkSolution_GetFree(IkSolution *sol, int *count ) {
+static inline const int* IkSolution_GetFree(IkSolution *sol, int *count ) {
     *count = sol->vfree_count;
     return sol->_vfree;
 }
-inline const int GetDOF() {
+static inline const int GetDOF() {
     return IKFAST_NUM_DOF;
 }
 
@@ -374,13 +377,13 @@ struct IkSolutionList
 };
 typedef struct IkSolutionList IkSolutionList;
 
-inline void IkSolutionList_Init( IkSolutionList *list )
+static inline void IkSolutionList_Init( IkSolutionList *list )
 {
     list->_count = 0;
 }
 
 
-inline size_t IkSolutionList_AddSolution( IkSolutionList *list,
+static inline size_t IkSolutionList_AddSolution( IkSolutionList *list,
                                           const IkSingleDOFSolution * vinfos, int vinfos_count, 
                                           const int *vfree, int vfree_count )
 {
@@ -397,7 +400,7 @@ inline size_t IkSolutionList_AddSolution( IkSolutionList *list,
     return index;
 }
 
-inline IkSolution * IkSolutionList_GetSolution(IkSolutionList *list, size_t index)
+static inline IkSolution * IkSolutionList_GetSolution(IkSolutionList *list, size_t index)
 {
     if( index >= list->_count ) 
     {
@@ -406,12 +409,12 @@ inline IkSolution * IkSolutionList_GetSolution(IkSolutionList *list, size_t inde
     return list->_listsolutions+index;
 }
 
-inline size_t IkSolutionList_GetNumSolutions(IkSolutionList *list) 
+static inline size_t IkSolutionList_GetNumSolutions(IkSolutionList *list) 
 {
     return list->_count;
 }
 
-inline void IkSolutionList_Clear( IkSolutionList *list ) 
+static inline void IkSolutionList_Clear( IkSolutionList *list ) 
 {
     list->_count = 0;
 }

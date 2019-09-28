@@ -6,6 +6,7 @@ INCLUDES += emc/rs274ngc
 LIBRS274SRCS := $(addprefix emc/rs274ngc/, \
 	interp_arc.cc \
 	interp_array.cc \
+	interp_base.cc \
 	interp_check.cc \
 	interp_convert.cc \
 	interp_queue.cc \
@@ -21,9 +22,16 @@ LIBRS274SRCS := $(addprefix emc/rs274ngc/, \
 	interp_namedparams.cc \
 	interp_python.cc \
 	interp_remap.cc \
+	interp_setup.cc \
 	canonmodule.cc \
+	pyparamclass.cc \
+	pyemctypes.cc \
+	pyinterp1.cc \
+	pyblock.cc \
+	pyarrays.cc \
 	interpmodule.cc \
-	rs274ngc_pre.cc)
+	rs274ngc_pre.cc \
+	interp_inspection.cc)
 USERSRCS += $(LIBRS274SRCS)
 
 $(call TOOBJSDEPS, $(LIBRS274SRCS)) : EXTRAFLAGS=-fPIC  $(BOOST_DEBUG_FLAGS) 
@@ -35,11 +43,11 @@ TARGETS += ../lib/librs274.so ../lib/librs274.so.0
 	$(ECHO) Linking $(notdir $@)
 	@mkdir -p ../lib
 	@rm -f $@
-	$(CXX) -g $(LDFLAGS) -Wl,-soname,$(notdir $@) -shared -o $@ $^ -lstdc++ $(BOOST_PYTHON_LIBS) -l$(LIBPYTHON)
+	$(CXX) -g $(LDFLAGS) -Wl,-soname,$(notdir $@) -shared -o $@ $^ -lstdc++ $(BOOST_PYTHON_LIBS) -l$(LIBPYTHON) $(LIBDL)
 
-../include/%.h: ./emc/rs274ngc/%.h
+$(patsubst ./emc/rs274ngc/%,../include/%,$(wildcard ./emc/rs274ngc/*.h)): ../include/%.h: ./emc/rs274ngc/%.h
 	cp $^ $@
-../include/%.hh: ./emc/rs274ngc/%.hh
+$(patsubst ./emc/rs274ngc/%,../include/%,$(wildcard ./emc/rs274ngc/*.hh)): ../include/%.hh: ./emc/rs274ngc/%.hh
 	cp $^ $@
 
 GCODEMODULESRCS := emc/rs274ngc/gcodemodule.cc

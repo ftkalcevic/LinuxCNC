@@ -1,4 +1,4 @@
-= Mesa HostMot2 (((Mesa HostMot2)))
+= Mesa HostMot2
 
 == Introduction 
 
@@ -99,15 +99,8 @@ has_bit::
 timeout_ns::
      (u32 read/write) Watchdog timeout, in nanoseconds. This is initialized
     to 1,000,000,000 (1 second) at module load time. If more than this
-    amount of time passes between calls to the pet_watchdog() function, the
+    amount of time passes between calls to the hm2 write function, the
     watchdog will bite.
-
-=== Functions:
-
-pet_watchdog()::
-     Calling this function resets the watchdog timer and postpones the
-    watchdog biting until timeout_ns nanoseconds later. This function
-    should be added to the servo thread.
 
 == HostMot2 Functions
 
@@ -238,7 +231,7 @@ configuration used above.
 
 .5i20 HAL Pins[[cap:5i20-HAL-Pins]]
 
-image::images/5i20-halpins.png[]
+image::images/5i20-halpins.png[alt="5i20 HAL Pins"]
 
 == Configurations
 

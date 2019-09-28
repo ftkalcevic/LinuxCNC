@@ -3,7 +3,7 @@
 
 = L'utilitaire graphique NGCGUI
 
-[[cha:ngcgui]] (((NGCGUI)))
+[[cha:ngcgui]]
 
 image::images/ngcgui_fr.png[]
 
@@ -28,7 +28,7 @@ fournir la même tâche à différents emplacements sur la même pièce.
 
 Trois configurations sont fournies, elles se trouve dans le répertoire _sim_
 du sélecteur de configuration de LinuxCNC. Le sélecteur de configuration se
-trouve quand à lui dans le menu _Applications -> CNC -> LinuxCNC_.
+trouve quand à lui dans le menu _Applications → CNC → LinuxCNC_.
 
 * _ngcgui_ - Un exemple facile à comprendre utilisant ces sous-programmes:
 ** _simp_ - Un exemple simple créant deux cercles.
@@ -157,7 +157,12 @@ dépendances, le cas échéant, dans un répertoire SUBROUTINE_PATH. Certains
 sous-programmes peuvent utiliser des fichiers M (Mfiles) personnalisés qui
 doivent se trouver dans un répertoire spécifié par [RS274NGC]USER_M_PATH.
 
-.Simple INI
+[NOTE]
+Il ne s'agit pas d'un fichier ini complet, les items montrés sont ceux utilisés 
+par ngcgui. D'autres items sont requis par LinuxCNC pour obtenir un fichier ini
+complet.
+
+.Simple fichier.ini
 
 ----
 [RS274NGC]

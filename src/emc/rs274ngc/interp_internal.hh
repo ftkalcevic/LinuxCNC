@@ -13,7 +13,7 @@
 #ifndef INTERP_INTERNAL_HH
 #define INTERP_INTERNAL_HH
 
-#include <boost/python.hpp>
+#include <algorithm>
 #include "config.h"
 #include <limits.h>
 #include <stdio.h>
@@ -23,7 +23,11 @@
 #include "canon.hh"
 #include "emcpos.h"
 #include "libintl.h"
-#include "python_plugin.hh"
+#include <boost/python/object_fwd.hpp>
+#include <cmath>
+#include "interp_parameter_def.hh"
+#include "interp_fwd.hh"
+#include "interp_base.hh"
 
 
 #define _(s) gettext(s)
@@ -32,19 +36,18 @@
 /*   COMPILER MACROS  */
 /**********************/
 
-#ifndef R2D
-#define R2D(r) ((r)*180.0/M_PI)
-#endif
-#ifndef D2R
-#define D2R(r) ((r)*M_PI/180.0)
-#endif
-#ifndef SQ
-#define SQ(a) ((a)*(a))
-#endif
+template<class T>
+T R2D(T r) { return r * (180. / M_PI); }
+template<class T>
+T D2R(T r) { return r * (M_PI / 180.); }
+template<class T>
+T SQ(T a) { return a*a; }
 
-#define MAX(x, y)        ((x) > (y) ? (x) : (y))
+template<class T>
+inline int round_to_int(T x) {
+    return (int)std::nearbyint(x);
+}
 
-#define round_to_int(x) ((int) ((x) < 0.0 ? ((x) - 0.5) : ((x) + 0.5)))
 /* how far above hole bottom for rapid return, in inches */
 #define G83_RAPID_DELTA 0.010
 
@@ -54,187 +57,237 @@
  */
 #define MAX_NESTED_REMAPS 10
 
+// English - Metric conversion (long number keeps error buildup down)
+#define MM_PER_INCH 25.4
+//#define INCH_PER_MM 0.039370078740157477
+
 /* numerical constants */
-#define TOLERANCE_INCH 0.0005
-#define TOLERANCE_MM 0.005
+
+/*****************************************************************************
+The default tolerance (if none tighter is specified in the ini file) should be:
+2 * 0.001 * sqrt(2) for inch, and 2 * 0.01 * sqrt(2) for mm.
+This would mean that any valid arc where the endpoints and/or centerpoint
+got rounded or truncated to 0.001 inch or 0.01 mm precision would be accepted.
+
+Tighter tolerance down to a minimum of 1 micron +- also accepted.
+******************************************************************************/
+
+#define CENTER_ARC_RADIUS_TOLERANCE_INCH (2 * 0.001 * M_SQRT2)
+#define MIN_CENTER_ARC_RADIUS_TOLERANCE_INCH 0.00004
+
+// Note: started from original tolerance and divided by 10 here (since that was originally done inside the interpreter)
+#define RADIUS_TOLERANCE_INCH 0.00005
+
+/* Equivalent metric constants */
+
+#define CENTER_ARC_RADIUS_TOLERANCE_MM (2 * 0.01 * M_SQRT2)
+#define MIN_CENTER_ARC_RADIUS_TOLERANCE_MM 0.001
+
+#define RADIUS_TOLERANCE_MM (RADIUS_TOLERANCE_INCH * MM_PER_INCH)
+
+// Modest relative error
+#define SPIRAL_RELATIVE_TOLERANCE 0.001
+
 /* angle threshold for concavity for cutter compensation, in radians */
 #define TOLERANCE_CONCAVE_CORNER 0.05  
 #define TOLERANCE_EQUAL 0.0001 /* two numbers compare EQ if the
 				  difference is less than this */
+
+static inline bool equal(double a, double b)
+{
+    return (fabs(a - b) < TOLERANCE_EQUAL);
+}
 
 #define TINY 1e-12              /* for arc_data_r */
 
 // max number of m codes on one line
 #define MAX_EMS  4
 
-// English - Metric conversion (long number keeps error buildup down)
-#define MM_PER_INCH 25.4
-//#define INCH_PER_MM 0.039370078740157477
-
 // feed_mode
-enum feed_mode { UNITS_PER_MINUTE=0, INVERSE_TIME=1, UNITS_PER_REVOLUTION=2 };
+enum FEED_MODE {
+    UNITS_PER_MINUTE=0,
+    INVERSE_TIME=1,
+    UNITS_PER_REVOLUTION=2
+};
 
 // cutter radius compensation mode, 0 or false means none
 // not using CANON_SIDE since interpreter handles cutter radius comp
-#define RIGHT 1
-#define LEFT 2
+enum CUTTER_COMP_DIRECTION {
+    RIGHT = 1,
+    LEFT = 2,
+};
 
 // spindle control modes
-enum SPINDLE_MODE { CONSTANT_RPM, CONSTANT_SURFACE };
+enum SPINDLE_MODE {
+    CONSTANT_RPM,
+    CONSTANT_SURFACE
+};
 
 // unary operations
 // These are not enums because the "&" operator is used in
 // reading the operation names and is illegal with an enum
 
-#define ABS 1
-#define ACOS 2
-#define ASIN 3
-#define ATAN 4
-#define COS 5
-#define EXP 6
-#define FIX 7
-#define FUP 8
-#define LN 9
-#define ROUND 10
-#define SIN 11
-#define SQRT 12
-#define TAN 13
-#define EXISTS 14
+enum UnaryOperations
+{
+    ABS = 1,
+    ACOS = 2,
+    ASIN = 3,
+    ATAN = 4,
+    COS = 5,
+    EXP = 6,
+    FIX = 7,
+    FUP = 8,
+    LN = 9,
+    ROUND = 10,
+    SIN = 11,
+    SQRT = 12,
+    TAN = 13,
+    EXISTS = 14,
+};
 
 
 // binary operations
-#define NO_OPERATION 0
-#define DIVIDED_BY 1
-#define MODULO 2
-#define POWER 3
-#define TIMES 4
-#define AND2 5
-#define EXCLUSIVE_OR 6
-#define MINUS 7
-#define NON_EXCLUSIVE_OR 8
-#define PLUS 9
-#define RIGHT_BRACKET 10
-
-/* relational operators (are binary operators)*/
-#define LT 11
-#define EQ 12
-#define NE 13
-#define LE 14
-#define GE 15
-#define GT 16
-#define RELATIONAL_OP_FIRST 11
-#define RELATIONAL_OP_LAST  16
+enum BinaryOperations
+{
+    NO_OPERATION = 0,
+    DIVIDED_BY = 1,
+    MODULO = 2,
+    POWER = 3,
+    TIMES = 4,
+    AND2 = 5,
+    EXCLUSIVE_OR = 6,
+    MINUS = 7,
+    NON_EXCLUSIVE_OR = 8,
+    PLUS = 9,
+    RIGHT_BRACKET = 10,
+    /* relational operators (are binary operators)*/
+    LT = 11,
+    EQ = 12,
+    NE = 13,
+    LE = 14,
+    GE = 15,
+    GT = 16,
+    RELATIONAL_OP_FIRST = 11,
+    RELATIONAL_OP_LAST = 16,
+};
 
 // O code
-#define O_none      0
-#define O_sub       1
-#define O_endsub    2
-#define O_call      3
-#define O_do        4
-#define O_while     5
-#define O_if        6
-#define O_elseif    7
-#define O_else      8
-#define O_endif     9
-#define O_break    10
-#define O_continue 11
-#define O_endwhile 12
-#define O_return   13
-#define O_repeat   14
-#define O_endrepeat 15
+enum OCodes
+{
+    O_none = 0,
+    O_sub = 1,
+    O_endsub = 2,
+    O_call = 3,
+    O_do = 4,
+    O_while = 5,
+    O_if = 6,
+    O_elseif = 7,
+    O_else = 8,
+    O_endif = 9,
+    O_break = 10,
+    O_continue = 11,
+    O_endwhile = 12,
+    O_return = 13,
+    O_repeat = 14,
+    O_endrepeat = 15,
+    M_98 = 16,
+    M_99 = 17,
+    O_ = 18,
+};
 
 // G Codes are symbolic to be dialect-independent in source code
-#define G_0      0
-#define G_1     10
-#define G_2     20
-#define G_3     30
-#define G_4     40
-#define G_5     50
-#define G_5_1   51
-#define G_5_2   52
-#define G_5_3   53
-#define G_7     70
-#define G_8     80
-#define G_10   100
-#define G_17   170
-#define G_17_1 171
-#define G_18   180
-#define G_18_1 181
-#define G_19   190
-#define G_19_1 191
-#define G_20   200
-#define G_21   210
-#define G_28   280
-#define G_28_1 281
-#define G_30   300
-#define G_30_1 301
-#define G_33   330
-#define G_33_1 331
-#define G_38_2 382
-#define G_38_3 383
-#define G_38_4 384
-#define G_38_5 385
-#define G_40   400
-#define G_41   410
-#define G_41_1 411
-#define G_42   420
-#define G_42_1 421
-#define G_43   430
-#define G_43_1 431
-#define G_49   490
-#define G_50   500
-#define G_51   510
-#define G_53   530
-#define G_54   540
-#define G_55   550
-#define G_56   560
-#define G_57   570
-#define G_58   580
-#define G_59   590
-#define G_59_1 591
-#define G_59_2 592
-#define G_59_3 593
-#define G_61   610
-#define G_61_1 611
-#define G_64   640
-#define G_73   730
-#define G_76   760
-#define G_80   800
-#define G_81   810
-#define G_82   820
-#define G_83   830
-#define G_84   840
-#define G_85   850
-#define G_86   860
-#define G_87   870
-#define G_88   880
-#define G_89   890
-#define G_90   900
-#define G_90_1 901
-#define G_91   910
-#define G_91_1 911
-#define G_92   920
-#define G_92_1 921
-#define G_92_2 922
-#define G_92_3 923
-#define G_93   930
-#define G_94   940
-#define G_95   950
-#define G_96   960
-#define G_97   970
-#define G_98   980
-#define G_99   990
+enum GCodes
+{
+    G_0 = 0,
+    G_1 = 10,
+    G_2 = 20,
+    G_3 = 30,
+    G_4 = 40,
+    G_5 = 50,
+    G_5_1 = 51,
+    G_5_2 = 52,
+    G_5_3 = 53,
+    G_7 = 70,
+    G_8 = 80,
+    G_10 = 100,
+    G_17 = 170,
+    G_17_1 = 171,
+    G_18 = 180,
+    G_18_1 = 181,
+    G_19 = 190,
+    G_19_1 = 191,
+    G_20 = 200,
+    G_21 = 210,
+    G_28 = 280,
+    G_28_1 = 281,
+    G_30 = 300,
+    G_30_1 = 301,
+    G_33 = 330,
+    G_33_1 = 331,
+    G_38_2 = 382,
+    G_38_3 = 383,
+    G_38_4 = 384,
+    G_38_5 = 385,
+    G_40 = 400,
+    G_41 = 410,
+    G_41_1 = 411,
+    G_42 = 420,
+    G_42_1 = 421,
+    G_43 = 430,
+    G_43_1 = 431,
+    G_43_2 = 432,
+    G_49 = 490,
+    G_50 = 500,
+    G_51 = 510,
+    G_52 = 520,
+    G_53 = 530,
+    G_54 = 540,
+    G_55 = 550,
+    G_56 = 560,
+    G_57 = 570,
+    G_58 = 580,
+    G_59 = 590,
+    G_59_1 = 591,
+    G_59_2 = 592,
+    G_59_3 = 593,
+    G_61 = 610,
+    G_61_1 = 611,
+    G_64 = 640,
+    G_73 = 730,
+    G_74 = 740,
+    G_76 = 760,
+    G_80 = 800,
+    G_81 = 810,
+    G_82 = 820,
+    G_83 = 830,
+    G_84 = 840,
+    G_85 = 850,
+    G_86 = 860,
+    G_87 = 870,
+    G_88 = 880,
+    G_89 = 890,
+    G_90 = 900,
+    G_90_1 = 901,
+    G_91 = 910,
+    G_91_1 = 911,
+    G_92 = 920,
+    G_92_1 = 921,
+    G_92_2 = 922,
+    G_92_3 = 923,
+    G_93 = 930,
+    G_94 = 940,
+    G_95 = 950,
+    G_96 = 960,
+    G_97 = 970,
+    G_98 = 980,
+    G_99 = 990,
+};
+
+std::string toString(GCodes g);
 
 // name of parameter file for saving/restoring interpreter variables
 #define RS274NGC_PARAMETER_FILE_NAME_DEFAULT "rs274ngc.var"
 #define RS274NGC_PARAMETER_FILE_BACKUP_SUFFIX ".bak"
-
-// number of parameters in parameter table
-
-// leave some room above 5428 for further introspection
-// 5599 = control DEBUG, output, 0=no output; default=1.0
-// 5600-5601 = toolchanger codes
-#define RS274NGC_MAX_PARAMETERS 5602
 
 // Subroutine parameters
 #define INTERP_SUB_PARAMS 30
@@ -249,14 +302,18 @@ enum SPINDLE_MODE { CONSTANT_RPM, CONSTANT_SURFACE };
 /**********************/
 
 /* distance_mode */
-typedef enum
-{ MODE_ABSOLUTE, MODE_INCREMENTAL }
-DISTANCE_MODE;
+enum DISTANCE_MODE
+{
+    MODE_ABSOLUTE,
+    MODE_INCREMENTAL,
+};
 
 /* retract_mode for cycles */
-typedef enum
-{ R_PLANE, OLD_Z }
-RETRACT_MODE;
+enum RETRACT_MODE
+{
+    R_PLANE,
+    OLD_Z,
+};
 
 // string table - to get rid of strdup/free
 const char *strstore(const char *s);
@@ -300,11 +357,32 @@ enum phases  {
 };
 
 
-typedef struct remap_struct remap;
-typedef remap *remap_pointer;
+// Modal groups
+// also indices into g_modes
+// unused: 9,11
+enum ModalGroups
+{
+    GM_MODAL_0 = 0,
+    GM_MOTION = 1,
+    GM_SET_PLANE = 2,
+    GM_DISTANCE_MODE = 3,
+    GM_IJK_DISTANCE_MODE = 4,
+    GM_FEED_MODE = 5,
+    GM_LENGTH_UNITS = 6,
+    GM_CUTTER_COMP = 7,
+    GM_TOOL_LENGTH_OFFSET = 8,
+    // 9 unused
+    GM_RETRACT_MODE = 10,
+    // 11 unused
+    GM_COORD_SYSTEM = 12,
+    GM_CONTROL_MODE = 13,
+    GM_SPINDLE_MODE = 14,
+    GM_LATHE_DIAMETER_MODE = 15,
+    GM_MAX_MODAL_GROUPS
+};
 
 // the remap configuration descriptor
-typedef struct remap_struct {
+struct remap_struct {
     const char *name;
     const char *argspec;
     // if no modalgroup= was given in the REMAP= line, use these defaults
@@ -316,7 +394,7 @@ typedef struct remap_struct {
     const char *remap_py;    // Py function maybe  null, OR
     const char *remap_ngc;   // NGC file, maybe  null
     const char *epilog_func; // Py function or null
-} remap;
+};
 
 
 // case insensitive compare for std::map etc
@@ -337,8 +415,10 @@ typedef int_remap_map::iterator int_remap_iterator;
 #define REMAP_FUNC(r) (r->remap_ngc ? r->remap_ngc: \
 		       (r->remap_py ? r->remap_py : "BUG-no-remap-func"))
 
-typedef struct block_struct
+struct block_struct
 {
+  block_struct ();
+
   bool a_flag;
   double a_number;
   bool b_flag;
@@ -348,31 +428,14 @@ typedef struct block_struct
   char comment[256];
   double d_number_float;
   bool d_flag;
+  int dollar_number;
+  bool dollar_flag;
   bool e_flag;
   double e_number;
   bool f_flag;
   double f_number;
 
-// Modal groups
-// also indices into g_modes
-// unused: 9,11
-#define GM_MODAL_0        0
-#define GM_MOTION         1
-#define GM_SET_PLANE      2
-#define GM_DISTANCE_MODE  3
-#define GM_IJK_DISTANCE_MODE  4
-#define GM_FEED_MODE      5
-#define GM_LENGTH_UNITS   6
-#define GM_CUTTER_COMP    7
-#define GM_TOOL_LENGTH_OFFSET 8
-#define GM_RETRACT_MODE   10
-#define GM_COORD_SYSTEM   12
-#define GM_CONTROL_MODE   13
-#define GM_SPINDLE_MODE  14
-#define GM_LATHE_DIAMETER_MODE  15
-
-
-  int g_modes[16];
+  int g_modes[GM_MAX_MODAL_GROUPS];
   bool h_flag;
   int h_number;
   bool i_flag;
@@ -457,8 +520,7 @@ typedef struct block_struct
     // reason for recording the fact: this permits an epilog to do the
     // right thing depending on wether the builtin was used or not.
     bool builtin_used; 
-}
-block;
+};
 
 // indicates which type of Python handler yielded, and needs reexecution
 // post sync/read_inputs
@@ -472,7 +534,9 @@ enum call_states {
 
 // detail for O_call; tags the frame
 enum call_types {
+    CT_NONE,             // not in a call
     CT_NGC_OWORD_SUB,    // no restartable Python code involved
+    CT_NGC_M98_SUB,      // like above; Fanuc-style, pass in params #1..#30
     CT_PYTHON_OWORD_SUB, // restartable Python code may be involved
     CT_REMAP,            // restartable Python code may be involved
 };
@@ -480,23 +544,21 @@ enum call_types {
 
 enum retopts { RET_NONE, RET_DOUBLE, RET_INT, RET_YIELD, RET_STOPITERATION, RET_ERRORMSG };
 
-typedef block *block_pointer;
-
-// parameters will go to a std::map<const char *,paramter_value_pointer>
-typedef struct parameter_value_struct {
+// parameters will go to a std::map<const char *,parameter_value_pointer>
+struct parameter_value_struct {
     double value;
     unsigned attr;
-} parameter_value;
+};
 
-typedef parameter_value *parameter_pointer;
 typedef std::map<const char *, parameter_value, nocase_cmp> parameter_map;
 typedef parameter_map::iterator parameter_map_iterator;
 
 #define PA_READONLY	1
 #define PA_GLOBAL	2
 #define PA_UNSET	4
-#define PA_USE_LOOKUP	8  // use lookup_named_param() to retrieve value
+#define PA_USE_LOOKUP	8   // use lookup_named_param() to retrieve value
 #define PA_FROM_INI	16  // a variable of the form '_[section]value' was retrieved from the ini file
+#define PA_PYTHON	32  // call namedparams.<varname>() to retrieve the value
 
 // optional 3rd arg to store_named_param()
 // flag initialization of r/o parameter
@@ -505,14 +567,27 @@ typedef parameter_map::iterator parameter_map_iterator;
 #define MAX_REMAPOPTS 20
 // current implementation limits - legal modal groups
 // for M and G codes
-#define M_MODE_OK(m) ((m > 4) && (m < 11))
+#define M_MODE_OK(m) ((m > 3) && (m < 11))
 #define G_MODE_OK(m) (m == 1)
 
-typedef struct context_struct {
+struct pycontext_impl;
+struct pycontext {
+    pycontext();
+    pycontext(const struct pycontext &);
+    pycontext &operator=(const struct pycontext &);
+    ~pycontext();
+    pycontext_impl *impl;
+};
+
+struct context_struct {
+    context_struct();
+    void clear();
+
     long position;       // location (ftell) in file
     int sequence_number; // location (line number) in file
     const char *filename;      // name of file for this context
     const char *subName;       // name of the subroutine (oword)
+    int m98_loop_counter;      // loop counter for Fanuc-style sub calls
     double saved_params[INTERP_SUB_PARAMS];
     parameter_map named_params;
     unsigned char context_status;		// see CONTEXT_ defines below
@@ -520,30 +595,22 @@ typedef struct context_struct {
     int saved_m_codes[ACTIVE_M_CODES];  // array of active M codes
     double saved_settings[ACTIVE_SETTINGS];     // array of feed, speed, etc.
     int call_type; // enum call_types
+    pycontext pystuff;
     // Python-related stuff
-    boost::python::object tupleargs; // the args tuple for Py functions
-    boost::python::object kwargs; // the args dict for Py functions
-    int py_return_type;   // type of Python return value - enum retopts 
-    double py_returned_double;
-    int py_returned_int;
-    // generator object next method as returned if Python function contained a yield statement
-    boost::python::object generator_next; 
-} context;
-
-typedef context *context_pointer;
+};
 
 // context.context_status
 #define CONTEXT_VALID   1 // this was stored by M7*
 #define CONTEXT_RESTORE_ON_RETURN 2 // automatically execute M71 on sub return
 #define REMAP_FRAME   4 // a remap call frame
 
-typedef struct offset_struct {
+struct offset_struct {
   int type;
   const char *filename;  // the name of the file
   long offset;     // the offset in the file
   int sequence_number;
   int repeat_count;
-} offset;
+};
 
 typedef std::map<const char *, offset, nocase_cmp> offset_map_type;
 typedef std::map<const char *, offset, nocase_cmp>::iterator offset_map_iterator;
@@ -566,8 +633,11 @@ and is not represented here
 #define STACK_ENTRY_LEN 80
 #define MAX_SUB_DIRS 10
 
-typedef struct setup_struct
+struct setup
 {
+  setup();
+  ~setup();
+
   double AA_axis_offset;        // A-axis g92 offset
   double AA_current;            // current A-axis position
   double AA_origin_offset;      // A-axis origin offset
@@ -626,6 +696,8 @@ typedef struct setup_struct
   FILE *file_pointer;           // file pointer for open NC code file
   bool flood;                 // whether flood coolant is on
   CANON_UNITS length_units;     // millimeters or inches
+  double center_arc_radius_tolerance_inch; // modify with ini setting
+  double center_arc_radius_tolerance_mm;   // modify with ini setting
   int line_length;              // length of line last read
   char linetext[LINELEN];       // text of most recent line read
   bool mist;                  // whether mist coolant is on
@@ -635,7 +707,7 @@ typedef struct setup_struct
   double origin_offset_y;       // g5x offset y
   double origin_offset_z;       // g5x offset z
   double rotation_xy;         // rotation of coordinate system around Z, in degrees
-  double parameters[RS274NGC_MAX_PARAMETERS];   // system parameters
+  double parameters[interp_param_global::RS274NGC_MAX_PARAMETERS];   // system parameters
   int parameter_occurrence;     // parameter buffer index
   int parameter_numbers[MAX_NAMED_PARAMETERS];    // parameter number buffer
   double parameter_values[MAX_NAMED_PARAMETERS];  // parameter value buffer
@@ -658,11 +730,13 @@ typedef struct setup_struct
   int selected_pocket;          // tool slot selected but not active
     int selected_tool;          // start switchover to pocket-agnostic interp
   int sequence_number;          // sequence number of line last read
-  double speed;                 // current spindle speed in rpm or SxM
-  SPINDLE_MODE spindle_mode;    // CONSTANT_RPM or CONSTANT_SURFACE
+  int num_spindles;				// number of spindles available
+  int active_spindle;			// the spindle currently used for CSS, FPR etc.
+  double speed[EMCMOT_MAX_SPINDLES];// array of spindle speeds
+  SPINDLE_MODE spindle_mode[EMCMOT_MAX_SPINDLES];// CONSTANT_RPM or CONSTANT_SURFACE
   CANON_SPEED_FEED_MODE speed_feed_mode;        // independent or synched
-  bool speed_override;        // whether speed override is enabled
-  CANON_DIRECTION spindle_turning;      // direction spindle is turning
+  bool speed_override[EMCMOT_MAX_SPINDLES];        // whether speed override is enabled
+  CANON_DIRECTION spindle_turning[EMCMOT_MAX_SPINDLES];  // direction spindle is turning
   char stack[STACK_LEN][STACK_ENTRY_LEN];      // stack of calls for error reporting
   int stack_index;              // index into the stack
   EmcPose tool_offset;          // tool length offset
@@ -706,13 +780,20 @@ typedef struct setup_struct
   int b_axis_wrapped;
   int c_axis_wrapped;
 
-  int a_indexer;
-  int b_indexer;
-  int c_indexer;
+  int a_indexer_jnum;
+  int b_indexer_jnum;
+  int c_indexer_jnum;
 
   bool lathe_diameter_mode;       //Lathe diameter mode (g07/G08)
   bool mdi_interrupt;
-  int feature_set; 
+  int feature_set;
+
+    int disable_fanuc_style_sub;
+    // M99 in main is treated as program end by default; this causes
+    // control to skip to beginning of file
+    bool loop_on_main_m99;
+
+  int disable_g92_persistence;
 
 #define FEATURE(x) (_setup.feature_set & FEATURE_ ## x)
 #define FEATURE_RETAIN_G43           0x00000001
@@ -721,22 +802,28 @@ typedef struct setup_struct
 #define FEATURE_HAL_PIN_VARS         0x00000008
     // do not lowercase named params inside comments - for #<_hal[PinName]>
 #define FEATURE_NO_DOWNCASE_OWORD    0x00000010
+#define FEATURE_OWORD_WARNONLY       0x00000020
 
-    boost::python::object pythis;  // boost::cref to 'this'
+    boost::python::object *pythis;  // boost::cref to 'this'
     const char *on_abort_command;
     int_remap_map  g_remapped,m_remapped;
     remap_map remaps;
+#define INIT_FUNC  "__init__"
+#define DELETE_FUNC  "__delete__"
 
-} setup;
+    // task calls upon interp.init() repeatedly
+    // protect init() operations which are not idempotent
+    int init_once;  
+};
 
-typedef setup *setup_pointer;
+
 // the externally visible singleton instance
 
-extern    PythonPlugin *python_plugin;
+extern class PythonPlugin *python_plugin;
 #define PYUSABLE (((python_plugin) != NULL) && (python_plugin->usable()))
 
 inline bool is_a_cycle(int motion) {
-    return ((motion > G_80) && (motion < G_90)) || (motion == G_73);
+    return ((motion > G_80) && (motion < G_90)) || (motion == G_73) || (motion == G_74);
 }
 /*
 
@@ -754,6 +841,7 @@ macros totally crash-proof. If the function call stack is deeper than
 49, the top of the stack will be missing.
 
 */
+
 
 // Just set an error string using printf-style formats, do NOT return
 #define ERM(fmt, ...)                                      \
@@ -831,6 +919,28 @@ macros totally crash-proof. If the function call stack is deeper than
     } while(0)
 
 
+// oword warnings 
+#define OERR(fmt, ...)                                      \
+    do {						    \
+	if (FEATURE(OWORD_WARNONLY))			    \
+	    fprintf(stderr,fmt, ## __VA_ARGS__);	    \
+	else						    \
+	    ERS(fmt, ## __VA_ARGS__);			    \
+    } while(0)
+
+
+//
+// The traverse (in the active plane) to the location of the canned cycle
+// is different on the first repeat vs on all the following repeats.
+//
+// The first traverse happens in the CURRENT_CC plane (which was raised to
+// the R plane earlier, if needed), followed by a traverse down to the R
+// plane.
+//
+// All later positioning moves happen in the CLEAR_CC plane, which is
+// either the R plane or the OLD_CC plane depending on G98/G99.
+//
+
 #define CYCLE_MACRO(call) for (repeat = block->l_number; \
                                repeat > 0; \
                                repeat--) \
@@ -853,9 +963,16 @@ macros totally crash-proof. If the function call stack is deeper than
            aa = radius * cos(theta); \
            bb = radius * sin(theta); \
        } \
-       cycle_traverse(block, plane, aa, bb, current_cc); \
-       if (old_cc != r) \
+       if ((repeat == block->l_number) && (current_cc > r)) { \
+         cycle_traverse(block, plane, aa, bb, current_cc); \
          cycle_traverse(block, plane, aa, bb, r); \
+       } else { \
+         /* we must be at CLEAR_CC already */ \
+         cycle_traverse(block, plane, aa, bb, clear_cc); \
+         if (clear_cc > r) { \
+           cycle_traverse(block, plane, aa, bb, r); \
+         } \
+       } \
        CHP(call); \
      }
 

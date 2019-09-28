@@ -15,7 +15,13 @@
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
-#include <boost/python.hpp>
+
+#define BOOST_PYTHON_MAX_ARITY 4
+#include "python_plugin.hh"
+#include <boost/python/dict.hpp>
+#include <boost/python/extract.hpp>
+#include <boost/python/list.hpp>
+#include <boost/python/tuple.hpp>
 namespace bp = boost::python;
 
 #include <unistd.h>
@@ -156,6 +162,11 @@ int Interp::read_named_parameter(
 	*double_ptr = value;
 	return INTERP_OK;
     } else {
+        // do not require named parameters to be defined during a 
+        // subroutine definition:
+        if (_setup.defining_sub)
+            return INTERP_OK;
+
 	logNP("%s: referencing undefined named parameter '%s' level=%d",
 	      name, paramNameBuf, (paramNameBuf[0] == '_') ? 0 : _setup.call_level);
 	ERS(_("Named parameter #<%s> not defined"), paramNameBuf);
@@ -261,8 +272,12 @@ int Interp::fetch_hal_param( const char *nameBuf, int *status, double *value)
 		logOword("%s: no signal connected", hal_name);
 	    } 
 	    type = pin->type;
-	    hal_sig_t * sig = (hal_sig_t *) SHMPTR(pin->signal);
-	    ptr = (hal_data_u *) SHMPTR(sig->data_ptr);
+	    if (pin->signal != 0) {
+		sig = (hal_sig_t *) SHMPTR(pin->signal);
+		ptr = (hal_data_u *) SHMPTR(sig->data_ptr);
+	    } else {
+		ptr = (hal_data_u *) &(pin->dummysig);
+	    }
 	    goto assign;
 	}
 	if ((sig = halpr_find_sig_by_name(hal_name)) != NULL) {
@@ -343,6 +358,43 @@ int Interp::find_named_param(
       if (pv->attr & PA_USE_LOOKUP) {
 	  CHP(lookup_named_param(nameBuf, pv->value, value));
 	  *status = 1;
+      } else if (pv->attr & PA_PYTHON) {
+	  bp::object retval, tupleargs, kwargs;
+	  bp::list plist;
+
+	  plist.append(*_setup.pythis); // self
+	  tupleargs = bp::tuple(plist);
+	  kwargs = bp::dict();
+
+	  python_plugin->call(NAMEDPARAMS_MODULE, nameBuf, tupleargs, kwargs, retval);
+	  CHKS(python_plugin->plugin_status() == PLUGIN_EXCEPTION,
+	       "named param - pycall(%s):\n%s", nameBuf,
+	       python_plugin->last_exception().c_str());
+	  CHKS(retval.ptr() == Py_None, "Python namedparams.%s returns no value", nameBuf);
+	  if (PyString_Check(retval.ptr())) {
+	      // returning a string sets the interpreter error message and aborts
+	      *status = 0;
+	      char *msg = bp::extract<char *>(retval);
+	      ERS("%s", msg);
+	  }
+	  if (PyInt_Check(retval.ptr())) { // widen
+	      *value = (double) bp::extract<int>(retval);
+	      *status = 1;
+	      return INTERP_OK;
+	  }
+	  if (PyFloat_Check(retval.ptr())) {
+	      *value =  bp::extract<double>(retval);
+	      *status = 1;
+	      return INTERP_OK;
+	  }
+	  // ok, that callable returned something botched.
+	  *status = 0;
+	  PyObject *res_str = PyObject_Str(retval.ptr());
+	  Py_XDECREF(res_str);
+	  ERS("Python call %s.%s returned '%s' - expected double, int or string, got %s",
+	      NAMEDPARAMS_MODULE, nameBuf,
+	      PyString_AsString(res_str),
+	      retval.ptr()->ob_type->tp_name);
       } else {
 	  *value = pv->value;
 	  *status = 1;
@@ -537,12 +589,12 @@ int Interp::lookup_named_param(const char *nameBuf,
 	*value = (_setup.retract_mode == OLD_Z);
 	break;
 
-    case NP_SPINDLE_RPM_MODE: // _spindle_rpm_mode G97
-	*value = (_setup.spindle_mode == CONSTANT_RPM);
+    case NP_SPINDLE_RPM_MODE: // _spindle_rpm_mode G97 currently only reports for spindle 0
+	*value = (_setup.spindle_mode[0] == CONSTANT_RPM);
 	break;
 
     case NP_SPINDLE_CSS_MODE: // _spindle_css_mode G96
-	*value = (_setup.spindle_mode == CONSTANT_SURFACE);
+	*value = (_setup.spindle_mode[0] == CONSTANT_SURFACE);
 	break;
 
     case NP_IJK_ABSOLUTE_MODE: //_ijk_absolute_mode - G90.1
@@ -560,11 +612,11 @@ int Interp::lookup_named_param(const char *nameBuf,
 	// some active_m_codes fields
 
     case NP_SPINDLE_ON: // _spindle_on
-	*value = (_setup.spindle_turning != CANON_STOPPED);
+	*value = (_setup.spindle_turning[0] != CANON_STOPPED);
 	break;
 
     case NP_SPINDLE_CW: // spindle_cw
-	*value = (_setup.spindle_turning == CANON_CLOCKWISE);
+	*value = (_setup.spindle_turning[0] == CANON_CLOCKWISE);
 	break;
 
     case NP_MIST: // mist
@@ -576,7 +628,7 @@ int Interp::lookup_named_param(const char *nameBuf,
 	break;
 
     case NP_SPEED_OVERRIDE: // speed override
-	*value = _setup.speed_override;
+	*value = _setup.speed_override[0];
 	break;
 
     case NP_FEED_OVERRIDE: // feed override
@@ -597,11 +649,11 @@ int Interp::lookup_named_param(const char *nameBuf,
 	break;
 
     case NP_RPM: // speed (rpm)
-	*value = abs(_setup.speed);
+	*value = abs(_setup.speed[0]);
 	break;
 
     case NP_CURRENT_TOOL:
-	*value = _setup.tool_table[_setup.current_pocket].toolno;
+	*value = _setup.parameters[5400];
 	break;
 
     case NP_SELECTED_POCKET:
@@ -681,6 +733,25 @@ int Interp::lookup_named_param(const char *nameBuf,
     default:
 	ERS(_("BUG: lookup_named_param(%s): unhandled index=%fn"),
 	      nameBuf,index);
+    }
+    return INTERP_OK;
+}
+
+int Interp::init_python_predef_parameter(const char *name)
+{
+    int exists = 0;
+    double value;
+    parameter_value param;
+
+    if (name[0] == '_') { // globals only
+	find_named_param(name, &exists, &value);
+	if (exists) {
+	    fprintf(stderr, "warning: redefining named parameter %s\n",name);
+	    _setup.sub_context[0].named_params.erase(name);
+	}
+	param.value = 0.0;
+	param.attr = PA_READONLY|PA_PYTHON|PA_GLOBAL;
+	_setup.sub_context[0].named_params[strstore(name)] = param;
     }
     return INTERP_OK;
 }

@@ -13,10 +13,7 @@
 #ifndef RS274NGC_HH
 #define RS274NGC_HH
 
-/* Size of certain arrays */
-#define ACTIVE_G_CODES 16
-#define ACTIVE_M_CODES 10
-#define ACTIVE_SETTINGS 3
+#include "interp_base.hh"
 
 
 
@@ -28,24 +25,7 @@
 #include "canon.hh"
 #include "emc.hh"
 #include "debugflags.h"
-
-typedef struct setup_struct setup;
-#ifndef JAVA_DIAG_APPLET
-typedef setup *setup_pointer;
-#endif
-typedef struct block_struct block;
-#ifndef JAVA_DIAG_APPLET
-typedef block *block_pointer;
-#endif
-
-typedef struct remap_struct remap;
-typedef remap *remap_pointer;
-
-typedef struct context_struct context;
-typedef context *context_pointer;
-
-typedef struct offset_struct offset;
-typedef offset *offset_pointer;
+#include "interp_fwd.hh"
 
 // Declare class so that we can use it in the typedef.
 class Interp;

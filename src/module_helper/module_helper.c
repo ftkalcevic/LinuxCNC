@@ -1,3 +1,19 @@
+//    Copyright 2006-2010, various authors
+//
+//    This program is free software; you can redistribute it and/or modify
+//    it under the terms of the GNU General Public License as published by
+//    the Free Software Foundation; either version 2 of the License, or
+//    (at your option) any later version.
+//
+//    This program is distributed in the hope that it will be useful,
+//    but WITHOUT ANY WARRANTY; without even the implied warranty of
+//    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//    GNU General Public License for more details.
+//
+//    You should have received a copy of the GNU General Public License
+//    along with this program; if not, write to the Free Software
+//    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
 /*
 This module_helper program will be installed setuid and allows
 the user to add and remove a whitelist of modules necessary to
@@ -12,10 +28,12 @@ In summary, I don't like this any more than you do, but I can't
 think of a better way.
 */
 
+#include <limits.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/utsname.h>
 
 #include "config.h"
 
@@ -24,9 +42,8 @@ think of a better way.
  * "rtai_math") then put the shorter name last.
  */
 char *module_whitelist[] = {
-    "rtai_math", "rtai_sem", "rtai_shm", "rtai_fifos", "rtai_up", "rtai_lxrt",
+    "rtai_math", "rtai_sem", "rtai_fifos", "rtai_up", "rtai_lxrt",
     "rtai_hal", "rtai_sched", "rtai_smi", "rtai", "rt_mem_mgr", "adeos",
-    "rtl_time", "rtl_sched", "rtl_posixio", "rtl_fifo", "rtl", "mbuff",
 
     NULL
 };
@@ -34,7 +51,7 @@ char *module_whitelist[] = {
 /* module path must start with this. */
 
 char *path_whitelist[] = {
-    "/lib/modules", RTDIR,
+    "/lib/modules", RTDIR, NULL,
 
     NULL
 };
@@ -42,15 +59,21 @@ char *path_whitelist[] = {
 /* module extension must be one of these */
 
 char *ext_whitelist[] = {
-    MODULE_EXT, NULL
+    ".ko", NULL
 };
 
 void error(int argc, char **argv) {
     int i;
+    int res;
     char *prog = argv[0];
 
     /* drop root privs permanently */
-    setuid(getuid());
+    res = setuid(getuid());
+    if(res != 0)
+    {
+        perror("setuid");
+        exit(1);
+    }
 
     fprintf(stderr, "%s: Invalid usage with args:", argv[0]);
     for(i=1; i<argc; i++) {
@@ -160,6 +183,9 @@ int main(int argc, char **argv) {
     char *mod;
     int i;
     int inserting = 0;
+    int res;
+    struct utsname u;
+    char buf[4096];
     char **exec_argv;
 
     if(geteuid() != 0) {
@@ -167,7 +193,27 @@ int main(int argc, char **argv) {
         return 1;
     }
     /* drop root privs temporarily */
-    seteuid(getuid());
+    res = seteuid(getuid());
+    if(res != 0)
+    {
+        perror("seteuid");
+        return 1;
+    }
+
+    res = uname(&u);
+    if(res != 0)
+    {
+        perror("uname");
+        return 1;
+    }
+
+    res = snprintf(buf, sizeof(buf), "/usr/realtime-%s/modules", u.release);
+    if(res < 0 || res >= sizeof(buf))
+    {
+        perror("snprintf");
+        return 1;
+    }
+    path_whitelist[2] = buf;
 
     if(argc < 3) error(argc, argv);
     if(strcmp(argv[1], "insert") && strcmp(argv[1], "remove")) error(argc, argv);
@@ -196,7 +242,13 @@ int main(int argc, char **argv) {
     }
 
     /* reinstate root privs */
-    seteuid(0);
+    res = seteuid(0);
+    if(res != 0)
+    {
+        perror("seteuid");
+        return 1;
+    }
+
     execve(exec_argv[0], exec_argv, NULL);
 
     perror("execv failed");

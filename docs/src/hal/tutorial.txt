@@ -1,8 +1,8 @@
-= Advanced HAL Tutorial
+[[cha:hal-tutorial]]
 
-[[cha:HAL-tutorial]] (((HAL Tutorial)))
+= HAL Tutorial
 
-== Introduction[[sec:Tutorial-Intro]]
+== Introduction
 
 Configuration moves from theory to device -- HAL device that is. For
 those who have had just a bit of computer programming, this section is
@@ -56,12 +56,12 @@ does things a little differently.
 To address these differences, the LinuxCNC team came up with RTAPI, which
 provides a consistent way for programs to talk to the RTOS. If you are
 a programmer who wants to work on the internals of LinuxCNC, you may want to
-study 'emc2/src/rtapi/rtapi.h' to understand the API. But if you are a
+study 'linuxcnc/src/rtapi/rtapi.h' to understand the API. But if you are a
 normal person all you need to 
 know about RTAPI is that it (and the RTOS) needs to be loaded into the
 memory of your computer before you do anything with HAL.
 
-== A Simple Example[[sec:Tutorial-Simple-Example]]
+== A Simple Example
 
 === Loading a component
 
@@ -77,7 +77,7 @@ following command from a terminal window:
 
 .Loading HAL
 ----
-cd emc2
+cd linuxcnc
 halrun
 halcmd:
 ----
@@ -89,7 +89,7 @@ not shell commands.
 
 For the first example, we will use a HAL component called 'siggen',
 which is a simple signal generator. A complete description of the
-'siggen' component can be found in the <<sec:Siggen,Siggen>> section of
+'siggen' component can be found in the <<sec:siggen,Siggen>> section of
 this Manual.
 It is a realtime component, implemented as a Linux kernel module. To
 load 'siggen' use the HAL command 'loadrt'.
@@ -104,7 +104,7 @@ halcmd: loadrt siggen
 Now that the module is loaded, it is time to introduce 'halcmd' , the
 command line tool used to configure the HAL. This tutorial will
 introduce some halcmd features, for a more complete description try
-'man halcmd', or see the reference in <<sec:Hal-Commands,Hal Commands>>
+'man halcmd', or see the reference in <<sec:hal-commands,Hal Commands>>
 section of this document. The first
 halcmd feature is the 'show' command. This command displays information
 about the current state of the HAL. To show all installed components:
@@ -149,8 +149,9 @@ Owner   Type   Dir        Value  Name
 
 This command displays all of the pins in the current HAL. A complex system
 could have dozens or hundreds of pins. But right now there are only
-nine pins. All eight of these pins are floating point, and carry data
-out of the 'siggen' component. Since we have not yet executed the code
+nine pins. Of these pins eight are floating point and one is bit (boolean).
+Six carry data out of the 'siggen' component and three are used to transfer
+settings into the component. Since we have not yet executed the code
 contained within the component, some the pins have a value of zero.
 
 The next step is to look at parameters:
@@ -412,7 +413,9 @@ following command in a terminal window.
 halrun -U
 ----
 
-== Halmeter[[sec:Tutorial-Halmeter]](((Halmeter,Tutorial-Halmeter)))
+[[sec:tutorial-halmeter]](((Halmeter,Tutorial Halmeter)))
+
+== Halmeter
 
 You can build very complex HAL systems without ever using a graphical
 interface. However there is something satisfying about seeing the
@@ -443,9 +446,9 @@ halcmd: loadusr halmeter
 
 The first window you will see is the 'Select Item to Probe' window.
 
-.Halmeter Select Window[[cap:HAL-Meter-Select-Window]]
+.Halmeter Select Window
 
-image::images/halmeter-select.png[align="center"]
+image::images/halmeter-select.png[align="center", alt="Halmeter Select Window"]
 
 This dialog has three tabs. The first tab displays all of the HAL pins
 in the system. The second one displays all the signals, and the third
@@ -455,9 +458,9 @@ The probe
 selection dialog will close, and the meter looks something like the
 following figure.
 
-.Halmeter[[cap:Halmeter]]
+.Halmeter
 
-image::images/halmeter-1.png[align="center"]
+image::images/halmeter-1.png[align="center", alt="Halmeter"]
 
 To change what the meter displays press the 'Select' button which
 brings back the 'Select Item to Probe' window.
@@ -791,7 +794,9 @@ generator is cranking out step pulses, varying from 10KHz forward to
 see how to bring those internal signals out to run motors in the real
 world, but first we want to look at them and see what is happening.
 
-== Halscope[[sec:Tutorial-Halscope]]
+[[sec:tutorial-halscope]](((Tutorial Halscope)))
+
+== Halscope
 
 The previous example generates some very interesting signals. But much
 of what happens is far too fast to see with halmeter. To take a closer
@@ -815,9 +820,9 @@ The scope GUI window will open, immediately followed by a
 'Realtime function not linked' dialog that looks like the following
 figure.
 
-.Realtime function not linked dialog[[cap:Realtime-function-not-linked]]
+.Realtime function not linked dialog
 
-image::images/halscope-01.png[align="center"]
+image::images/halscope-01.png[align="center", alt="Realtime function not linked dialog"]
 
 This dialog is where you set the sampling rate for the oscilloscope.
 For now we want to sample once per millisecond, so click on the 989 us
@@ -827,9 +832,9 @@ at one time. When you select a thread and then click 'OK', the dialog
 disappears, and the scope window looks something like the following
 figure.
 
-.Initial scope window[[cap:Initial-scope-window]]
+.Initial scope window
 
-image::images/halscope-02.png[align="center"]
+image::images/halscope-02.png[align="center", alt="Initial scope window"]
 
 === Hooking up the scope probes
 
@@ -848,17 +853,17 @@ one used by Halmeter. We would like to look at the signals we defined
 earlier, so we click on the 'Signals' tab, and the dialog displays all
 of the signals in the HAL (only two for this example).
 
-.Select Channel Source[[cap:Select-Channel-Source]]
+.Select Channel Source
 
-image::images/halscope-03.png[align="center"]
+image::images/halscope-03.png[align="center", alt="Select Channel Source"]
 
 To choose a signal, just click on it. In this case, we want channel 1
 to display the signal 'X-vel'. Click on the Signals tab then click on
 'X-vel' and the dialog closes and the channel is now selected.
 
-.Select Signal[[cap:Select-Signal]]
+.Select Signal
 
-image::images/halscope-04.png[align="center"]
+image::images/halscope-04.png[align="center", alt="Select Signal"]
 
 The channel 1 button is pressed in, and channel number 1 and the name
 'X-vel' appear below the row of buttons. That display always indicates
@@ -866,9 +871,9 @@ the selected channel - you can have many channels on the screen, but
 the selected one is highlighted, and the various controls like vertical
 position and scale always work on the selected one.
 
-.Halscope[[cap:HALScope]]
+.Halscope
 
-image::images/halscope-05.png[align="center"]
+image::images/halscope-05.png[align="center", alt="Halscope"]
 
 To add a signal to channel 2, click the '2' button. When the dialog
 pops up, click the 'Signals' tab, then click on 'Y-vel'. We also want
@@ -892,9 +897,9 @@ at the top right. You should see the remainder of the buffer fill, then
 the screen will display the captured waveforms. The result will look
 something like the following figure.
 
-.Captured Waveforms[[cap:Captured-Waveforms]]
+.Captured Waveforms
 
-image::images/halscope-06.png[align="center"]
+image::images/halscope-06.png[align="center", alt="Captured Waveforms"]
 
 The 'Selected Channel' box at the bottom tells you that the purple
 trace is the currently selected one, channel 4, which is displaying the
@@ -912,9 +917,9 @@ tiny (pico-units) to very large (Tera-units). The position control
 moves the displayed trace up and down over the height of the screen
 only. For larger adjustments the offset button should be used.
 
-.Vertical Adjustment[[cap:Vertical-Adjustment]]
+.Vertical Adjustment
 
-image::images/halscope-07.png[align="center"]
+image::images/halscope-07.png[align="center", alt="Vertical Adjustment"]
 
 === Triggering
 
@@ -925,9 +930,9 @@ simply a list of all the probes that are currently connected. Select a
 probe to use for triggering by clicking on it. For this example we will
 use channel 3, the triangle wave as shown in the following figure.
 
-.Trigger Source Dialog[[cap:Trigger-Source-Dialog]]
+.Trigger Source Dialog
 
-image::images/halscope-08.png[align="center"]
+image::images/halscope-08.png[align="center", alt="Trigger Source Dialog"]
 
 After setting the trigger source, you can adjust the trigger level and
 trigger position using the sliders in the 'Trigger' box along the right
@@ -945,9 +950,9 @@ below the trigger level display.
 Now that we have adjusted the vertical controls and triggering, the 
 scope display looks something like the following figure.
 
-.Waveforms with Triggering[[cap:Waveforms-with-Triggering]]
+.Waveforms with Triggering
 
-image::images/halscope-09.png[align="center"]
+image::images/halscope-09.png[align="center", alt="Waveforms with Triggering"]
 
 === Horizontal Adjustments
 
@@ -965,9 +970,9 @@ Sample Rate' dialog, figure . For this example, we will click on the
 instead of displaying about 4 seconds worth of data, one record is 4000
 samples at 20KHz, or about 0.20 seconds.
 
-.Sample Rate Dialog[[cap:Sample-Rate-Dialog]]
+.Sample Rate Dialog
 
-image::images/halscope-10.png[align="center"]
+image::images/halscope-10.png[align="center", alt="Sample Rate Dialog"]
 
 === More Channels
 
@@ -988,9 +993,9 @@ increase the gain on channel 1 to about 20 milli per division to better see
 the change in the velocity command. The result should look like  the
 following figure.
 
-.Step Pulses[[cap:Step-Pulses]]
+.Step Pulses
 
-image::images/halscope-11.png[align="center"]
+image::images/halscope-11.png[align="center", alt="Step Pulses"]
 
 === More samples
 

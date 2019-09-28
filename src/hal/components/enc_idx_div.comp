@@ -1,0 +1,37 @@
+component enc_idx_div "Encoder index divider";
+
+pin in s32 encoder_count_in "count input from the encoder";
+pin io bit encoder_index_enable "index-enable from the encoder";
+pin io bit index_enable "simulated index-enable";
+
+param rw s32 trigger_count "encoder count trigger point to start looking for an index";
+param rw s32 counts_per_rev "encoder counts per revolution";
+
+variable int waiting_for_index_trigger=0;
+
+function _ "Does the work";
+license "GPL";
+;;
+
+
+FUNCTION(_) {
+    if ( !index_enable ) {
+    	waiting_for_index_trigger = 0;
+	encoder_index_enable = 0;
+    } else {
+    	if ( !waiting_for_index_trigger ) {
+	    int n = encoder_count_in % counts_per_rev;
+	    if ( abs(n) > trigger_count ) {
+		encoder_index_enable = 1;
+		waiting_for_index_trigger = 1;
+	    }
+	} else {
+	    if ( !encoder_index_enable ) {
+	    	index_enable = 0;
+		waiting_for_index_trigger = 0;
+	    }
+	}
+
+    }
+}
+

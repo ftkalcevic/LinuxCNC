@@ -9,40 +9,11 @@ EMCLCDSRCS := emc/usr_intf/emclcd.cc \
               emc/usr_intf/shcom.cc \
               emc/usr_intf/sockets.c
 
-USRMOTSRCS := \
-	emc/usr_intf/usrmot.c \
-	emc/motion/usrmotintf.cc \
-	emc/motion/emcmotglb.c \
-	emc/motion/emcmotutil.c \
-	emc/motion/dbuf.c \
-	emc/motion/stashf.c
-
 HALUISRCS := emc/usr_intf/halui.cc
-ifeq "$(HAVE_NCURSES)" "yes"
-KEYSTICKSRCS := emc/usr_intf/keystick.cc
-endif
-ifeq "$(HAVE_XAW)" "yes"
-XEMCSRCS := emc/usr_intf/xemc.cc
-endif
 
-TCLSRCS := emc/usr_intf/emcsh.cc emc/usr_intf/iosh.cc
-USERSRCS += $(EMCSHSRCS) $(EMCRSHSRCS) $(EMCSCHEDSRCS) $(EMCLCDSRCS) $(USRMOTSRCS) $(HALUISRCS) $(KEYSTICKSRCS)
+USERSRCS += $(EMCSHSRCS) $(EMCRSHSRCS) $(EMCSCHEDSRCS) $(EMCLCDSRCS) $(USRMOTSRCS) $(HALUISRCS)
 
-ifeq "$(HAVE_NCURSES)" "yes"
-USERSRCS += $(KEYSTICKSRCS)
-endif
-
-ifeq "$(HAVE_XAW)" "yes"
-USERSRCS += $(XEMCSRCS)
-endif
-
-$(call TOOBJSDEPS, $(TCLSRCS)) : EXTRAFLAGS = $(ULFLAGS) $(TCL_CFLAGS)
 $(call TOOBJSDEPS, $(EMCSHSRCS)) : EXTRAFLAGS = $(ULFLAGS) $(TCL_CFLAGS) -fPIC
-
-../bin/tooledit: emc/usr_intf/tooledit.tcl
-	cp $< $@
-	chmod +x $@
-TARGETS += ../bin/tooledit
 
 ../tcl/linuxcnc.so: $(call TOOBJS, $(EMCSHSRCS)) ../lib/liblinuxcnc.a ../lib/liblinuxcncini.so.0 ../lib/libnml.so.0
 	$(ECHO) Linking $(notdir $@)
@@ -64,27 +35,7 @@ TARGETS += ../bin/schedrmt
 	$(Q)$(CXX) $(LDFLAGS) -o $@ $(ULFLAGS) $^
 TARGETS += ../bin/linuxcnclcd
 
-../bin/usrmot: $(call TOOBJS, $(USRMOTSRCS)) ../lib/liblinuxcnc.a ../lib/libnml.so.0 ../lib/liblinuxcnchal.so.0 ../lib/liblinuxcncini.so.0
-	$(ECHO) Linking $(notdir $@)
-	$(Q)$(CXX) $(LDFLAGS) -o $@ $(ULFLAGS) $^
-TARGETS += ../bin/usrmot
-
 ../bin/halui: $(call TOOBJS, $(HALUISRCS)) ../lib/liblinuxcnc.a ../lib/liblinuxcncini.so.0 ../lib/libnml.so.0 ../lib/liblinuxcnchal.so.0
 	$(ECHO) Linking $(notdir $@)
 	$(Q)$(CXX) $(LDFLAGS) -o $@ $(ULFLAGS) $^ 
 TARGETS += ../bin/halui
-
-ifeq "$(HAVE_NCURSES)" "yes"
-../bin/keystick: $(call TOOBJS, $(KEYSTICKSRCS)) ../lib/liblinuxcnc.a ../lib/libnml.so.0 ../lib/liblinuxcncini.so.0
-	$(ECHO) Linking $(notdir $@)
-	$(Q)$(CXX) $(LDFLAGS) -o $@ $(ULFLAGS) $^ $(KEYSTICKLIBS)
-TARGETS += ../bin/keystick
-endif
-
-ifeq "$(HAVE_XAW)" "yes"
-$(call TOOBJSDEPS,$(XEMCSRCS)): EXTRAFLAGS = $(CFLAGS_X)
-../bin/xlinuxcnc: $(call TOOBJS, $(XEMCSRCS)) ../lib/liblinuxcnc.a ../lib/libnml.so.0 ../lib/liblinuxcncini.so.0
-	$(ECHO) Linking $(notdir $@)
-	$(Q)$(CXX) $(LDFLAGS) -o $@ $(ULFLAGS) $^ $(XLIBS)
-TARGETS += ../bin/xlinuxcnc
-endif

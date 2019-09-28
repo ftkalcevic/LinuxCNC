@@ -1,3 +1,19 @@
+//    Copyright 2007-2013, various authors
+//
+//    This program is free software; you can redistribute it and/or modify
+//    it under the terms of the GNU General Public License as published by
+//    the Free Software Foundation; either version 2 of the License, or
+//    (at your option) any later version.
+//
+//    This program is distributed in the hope that it will be useful,
+//    but WITHOUT ANY WARRANTY; without even the implied warranty of
+//    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//    GNU General Public License for more details.
+//
+//    You should have received a copy of the GNU General Public License
+//    along with this program; if not, write to the Free Software
+//    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -8,7 +24,11 @@ Tcl_Interp *target_interp = NULL;
 static int pending_cr = 0;
 
 static void halError(Tcl_Interp *interp, int result) {
-    Tcl_SetResult(interp, strerror(-result), TCL_VOLATILE);
+    // Usually, halcmd leaves a good string message via halcmd_error()
+    // but just in case, fall back to using the result of the halcmd api call as
+    // a negative errno value...
+    if(!*Tcl_GetStringResult(interp))
+	Tcl_SetResult(interp, strerror(-result), TCL_VOLATILE);
 }
 
 static int refcount = 0;
@@ -70,6 +90,11 @@ int Hal_Init(Tcl_Interp *interp) {
 	Tcl_ResetResult(interp);
 	halError(interp, result);
 	return TCL_ERROR;
+    }
+
+    if (Tcl_InitStubs(interp, "8.1", 0) == NULL)
+    {
+        return TCL_ERROR;
     }
 
     Tcl_CreateCommand(interp, "hal", halCmd, 0, halExit);

@@ -12,7 +12,7 @@
 //
 //   You should have received a copy of the GNU General Public License
 //   along with this program; if not, write to the Free Software
-//   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+//   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 component abs_s32 "Compute the absolute value and sign of the input signal";
 
 pin in s32 in "input value" ;
@@ -21,11 +21,11 @@ pin out bit sign "Sign of input, false for positive, true for negative" ;
 pin out bit is_positive "TRUE if input is positive, FALSE if input is 0 or negative";
 pin out bit is_negative "TRUE if input is negative, FALSE if input is 0 or positive";
 
-function _;
+function _ nofp;
 license "GPL";
 ;;
 FUNCTION(_) {
-    __s32 tmp = in;
+    rtapi_s32 tmp = in;
     if ( tmp >= 0 ) {
 	sign = 0;
 	out = tmp;
@@ -34,9 +34,9 @@ FUNCTION(_) {
 	out = -tmp;
     }
 
-    if (tmp > 0.000001) is_positive = 1;
+    if (tmp > 0) is_positive = 1;
     else is_positive = 0;
 
-    if (tmp < -0.000001) is_negative = 1;
+    if (tmp < 0) is_negative = 1;
     else is_negative = 0;
 }

@@ -3,7 +3,7 @@
 
 = Test des capacités temps réel
 
-[[cha:test-de-latence]] (((Test de latence)))
+[[cha:test-de-latence]]
 
 == Test de latence
 
@@ -30,7 +30,7 @@ d'exécuter _un test de latence_.
 La seule façon de découvrir ce qu'il en est sur un PC est d'exécuter le test
 de latence de HAL.
 Pour exécuter ce test, ouvrir une fenêtre de terminal à partir de _Applications
--> Accessoires -> Terminal_ et exécuter la commande suivante:
+→ Accessoires → Terminal_ et exécuter la commande suivante:
 
 ----
 latency-test
@@ -40,7 +40,7 @@ Une fenêtre comme ci-dessous devrait s'ouvrir:
 
 .Test de latence de HAL
 
-image::../config/images/latency.png[]
+image::../config/images/latency.png[alt="Test de latence de HAL"]
 
 Alors que le test est en cours d'exécution, il faut charger l'ordinateur au
 maximum. Déplacer les fenêtres sur l'écran. Surfer sur le Web. Écouter de la

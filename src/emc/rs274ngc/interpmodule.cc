@@ -1,12 +1,36 @@
+/*    This is a component of LinuxCNC
+ *    Copyright 2011, 2012, 2013 Michael Haberler <git@mah.priv.at>,
+ *    Sebastian Kuzminsky <seb@highlab.com>
+ *
+ *    This program is free software; you can redistribute it and/or modify
+ *    it under the terms of the GNU General Public License as published by
+ *    the Free Software Foundation; either version 2 of the License, or
+ *    (at your option) any later version.
+ *
+ *    This program is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *    GNU General Public License for more details.
+ *
+ *    You should have received a copy of the GNU General Public License
+ *    along with this program; if not, write to the Free Software
+ *    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
 // Interpreter internals - Python bindings
 // Michael Haberler 7/2011
 //
 
-#include <boost/python.hpp>
+#define BOOST_PYTHON_MAX_ARITY 4
+#include <boost/python/class.hpp>
+#include <boost/python/def.hpp>
+#include <boost/python/exception_translator.hpp>
+#include <boost/python/module.hpp>
 #include <boost/python/suite/indexing/map_indexing_suite.hpp>
+#include <boost_pyenum_macros.hh>
 #include <map>
 
 namespace bp = boost::python;
+extern int _task;  // zero in gcodemodule, 1 in milltask
 
 #include <stdio.h>
 #include <string.h>
@@ -18,6 +42,12 @@ namespace bp = boost::python;
 #include "rs274ngc_interp.hh"
 #include "units.h"
 #include "array1.hh"
+
+extern void export_Internals();
+extern void export_Arrays();
+extern void export_Block();
+extern void export_EmcTypes();
+#include "paramclass.hh"
 
 namespace pp = pyplusplus::containers::static_sized;
 #include "interp_array_types.hh"
@@ -52,42 +82,14 @@ static  sub_context_array sub_context_wrapper ( Interp & inst) {
     return sub_context_array(inst._setup.sub_context);
 }
 
-static  g_modes_array g_modes_wrapper ( block & b) {
-    return g_modes_array(b.g_modes);
-}
 
-static  m_modes_array m_modes_wrapper ( block & b) {
-    return m_modes_array(b.m_modes);
-}
-
-static params_array saved_params_wrapper ( context &c) {
-    return params_array(c.saved_params);
-}
-
-static params_array params_wrapper ( block & b) {
-    return params_array(b.params);
-}
-
-static  active_g_codes_array saved_g_codes_wrapper ( context &c) {
-    return active_g_codes_array(c.saved_g_codes);
-}
-
-static  active_m_codes_array saved_m_codes_wrapper ( context &c) {
-    return active_m_codes_array(c.saved_m_codes);
-}
-
-static  active_settings_array saved_settings_wrapper ( context &c) {
-    return active_settings_array(c.saved_settings);
-}
-
-#pragma GCC diagnostic ignored "-Wformat-security"
 static void setErrorMsg(Interp &interp, const char *s)
 {
     setup *settings  = &interp._setup;
 
     if ((s == NULL) || (strlen(s) == 0))
 	s = "###";
-    interp.setError (s);
+    interp.setError ("%s", s);
     settings->stack_index = 0;
     strncpy(settings->stack[settings->stack_index],
 	    "Python", STACK_ENTRY_LEN);
@@ -95,8 +97,6 @@ static void setErrorMsg(Interp &interp, const char *s)
     settings->stack_index++;
     settings->stack[settings->stack_index][0] = 0;
 }
-
-#pragma GCC diagnostic warning "-Wformat-security"
 
 static bp::object errorStack(Interp &interp)
 {
@@ -117,138 +117,18 @@ static bp::object wrap_find_tool_pocket(Interp &interp, int toolno)
     return bp::make_tuple(status, pocket);
 }
 
-// access to named and numbered parameters via a pseudo-dictionary
-// either params["paramname"] or params[5400] is valid
-struct ParamClass {
-
-    Interp &interp;
-
-    ParamClass(Interp &i) : interp(i) {};
-    double getitem( bp::object sub)
-    {
-	double retval = 0;
-	if (IS_STRING(sub)) {
-	    char const* varname = bp::extract < char const* > (sub);
-	    int status;
-	    interp.find_named_param(varname, &status, &retval);
-	    if (!status)
-		throw std::runtime_error("parameter does not exist: " + std::string(varname));
-	} else
-	    if (IS_INT(sub)) {
-		int index = bp::extract < int > (sub);
-		retval = interp._setup.parameters[index];
-	    } else {
-		throw std::runtime_error("params subscript type must be integer or string");
-	    }
-	return retval;
-    }
-
-    double setitem(bp::object sub, double dvalue)
-    {
-	if (IS_STRING(sub)) {
-	    char const* varname = bp::extract < char const* > (sub);
-	    int status = interp.add_named_param(varname, varname[0] == '_' ? PA_GLOBAL :0);
-	    status = interp.store_named_param(&interp._setup,varname, dvalue, 0);
-	    if (status != INTERP_OK)
-		throw std::runtime_error("cant assign value to parameter: " + std::string(varname));
-
-	} else
-	    if (IS_INT(sub)) {
-		int index = bp::extract < int > (sub);
-		if ((index < 0) || (index > RS274NGC_MAX_PARAMETERS -1)) {
-		    std::stringstream sstr;
-		    sstr << "params subscript out of range : " << index << " - must be between 0 and " << RS274NGC_MAX_PARAMETERS;
-		    throw std::runtime_error(sstr.str());
-		}
-		interp._setup.parameters[index] = dvalue;
-		return dvalue;
-	    } else
-		throw std::runtime_error("params subscript type must be integer or string");
-	return dvalue;
-    }
-
-    bp::list namelist(context &c) const {
-	bp::list result;
-	for(parameter_map::iterator it = c.named_params.begin(); it != c.named_params.end(); ++it) {
-	    result.append( it->first);
-	}
-	return result;
-    }
-
-    bp::list locals() {
-	return namelist(interp._setup.sub_context[interp._setup.call_level]);
-    }
-
-    bp::list globals() {
-	return namelist(interp._setup.sub_context[0]);
-    }
-
-    bp::list operator()() const
-    {
-	bp::list result = namelist(interp._setup.sub_context[interp._setup.call_level]);
-	result.extend(namelist(interp._setup.sub_context[0]));
-	return result;
-    };
-
-    int length() { return RS274NGC_MAX_PARAMETERS;}
-};
 
 // FIXME not sure if this is really needed
 static  ParamClass param_wrapper ( Interp & inst) {
     return ParamClass(inst);
 }
 
-static bp::object emcpose_2_obj ( EmcPose &p) {
-    return  bp::object("x=%.4f y=%.4f z=%.4f a=%.4f b=%.4f c=%.4f u=%.4f v=%.4f w=%.4f" %
-	bp::make_tuple(p.tran.x,p.tran.y,p.tran.z,
-		       p.a,p.b,p.c,p.u,p.v,p.w));
-}
-static bp::object emcpose_str( EmcPose &p) {
-    return  bp::object("EmcPose(" + emcpose_2_obj(p) + ")");
-}
-
-static bp::object tool_str( CANON_TOOL_TABLE &t) {
-    return  bp::object("Tool(T%d D%.4f I%.4f J%.4f Q%d offset: " %
-		       bp::make_tuple(t.toolno,  t.diameter,
-				      t.frontangle,t.backangle, t.orientation) +
-		       emcpose_2_obj(t.offset) + ")");
-}
-
-static bp::object remap_str( remap_struct &r) {
-    return  bp::object("Remap(%s argspec=%s modal_group=%d prolog=%s ngc=%s python=%s epilog=%s) " %
-		       bp::make_tuple(r.name,r.argspec,r.modal_group,r.prolog_func,
-				      r.remap_ngc, r.remap_py, r.epilog_func));
-}
-
-static void tool_zero( CANON_TOOL_TABLE &t) {
-	t.toolno = -1;
-        ZERO_EMC_POSE(t.offset);
-	t.diameter = 0.0;
-        t.frontangle = 0.0;
-        t.backangle = 0.0;
-        t.orientation = 0;
-}
-
-static bp::object pmcartesian_str( PmCartesian &c) {
-    return  bp::object("PmCartesian(x=%.4f y=%.4f z=%.4f)" %
-		       bp::make_tuple(c.x,c.y,c.z));
-}
-
-static const char *get_comment(block &b) { return b.comment; };
-static const char *get_o_name(block &b) { return b.o_name; };
-
+static int get_task(Interp &i) { return _task; };
 static const char *get_filename(Interp &i) { return i._setup.filename; };
 static const char *get_linetext(Interp &i) { return i._setup.linetext; };
 
-static void  set_x(EmcPose &p, double value) { p.tran.x = value; }
-static void  set_y(EmcPose &p, double value) { p.tran.y = value; }
-static void  set_z(EmcPose &p, double value) { p.tran.z = value; }
-static double get_x(EmcPose &p) { return p.tran.x; }
-static double get_y(EmcPose &p) { return p.tran.y; }
-static double get_z(EmcPose &p) { return p.tran.z; }
-
 // those are exposed here because they look useful for regression testing
-static bool equal(double a, double b) { return fabs(a - b) < TOLERANCE_EQUAL; }
+static bool __equal(double a, double b) { return fabs(a - b) < TOLERANCE_EQUAL; }
 // see interp_convert.cc
 static bool is_near_int(double value) {
     int i = (int)(value + .5);
@@ -273,9 +153,9 @@ public:
 	this->line_number = line_number;
 	this->line_text = line_text;
     }
-    const char *what() const throw() { return this->error_message.c_str();  }
+    const char *what() const noexcept { return this->error_message.c_str();  }
 
-    ~InterpreterException() throw()  {}
+    ~InterpreterException() noexcept  {}
     std::string get_error_message()  { return this->error_message;  }
     int get_line_number()    { return this->line_number;  }
     std::string get_line_text()      { return this->line_text; }
@@ -296,11 +176,12 @@ static int wrap_interp_execute_1(Interp &interp, const char *command)
 {    
     setup &_setup = interp._setup;
     block saved_block = _setup.blocks[0];
+    int saved_call_state = _setup.call_state;
 
-    // use the remap stack to save/restore the current block
-    CHP(interp.enter_remap());
+    // Temporarily set the call state to CS_NORMAL
+    _setup.call_state = CS_NORMAL;
     int status = interp.execute(command);
-    CHP(interp.leave_remap());
+    _setup.call_state = saved_call_state;
     _setup.blocks[0] = saved_block;
 
     // printf("ie1: tc=%d if=%d pf=%d\n", _setup.toolchange_flag,_setup.input_flag,_setup.probe_flag);
@@ -348,6 +229,557 @@ static int wrap_interp_read(Interp &interp, const char *command)
     return status;
 }
 
+// static inline remap_map wrap_remaps(Interp &interp)  {
+//     return interp._setup.remaps;
+// }
+
+// what a barren desert
+static inline EmcPose get_tool_offset (Interp &interp)  {
+    return interp._setup.tool_offset;
+}
+static inline void set_tool_offset(Interp &interp, EmcPose value)  {
+    interp._setup.tool_offset = value;
+}
+static inline bool get_arc_not_allowed (Interp &interp)  {
+    return interp._setup.arc_not_allowed;
+}
+static inline void set_arc_not_allowed(Interp &interp, bool value)  {
+    interp._setup.arc_not_allowed = value;
+}
+static inline bool get_cutter_comp_firstmove (Interp &interp)  {
+    return interp._setup.cutter_comp_firstmove;
+}
+static inline void set_cutter_comp_firstmove(Interp &interp, bool value)  {
+    interp._setup.cutter_comp_firstmove = value;
+}
+static inline bool get_feed_override (Interp &interp)  {
+    return interp._setup.feed_override;
+}
+static inline void set_feed_override(Interp &interp, bool value)  {
+    interp._setup.feed_override = value;
+}
+static inline bool get_input_digital (Interp &interp)  {
+    return interp._setup.input_digital;
+}
+static inline void set_input_digital(Interp &interp, bool value)  {
+    interp._setup.input_digital = value;
+}
+static inline bool get_input_flag (Interp &interp)  {
+    return interp._setup.input_flag;
+}
+static inline void set_input_flag(Interp &interp, bool value)  {
+    interp._setup.input_flag = value;
+}
+static inline bool get_mdi_interrupt (Interp &interp)  {
+    return interp._setup.mdi_interrupt;
+}
+static inline void set_mdi_interrupt(Interp &interp, bool value)  {
+    interp._setup.mdi_interrupt = value;
+}
+static inline bool get_mist (Interp &interp)  {
+    return interp._setup.mist;
+}
+static inline void set_mist(Interp &interp, bool value)  {
+    interp._setup.mist = value;
+}
+static inline bool get_percent_flag (Interp &interp)  {
+    return interp._setup.percent_flag;
+}
+static inline void set_percent_flag(Interp &interp, bool value)  {
+    interp._setup.percent_flag = value;
+}
+static inline bool get_probe_flag (Interp &interp)  {
+    return interp._setup.probe_flag;
+}
+static inline void set_probe_flag(Interp &interp, bool value)  {
+    interp._setup.probe_flag = value;
+}
+static inline bool get_speed_override (Interp &interp)  {
+    return interp._setup.speed_override;
+}
+static inline void set_speed_override(Interp &interp, int spindle, bool value)  {
+    interp._setup.speed_override[spindle] = value;
+}
+static inline bool get_toolchange_flag (Interp &interp)  {
+    return interp._setup.toolchange_flag;
+}
+static inline void set_toolchange_flag(Interp &interp, bool value)  {
+    interp._setup.toolchange_flag = value;
+}
+static inline double get_u_current (Interp &interp)  {
+    return interp._setup.u_current;
+}
+static inline void set_u_current(Interp &interp, double value)  {
+    interp._setup.u_current = value;
+}
+static inline double get_AA_axis_offset (Interp &interp)  {
+    return interp._setup.AA_axis_offset;
+}
+static inline void set_AA_axis_offset(Interp &interp, double value)  {
+    interp._setup.AA_axis_offset = value;
+}
+static inline double get_AA_current (Interp &interp)  {
+    return interp._setup.AA_current;
+}
+static inline void set_AA_current(Interp &interp, double value)  {
+    interp._setup.AA_current = value;
+}
+static inline double get_AA_origin_offset (Interp &interp)  {
+    return interp._setup.AA_origin_offset;
+}
+static inline void set_AA_origin_offset(Interp &interp, double value)  {
+    interp._setup.AA_origin_offset = value;
+}
+static inline double get_BB_axis_offset (Interp &interp)  {
+    return interp._setup.BB_axis_offset;
+}
+static inline void set_BB_axis_offset(Interp &interp, double value)  {
+    interp._setup.BB_axis_offset = value;
+}
+static inline double get_BB_current (Interp &interp)  {
+    return interp._setup.BB_current;
+}
+static inline void set_BB_current(Interp &interp, double value)  {
+    interp._setup.BB_current = value;
+}
+static inline double get_BB_origin_offset (Interp &interp)  {
+    return interp._setup.BB_origin_offset;
+}
+static inline void set_BB_origin_offset(Interp &interp, double value)  {
+    interp._setup.BB_origin_offset = value;
+}
+static inline double get_CC_axis_offset (Interp &interp)  {
+    return interp._setup.CC_axis_offset;
+}
+static inline void set_CC_axis_offset(Interp &interp, double value)  {
+    interp._setup.CC_axis_offset = value;
+}
+static inline double get_CC_current (Interp &interp)  {
+    return interp._setup.CC_current;
+}
+static inline void set_CC_current(Interp &interp, double value)  {
+    interp._setup.CC_current = value;
+}
+static inline double get_CC_origin_offset (Interp &interp)  {
+    return interp._setup.CC_origin_offset;
+}
+static inline void set_CC_origin_offset(Interp &interp, double value)  {
+    interp._setup.CC_origin_offset = value;
+}
+static inline double get_axis_offset_x (Interp &interp)  {
+    return interp._setup.axis_offset_x;
+}
+static inline void set_axis_offset_x(Interp &interp, double value)  {
+    interp._setup.axis_offset_x = value;
+}
+static inline double get_axis_offset_y (Interp &interp)  {
+    return interp._setup.axis_offset_y;
+}
+static inline void set_axis_offset_y(Interp &interp, double value)  {
+    interp._setup.axis_offset_y = value;
+}
+static inline double get_axis_offset_z (Interp &interp)  {
+    return interp._setup.axis_offset_z;
+}
+static inline void set_axis_offset_z(Interp &interp, double value)  {
+    interp._setup.axis_offset_z = value;
+}
+static inline double get_current_x (Interp &interp)  {
+    return interp._setup.current_x;
+}
+static inline void set_current_x(Interp &interp, double value)  {
+    interp._setup.current_x = value;
+}
+static inline double get_current_y (Interp &interp)  {
+    return interp._setup.current_y;
+}
+static inline void set_current_y(Interp &interp, double value)  {
+    interp._setup.current_y = value;
+}
+static inline double get_current_z (Interp &interp)  {
+    return interp._setup.current_z;
+}
+static inline void set_current_z(Interp &interp, double value)  {
+    interp._setup.current_z = value;
+}
+static inline double get_cutter_comp_radius (Interp &interp)  {
+    return interp._setup.cutter_comp_radius;
+}
+static inline void set_cutter_comp_radius(Interp &interp, double value)  {
+    interp._setup.cutter_comp_radius = value;
+}
+static inline double get_cycle_cc (Interp &interp)  {
+    return interp._setup.cycle_cc;
+}
+static inline void set_cycle_cc(Interp &interp, double value)  {
+    interp._setup.cycle_cc = value;
+}
+static inline double get_cycle_i (Interp &interp)  {
+    return interp._setup.cycle_i;
+}
+static inline void set_cycle_i(Interp &interp, double value)  {
+    interp._setup.cycle_i = value;
+}
+static inline double get_cycle_il (Interp &interp)  {
+    return interp._setup.cycle_il;
+}
+static inline void set_cycle_il(Interp &interp, double value)  {
+    interp._setup.cycle_il = value;
+}
+static inline double get_cycle_j (Interp &interp)  {
+    return interp._setup.cycle_j;
+}
+static inline void set_cycle_j(Interp &interp, double value)  {
+    interp._setup.cycle_j = value;
+}
+static inline double get_cycle_k (Interp &interp)  {
+    return interp._setup.cycle_k;
+}
+static inline void set_cycle_k(Interp &interp, double value)  {
+    interp._setup.cycle_k = value;
+}
+static inline double get_cycle_p (Interp &interp)  {
+    return interp._setup.cycle_p;
+}
+static inline void set_cycle_p(Interp &interp, double value)  {
+    interp._setup.cycle_p = value;
+}
+static inline double get_cycle_q (Interp &interp)  {
+    return interp._setup.cycle_q;
+}
+static inline void set_cycle_q(Interp &interp, double value)  {
+    interp._setup.cycle_q = value;
+}
+static inline double get_cycle_r (Interp &interp)  {
+    return interp._setup.cycle_r;
+}
+static inline void set_cycle_r(Interp &interp, double value)  {
+    interp._setup.cycle_r = value;
+}
+static inline double get_feed_rate (Interp &interp)  {
+    return interp._setup.feed_rate;
+}
+static inline void set_feed_rate(Interp &interp, double value)  {
+    interp._setup.feed_rate = value;
+}
+static inline double get_origin_offset_x (Interp &interp)  {
+    return interp._setup.origin_offset_x;
+}
+static inline void set_origin_offset_x(Interp &interp, double value)  {
+    interp._setup.origin_offset_x = value;
+}
+static inline double get_origin_offset_y (Interp &interp)  {
+    return interp._setup.origin_offset_y;
+}
+static inline void set_origin_offset_y(Interp &interp, double value)  {
+    interp._setup.origin_offset_y = value;
+}
+static inline double get_origin_offset_z (Interp &interp)  {
+    return interp._setup.origin_offset_z;
+}
+static inline void set_origin_offset_z(Interp &interp, double value)  {
+    interp._setup.origin_offset_z = value;
+}
+static inline double get_program_x (Interp &interp)  {
+    return interp._setup.program_x;
+}
+static inline void set_program_x(Interp &interp, double value)  {
+    interp._setup.program_x = value;
+}
+static inline double get_program_y (Interp &interp)  {
+    return interp._setup.program_y;
+}
+static inline void set_program_y(Interp &interp, double value)  {
+    interp._setup.program_y = value;
+}
+static inline double get_program_z (Interp &interp)  {
+    return interp._setup.program_z;
+}
+static inline void set_program_z(Interp &interp, double value)  {
+    interp._setup.program_z = value;
+}
+static inline double get_return_value (Interp &interp)  {
+    return interp._setup.return_value;
+}
+static inline void set_return_value(Interp &interp, double value)  {
+    interp._setup.return_value = value;
+}
+static inline double get_rotation_xy (Interp &interp)  {
+    return interp._setup.rotation_xy;
+}
+static inline void set_rotation_xy(Interp &interp, double value)  {
+    interp._setup.rotation_xy = value;
+}
+static inline double get_speed (Interp &interp, int spindle)  {
+    return interp._setup.speed[spindle];
+}
+static inline void set_speed(Interp &interp, int spindle, double value)  {
+    interp._setup.speed[spindle] = value;
+}
+static inline double get_traverse_rate (Interp &interp)  {
+    return interp._setup.traverse_rate;
+}
+static inline void set_traverse_rate(Interp &interp, double value)  {
+    interp._setup.traverse_rate = value;
+}
+static inline double get_u_axis_offset (Interp &interp)  {
+    return interp._setup.u_axis_offset;
+}
+static inline void set_u_axis_offset(Interp &interp, double value)  {
+    interp._setup.u_axis_offset = value;
+}
+static inline double get_u_origin_offset (Interp &interp)  {
+    return interp._setup.u_origin_offset;
+}
+static inline void set_u_origin_offset(Interp &interp, double value)  {
+    interp._setup.u_origin_offset = value;
+}
+static inline double get_v_axis_offset (Interp &interp)  {
+    return interp._setup.v_axis_offset;
+}
+static inline void set_v_axis_offset(Interp &interp, double value)  {
+    interp._setup.v_axis_offset = value;
+}
+static inline double get_v_current(Interp &interp)  {
+    return interp._setup.v_current;
+}
+static inline void set_v_current(Interp &interp, double value)  {
+    interp._setup.v_current = value;
+}
+static inline double get_v_origin_offset (Interp &interp)  {
+    return interp._setup.v_origin_offset;
+}
+static inline void set_v_origin_offset(Interp &interp, double value)  {
+    interp._setup.v_origin_offset = value;
+}
+static inline double get_w_axis_offset (Interp &interp)  {
+    return interp._setup.w_axis_offset;
+}
+static inline void set_w_axis_offset(Interp &interp, double value)  {
+    interp._setup.w_axis_offset = value;
+}
+static inline double get_w_current (Interp &interp)  {
+    return interp._setup.w_current;
+}
+static inline void set_w_current(Interp &interp, double value)  {
+    interp._setup.w_current = value;
+}
+static inline double get_w_origin_offset (Interp &interp)  {
+    return interp._setup.w_origin_offset;
+}
+static inline void set_w_origin_offset(Interp &interp, double value)  {
+    interp._setup.w_origin_offset = value;
+}
+static inline int get_a_axis_wrapped (Interp &interp)  {
+    return interp._setup.a_axis_wrapped;
+}
+static inline void set_a_axis_wrapped(Interp &interp, int value)  {
+    interp._setup.a_axis_wrapped = value;
+}
+static inline int get_a_indexer (Interp &interp)  {
+    return interp._setup.a_indexer_jnum;
+}
+static inline void set_a_indexer(Interp &interp, int value)  {
+    interp._setup.a_indexer_jnum = value;
+}
+static inline int get_b_axis_wrapped (Interp &interp)  {
+    return interp._setup.b_axis_wrapped;
+}
+static inline void set_b_axis_wrapped(Interp &interp, int value)  {
+    interp._setup.b_axis_wrapped = value;
+}
+static inline int get_b_indexer (Interp &interp)  {
+    return interp._setup.b_indexer_jnum;
+}
+static inline void set_b_indexer(Interp &interp, int value)  {
+    interp._setup.b_indexer_jnum = value;
+}
+static inline int get_c_axis_wrapped (Interp &interp)  {
+    return interp._setup.c_axis_wrapped;
+}
+static inline void set_c_axis_wrapped(Interp &interp, int value)  {
+    interp._setup.c_axis_wrapped = value;
+}
+static inline int get_c_indexer (Interp &interp)  {
+    return interp._setup.c_indexer_jnum;
+}
+static inline void set_c_indexer(Interp &interp, int value)  {
+    interp._setup.c_indexer_jnum = value;
+}
+static inline int get_call_level (Interp &interp)  {
+    return interp._setup.call_level;
+}
+static inline void set_call_level(Interp &interp, int value)  {
+    interp._setup.call_level = value;
+}
+static inline int get_current_pocket (Interp &interp)  {
+    return interp._setup.current_pocket;
+}
+static inline void set_current_pocket(Interp &interp, int value)  {
+    interp._setup.current_pocket = value;
+}
+static inline int get_cutter_comp_orientation (Interp &interp)  {
+    return interp._setup.cutter_comp_orientation;
+}
+static inline void set_cutter_comp_orientation(Interp &interp, int value)  {
+    interp._setup.cutter_comp_orientation = value;
+}
+static inline int get_cutter_comp_side (Interp &interp)  {
+    return interp._setup.cutter_comp_side;
+}
+static inline void set_cutter_comp_side(Interp &interp, int value)  {
+    interp._setup.cutter_comp_side = value;
+}
+static inline int get_cycle_il_flag (Interp &interp)  {
+    return interp._setup.cycle_il_flag;
+}
+static inline void set_cycle_il_flag(Interp &interp, int value)  {
+    interp._setup.cycle_il_flag = value;
+}
+static inline int get_cycle_l (Interp &interp)  {
+    return interp._setup.cycle_l;
+}
+static inline void set_cycle_l(Interp &interp, int value)  {
+    interp._setup.cycle_l = value;
+}
+static inline int get_debugmask (Interp &interp)  {
+    return interp._setup.debugmask;
+}
+static inline void set_debugmask(Interp &interp, int value)  {
+    interp._setup.debugmask = value;
+}
+static inline int get_distance_mode (Interp &interp)  {
+    return interp._setup.distance_mode;
+}
+static inline void set_distance_mode(Interp &interp, DISTANCE_MODE value)  {
+    interp._setup.distance_mode = value;
+}
+static inline int get_feed_mode (Interp &interp)  {
+    return interp._setup.feed_mode;
+}
+static inline void set_feed_mode(Interp &interp, int value)  {
+    interp._setup.feed_mode = value;
+}
+static inline int get_ijk_distance_mode (Interp &interp)  {
+    return interp._setup.ijk_distance_mode;
+}
+static inline void set_ijk_distance_mode(Interp &interp, DISTANCE_MODE value)  {
+    interp._setup.ijk_distance_mode = value;
+}
+static inline int get_input_index (Interp &interp)  {
+    return interp._setup.input_index;
+}
+static inline void set_input_index(Interp &interp, int value)  {
+    interp._setup.input_index = value;
+}
+static inline int get_length_units (Interp &interp)  {
+    return interp._setup.length_units;
+}
+static inline void set_length_units(Interp &interp, int value)  {
+    interp._setup.length_units = static_cast<CANON_UNITS>(value);
+}
+static inline int get_loggingLevel (Interp &interp)  {
+    return interp._setup.loggingLevel;
+}
+static inline void set_loggingLevel(Interp &interp, int value)  {
+    interp._setup.loggingLevel = value;
+}
+static inline int get_motion_mode (Interp &interp)  {
+    return interp._setup.motion_mode;
+}
+static inline void set_motion_mode(Interp &interp, int value)  {
+    interp._setup.motion_mode = value;
+}
+static inline int get_origin_index (Interp &interp)  {
+    return interp._setup.origin_index;
+}
+static inline void set_origin_index(Interp &interp, int value)  {
+    interp._setup.origin_index = value;
+}
+static inline int get_plane (Interp &interp)  {
+    return interp._setup.plane;
+}
+static inline void set_plane(Interp &interp, int value)  {
+    interp._setup.plane = static_cast<CANON_PLANE>(value);
+}
+static inline int get_pockets_max (Interp &interp)  {
+    return interp._setup.pockets_max;
+}
+static inline void set_pockets_max(Interp &interp, int value)  {
+    interp._setup.pockets_max = value;
+}
+static inline int get_random_toolchanger (Interp &interp)  {
+    return interp._setup.random_toolchanger;
+}
+static inline void set_random_toolchanger(Interp &interp, int value)  {
+    interp._setup.random_toolchanger = value;
+}
+static inline int get_remap_level (Interp &interp)  {
+    return interp._setup.remap_level;
+}
+static inline void set_remap_level(Interp &interp, int value)  {
+    interp._setup.remap_level = value;
+}
+static inline int get_retract_mode (Interp &interp)  {
+    return interp._setup.retract_mode;
+}
+static inline void set_retract_mode(Interp &interp, RETRACT_MODE value)  {
+    interp._setup.retract_mode = value;
+}
+static inline int get_selected_pocket (Interp &interp)  {
+    return interp._setup.selected_pocket;
+}
+static inline void set_selected_pocket(Interp &interp, int value)  {
+    interp._setup.selected_pocket = value;
+}
+static inline int get_selected_tool (Interp &interp)  {
+    return interp._setup.selected_tool;
+}
+static inline void set_selected_tool(Interp &interp, int value)  {
+    interp._setup.selected_tool = value;
+}
+static inline int get_sequence_number (Interp &interp)  {
+    return interp._setup.sequence_number;
+}
+static inline void set_sequence_number(Interp &interp, int value)  {
+    interp._setup.sequence_number = value;
+}
+static inline int get_speed_feed_mode (Interp &interp)  {
+    return interp._setup.speed_feed_mode;
+}
+static inline void set_speed_feed_mode(Interp &interp, int value)  {
+    interp._setup.speed_feed_mode = static_cast<CANON_SPEED_FEED_MODE>(value);
+}
+static inline int get_spindle_mode (Interp &interp, int spindle)  {
+    return interp._setup.spindle_mode[spindle];
+}
+static inline void set_spindle_mode(Interp &interp, int spindle, SPINDLE_MODE value)  {
+    interp._setup.spindle_mode[spindle] = value;
+}
+static inline int get_spindle_turning (Interp &interp, int spindle)  {
+    return interp._setup.spindle_turning[spindle];
+}
+static inline void set_spindle_turning(Interp &interp, int spindle, int value)  {
+    interp._setup.spindle_turning[spindle] = (CANON_DIRECTION)value;
+}
+static inline int get_stack_index (Interp &interp)  {
+    return interp._setup.stack_index;
+}
+static inline void set_stack_index(Interp &interp, int value)  {
+    interp._setup.stack_index = value;
+}
+static inline int get_value_returned (Interp &interp)  {
+    return interp._setup.value_returned;
+}
+static inline void set_value_returned(Interp &interp, int value)  {
+    interp._setup.value_returned = value;
+}
+static inline int get_current_tool(Interp &interp)  {
+    return interp._setup.tool_table[0].toolno;
+}
+static inline void set_current_tool(Interp &interp, int value)  {
+    interp._setup.tool_table[0].toolno = value;
+}
 
 BOOST_PYTHON_MODULE(interpreter) {
     using namespace boost::python;
@@ -358,226 +790,53 @@ BOOST_PYTHON_MODULE(interpreter) {
         ;
     scope().attr("throw_exceptions") = throw_exceptions;
 
-    scope().attr("INTERP_OK") = INTERP_OK;
-    scope().attr("INTERP_EXIT") = INTERP_EXIT;
-    scope().attr("INTERP_EXECUTE_FINISH") = INTERP_EXECUTE_FINISH;
-    scope().attr("INTERP_ENDFILE") = INTERP_ENDFILE;
-    scope().attr("INTERP_FILE_NOT_OPEN") = INTERP_FILE_NOT_OPEN;
-    scope().attr("INTERP_ERROR") = INTERP_ERROR;
-    scope().attr("INTERP_MIN_ERROR") = INTERP_MIN_ERROR;
+    BOOST_PYENUM_(InterpReturn)
+            .BOOST_PYENUM_VAL(INTERP_OK)
+            .BOOST_PYENUM_VAL(INTERP_EXIT)
+            .BOOST_PYENUM_VAL(INTERP_EXECUTE_FINISH)
+            .BOOST_PYENUM_VAL(INTERP_ENDFILE)
+            .BOOST_PYENUM_VAL(INTERP_FILE_NOT_OPEN)
+            .BOOST_PYENUM_VAL(INTERP_ERROR)
+            .export_values();
+
+    scope().attr("INTERP_MIN_ERROR") = (int)INTERP_MIN_ERROR;
     scope().attr("TOLERANCE_EQUAL") = TOLERANCE_EQUAL;
 
-    scope().attr("MODE_ABSOLUTE") = (int) MODE_ABSOLUTE;
-    scope().attr("MODE_INCREMENTAL") = (int) MODE_INCREMENTAL;
-    scope().attr("R_PLANE") =  (int) R_PLANE;
-    scope().attr("OLD_Z") =  (int) OLD_Z;
+    BOOST_PYENUM_(DISTANCE_MODE)
+            .BOOST_PYENUM_VAL(MODE_ABSOLUTE)
+            .BOOST_PYENUM_VAL(MODE_INCREMENTAL)
+            .export_values();
 
-    scope().attr("UNITS_PER_MINUTE") =  (int) UNITS_PER_MINUTE;
-    scope().attr("INVERSE_TIME") =  (int) INVERSE_TIME;
-    scope().attr("UNITS_PER_REVOLUTION") =  (int) UNITS_PER_REVOLUTION;
+    BOOST_PYENUM_(RETRACT_MODE)
+            .BOOST_PYENUM_VAL(R_PLANE)
+            .BOOST_PYENUM_VAL(OLD_Z)
+            .export_values();
 
-    scope().attr("RIGHT") = RIGHT;
-    scope().attr("LEFT") = LEFT;
-    scope().attr("CONSTANT_RPM") =  (int) CONSTANT_RPM;
-    scope().attr("CONSTANT_SURFACE") =  (int) CONSTANT_SURFACE;
+    BOOST_PYENUM_(FEED_MODE)
+            .BOOST_PYENUM_VAL(UNITS_PER_MINUTE)
+            .BOOST_PYENUM_VAL(INVERSE_TIME)
+            .BOOST_PYENUM_VAL(UNITS_PER_REVOLUTION)
+            .export_values();
 
-    def("equal", &equal);  // EMC's perception of equality of doubles
+    BOOST_PYENUM_(CUTTER_COMP_DIRECTION)
+            .BOOST_PYENUM_VAL(RIGHT)
+            .BOOST_PYENUM_VAL(LEFT)
+            .export_values();
+
+    BOOST_PYENUM_(SPINDLE_MODE)
+            .BOOST_PYENUM_VAL(CONSTANT_RPM)
+            .BOOST_PYENUM_VAL(CONSTANT_SURFACE)
+            .export_values();
+
+
+    def("equal", &__equal);  // EMC's perception of equality of doubles
     def("is_near_int", &is_near_int);  // EMC's perception of closeness to an int
     def("nearest_int", &nearest_int);
 
-    class_<PmCartesian, noncopyable>("PmCartesian","EMC cartesian postition",no_init)
-	.def_readwrite("x",&PmCartesian::x)
-	.def_readwrite("y",&PmCartesian::y)
-	.def_readwrite("z",&PmCartesian::z)
-	.def("__str__", &pmcartesian_str)
-	;
-
-
-    // leave EmcPose copyable/assignable because it's used as a parameter value (eg emcSetToolOffset)
-    class_<EmcPose>("EmcPose","EMC pose",no_init)
-	.def_readwrite("tran",&EmcPose::tran)
-	.add_property("x", &get_x, &set_x)
-	.add_property("y", &get_y, &set_y)
-	.add_property("z", &get_z, &set_z)
-	.def_readwrite("a",&EmcPose::a)
-	.def_readwrite("b",&EmcPose::b)
-	.def_readwrite("c",&EmcPose::c)
-	.def_readwrite("u",&EmcPose::u)
-	.def_readwrite("v",&EmcPose::v)
-	.def_readwrite("w",&EmcPose::w)
-	.def("__str__", &emcpose_str)
-	;
-
-    // leave CANON_TOOL_TABLE copyable/assignable because assignment is used a lot when fiddling
-    // with tooltable entries
-    class_<CANON_TOOL_TABLE >("CANON_TOOL_TABLE","Tool description" ,no_init)
-	.def_readwrite("toolno", &CANON_TOOL_TABLE::toolno)
-	.def_readwrite("offset", &CANON_TOOL_TABLE::offset)
-	.def_readwrite("diameter", &CANON_TOOL_TABLE::diameter)
-	.def_readwrite("frontangle", &CANON_TOOL_TABLE::frontangle)
-	.def_readwrite("backangle", &CANON_TOOL_TABLE::backangle)
-	.def_readwrite("orientation", &CANON_TOOL_TABLE::orientation)
-	.def("__str__", &tool_str)
-	.def("zero", &tool_zero)
-	;
-
-
-    class_<parameter_value_struct /*,noncopyable */>("ParameterValue") // ,no_init)
-	.def_readwrite("attr",&parameter_value_struct::attr)
-	.def_readwrite("value",&parameter_value_struct::value)
-	;
-
-    class_<parameter_map,noncopyable>("ParameterMap",no_init)
-        .def(map_indexing_suite<parameter_map>())
-	;
-
-
-    // FIXME make noncopyable: class_<ParamClass, noncopyable>("Params","Interpreter parameters",no_init)
-    class_<ParamClass>("Params","Interpreter parameters",no_init)
-	.def("__getitem__", &ParamClass::getitem)
-        .def("__setitem__", &ParamClass::setitem)
-        .def("__len__", &ParamClass::length)
-        .def("globals", &ParamClass::globals)
-        .def("locals", &ParamClass::locals)
-	.def("__call__", &ParamClass::operator());
-	;
-
-    class_ <context, noncopyable>("Context",no_init)
-	.def_readwrite("position",&context::position)
-	.def_readwrite("sequence_number",&context::sequence_number)
-	.def_readwrite("filename",  &context::filename)
-	.def_readwrite("subname",  &context::subName)
-	.add_property( "saved_params",
-		       bp::make_function( saved_params_w(&saved_params_wrapper),
-					  bp::with_custodian_and_ward_postcall< 0, 1 >()))
-	.add_property( "saved_g_codes",
-		       bp::make_function( active_g_codes_w(&saved_g_codes_wrapper),
-					  bp::with_custodian_and_ward_postcall< 0, 1 >()))
-	.add_property( "saved_m_codes",
-		       bp::make_function( active_m_codes_w(&saved_m_codes_wrapper),
-					  bp::with_custodian_and_ward_postcall< 0, 1 >()))
-	.add_property( "saved_settings",
-		       bp::make_function( active_settings_w(&saved_settings_wrapper),
-					  bp::with_custodian_and_ward_postcall< 0, 1 >()))
-	.def_readwrite("context_status", &context::context_status)
-	.def_readwrite("named_params",  &context::named_params)
-
-	.def_readwrite("call_type",  &context::call_type)
-	.def_readwrite("tupleargs",  &context::tupleargs)
-	.def_readwrite("kwargs",  &context::kwargs)
-	.def_readwrite("py_return_type",  &context::py_return_type)
-	.def_readwrite("py_returned_double",  &context::py_returned_double)
-	.def_readwrite("py_returned_int",  &context::py_returned_int)
-	.def_readwrite("generator_next",  &context::generator_next)
-
-	;
-    // FIXME make noncopyable: class_<ParamClass, noncopyable>("Params","Interpreter parameters",no_init)
-    class_ <remap_struct /*, noncopyable */>("Remap" /*, no_init*/)
-	.def_readwrite("name",&remap::name)
-	.def_readwrite("argspec",&remap::argspec)
-	.def_readwrite("modal_group",&remap::modal_group)
-	.def_readwrite("prolog_func",&remap::prolog_func)
-	.def_readwrite("remap_py",&remap::remap_py)
-	.def_readwrite("remap_ngc",&remap::remap_ngc)
-	.def_readwrite("epilog_func",&remap::epilog_func)
-	.def_readwrite("motion_code",&remap::motion_code)
-	.def("__str__", &remap_str)
-
-	;
-
-    class_<remap_map,noncopyable>("RemapMap",no_init)
-        .def(map_indexing_suite<remap_map>())
-	;
-
-    class_ <block, noncopyable>("Block",no_init)
-	.def_readwrite("f_flag",&block::f_flag)
-	.def_readwrite("p_flag",&block::p_flag)
-	.def_readwrite("p_number",&block::p_number)
-	.def_readwrite("a_flag",&block::a_flag)
-	.def_readwrite("a_number",&block::a_number)
-	.def_readwrite("b_flag",&block::b_flag)
-	.def_readwrite("b_number",&block::b_number)
-	.def_readwrite("c_flag",&block::c_flag)
-	.def_readwrite("c_number",&block::c_number)
-	.def_readwrite("d_number_float",&block::d_number_float)
-	.def_readwrite("d_flag",&block::d_flag)
-	.def_readwrite("e_flag",&block::e_flag)
-	.def_readwrite("e_number",&block::e_number)
-	.def_readwrite("f_flag",&block::f_flag)
-	.def_readwrite("f_number",&block::f_number)
-	.def_readwrite("h_flag",&block::h_flag)
-	.def_readwrite("h_number",&block::h_number)
-	.def_readwrite("i_flag",&block::i_flag)
-	.def_readwrite("i_number",&block::i_number)
-	.def_readwrite("j_flag",&block::j_flag)
-	.def_readwrite("j_number",&block::j_number)
-	.def_readwrite("k_flag",&block::k_flag)
-	.def_readwrite("k_number",&block::k_number)
-	.def_readwrite("l_number",&block::l_number)
-	.def_readwrite("l_flag",&block::l_flag)
-	.def_readwrite("line_number",&block::line_number)
-	.def_readwrite("saved_line_number",&block::line_number)
-	.def_readwrite("n_number",&block::n_number)
-	.def_readwrite("motion_to_be",&block::motion_to_be)
-	.def_readwrite("m_count",&block::m_count)
-	.def_readwrite("user_m",&block::user_m)
-	.def_readwrite("p_number",&block::p_number)
-	.def_readwrite("p_flag",&block::p_flag)
-	.def_readwrite("q_number",&block::q_number)
-	.def_readwrite("q_flag",&block::q_flag)
-	.def_readwrite("r_flag",&block::r_flag)
-	.def_readwrite("r_number",&block::r_number)
-	.def_readwrite("s_flag",&block::s_flag)
-	.def_readwrite("s_number",&block::s_number)
-	.def_readwrite("t_flag",&block::t_flag)
-	.def_readwrite("t_number",&block::t_number)
-	.def_readwrite("u_flag",&block::u_flag)
-	.def_readwrite("u_number",&block::u_number)
-	.def_readwrite("v_flag",&block::v_flag)
-	.def_readwrite("v_number",&block::v_number)
-	.def_readwrite("w_flag",&block::w_flag)
-	.def_readwrite("w_number",&block::w_number)
-	.def_readwrite("x_flag",&block::x_flag)
-	.def_readwrite("x_number",&block::x_number)
-	.def_readwrite("y_flag",&block::y_flag)
-	.def_readwrite("y_number",&block::y_number)
-	.def_readwrite("z_flag",&block::z_flag)
-	.def_readwrite("z_number",&block::z_number)
-	.def_readwrite("radius_flag",&block::radius_flag)
-	.def_readwrite("radius",&block::radius)
-	.def_readwrite("theta_flag",&block::theta_flag)
-	.def_readwrite("theta",&block::theta)
-
-	.def_readwrite("offset",&block::offset)
-	.def_readwrite("o_type",&block::o_type)
-
-	// I hope someday I really understand this
-	.add_property("executing_remap", 
-		      make_getter(&block::executing_remap,return_value_policy<reference_existing_object>()),
-		      make_setter(&block::executing_remap,return_value_policy<reference_existing_object>()))
-
-	.def_readwrite("call_type",&block::call_type)
-	.def_readwrite("breadcrumbs",&block::breadcrumbs)
-	.def_readwrite("phase",&block::phase)
-	.def_readwrite("builtin_used",&block::builtin_used)
-
-	//  read-only
-	.add_property("comment",  &get_comment)
-	.add_property("o_name",   &get_o_name)
-
-	.add_property( "params",
-		       bp::make_function( params_w(&params_wrapper),
-					  bp::with_custodian_and_ward_postcall< 0, 1 >()))
-	// arrays
-	.add_property( "m_modes",
-		       bp::make_function( m_modes_w(&m_modes_wrapper),
-					  bp::with_custodian_and_ward_postcall< 0, 1 >()))
-	.add_property( "g_modes",
-		       bp::make_function( g_modes_w(&g_modes_wrapper),
-					  bp::with_custodian_and_ward_postcall< 0, 1 >()))
-
-	;
-
+    export_EmcTypes();
+    export_ParamClass();
+    export_Internals();
+    export_Block();
     class_<InterpreterException>InterpreterExceptionClass("InterpreterException",							bp::init<std::string, int, std::string>());
     InterpreterExceptionClass
 	.add_property("error_message", &InterpreterException::get_error_message)
@@ -600,8 +859,6 @@ BOOST_PYTHON_MODULE(interpreter) {
 	.def("set_errormsg", &setErrorMsg)
 	.def("get_errormsg", &Interp::getSavedError)
 	.def("stack", &errorStack)
-	.def_readwrite("stack_index", Interp::_setup.stack_index) // error stack pointer, beyond last entry
-
 	.def("synch", &Interp::synch)
 
 	// those will raise exceptions on return value < INTERP_MIN_ERROR  if throw_exceptions is set.
@@ -609,101 +866,107 @@ BOOST_PYTHON_MODULE(interpreter) {
 	.def("execute",  &wrap_interp_execute_2)
 	.def("read", &wrap_interp_read)
 
+	// until I know better
+	//.def_readwrite("remaps",  &wrap_remaps)
+
+	.add_property("task", &get_task) // R/O
 	.add_property("filename", &get_filename) // R/O
 	.add_property("linetext", &get_linetext) // R/O
+	.add_property("tool_offset", &get_tool_offset, &set_tool_offset)
+	.add_property("arc_not_allowed", &get_arc_not_allowed, &set_arc_not_allowed)
+	.add_property("cutter_comp_firstmove",
+		      &get_cutter_comp_firstmove,
+		      &set_cutter_comp_firstmove)
+	.add_property("feed_override", &get_feed_override, &set_feed_override)
+	.add_property("input_digital", &get_input_digital, &set_input_digital)
+	.add_property("input_flag", &get_input_flag, &set_input_flag)
+	.add_property("mdi_interrupt", &get_mdi_interrupt, &set_mdi_interrupt)
+	.add_property("mist", &get_mist, &set_mist)
+	.add_property("percent_flag", &get_percent_flag, &set_percent_flag)
+	.add_property("probe_flag", &get_probe_flag, &set_probe_flag)
+	.add_property("speed_override", &get_speed_override, &set_speed_override)
+	.add_property("toolchange_flag", &get_toolchange_flag, &set_toolchange_flag)
+	.add_property("u_current", &get_u_current, &set_u_current)
+	.add_property("AA_axis_offset", &get_AA_axis_offset, &set_AA_axis_offset)
+	.add_property("AA_current", &get_AA_current, &set_AA_current)
+	.add_property("AA_origin_offset", &get_AA_origin_offset, &set_AA_origin_offset)
+	.add_property("BB_axis_offset", &get_BB_axis_offset, &set_BB_axis_offset)
+	.add_property("BB_current", &get_BB_current, &set_BB_current)
+	.add_property("BB_origin_offset", &get_BB_origin_offset, &set_BB_origin_offset)
+	.add_property("CC_axis_offset", &get_CC_axis_offset, &set_CC_axis_offset)
+	.add_property("CC_current", &get_CC_current, &set_CC_current)
+	.add_property("CC_origin_offset", &get_CC_origin_offset, &set_CC_origin_offset)
+	.add_property("axis_offset_x", &get_axis_offset_x, &set_axis_offset_x)
+	.add_property("axis_offset_y", &get_axis_offset_y, &set_axis_offset_y)
+	.add_property("axis_offset_z", &get_axis_offset_z, &set_axis_offset_z)
+	.add_property("current_x", &get_current_x, &set_current_x)
+	.add_property("current_y", &get_current_y, &set_current_y)
+	.add_property("current_z", &get_current_z, &set_current_z)
+	.add_property("cutter_comp_radius", &get_cutter_comp_radius, &set_cutter_comp_radius)
+	.add_property("cycle_cc", &get_cycle_cc, &set_cycle_cc)
+	.add_property("cycle_i", &get_cycle_i, &set_cycle_i)
+	.add_property("cycle_il", &get_cycle_il, &set_cycle_il)
+	.add_property("cycle_j", &get_cycle_j, &set_cycle_j)
+	.add_property("cycle_k", &get_cycle_k, &set_cycle_k)
+	.add_property("cycle_p", &get_cycle_p, &set_cycle_p)
+	.add_property("cycle_q", &get_cycle_q, &set_cycle_q)
+	.add_property("cycle_r", &get_cycle_r, &set_cycle_r)
+	.add_property("feed_rate", &get_feed_rate, &set_feed_rate)
+	.add_property("origin_offset_x", &get_origin_offset_x, &set_origin_offset_x)
+	.add_property("origin_offset_y", &get_origin_offset_y, &set_origin_offset_y)
+	.add_property("origin_offset_z", &get_origin_offset_z, &set_origin_offset_z)
+	.add_property("program_x", &get_program_x, &set_program_x)
+	.add_property("program_y", &get_program_y, &set_program_y)
+	.add_property("program_z", &get_program_z, &set_program_z)
+	.add_property("return_value", &get_return_value, &set_return_value)
+	.add_property("rotation_xy", &get_rotation_xy, &set_rotation_xy)
+	.add_property("speed", &get_speed, &set_speed)
+	.add_property("traverse_rate", &get_traverse_rate, &set_traverse_rate)
+	.add_property("u_axis_offset", &get_u_axis_offset, &set_u_axis_offset)
+	.add_property("u_origin_offset", &get_u_origin_offset, &set_u_origin_offset)
+	.add_property("v_axis_offset", &get_v_axis_offset, &set_v_axis_offset)
+	.add_property("v_current", &get_v_current, &set_v_current)
+	.add_property("v_origin_offset", &get_v_origin_offset, &set_v_origin_offset)
+	.add_property("w_axis_offset", &get_w_axis_offset, &set_w_axis_offset)
+	.add_property("w_current", &get_w_current, &set_w_current)
+	.add_property("w_origin_offset", &get_w_origin_offset, &set_w_origin_offset)
+	.add_property("a_axis_wrapped", &get_a_axis_wrapped, &set_a_axis_wrapped)
+	.add_property("a_indexer_jnum", &get_a_indexer, &set_a_indexer)
+	.add_property("b_axis_wrapped", &get_b_axis_wrapped, &set_b_axis_wrapped)
+	.add_property("b_indexer_jnum", &get_b_indexer, &set_b_indexer)
+	.add_property("c_axis_wrapped", &get_c_axis_wrapped, &set_c_axis_wrapped)
+	.add_property("c_indexer_jnum", &get_c_indexer, &set_c_indexer)
+	.add_property("call_level", &get_call_level, &set_call_level)
+	.add_property("current_pocket", &get_current_pocket, &set_current_pocket)
+	.add_property("cutter_comp_orientation",
+		      &get_cutter_comp_orientation, &set_cutter_comp_orientation)
+	.add_property("cutter_comp_side", &get_cutter_comp_side, &set_cutter_comp_side)
+	.add_property("cycle_il_flag", &get_cycle_il_flag, &set_cycle_il_flag)
+	.add_property("cycle_l", &get_cycle_l, &set_cycle_l)
+	.add_property("debugmask", &get_debugmask, &set_debugmask)
+	.add_property("distance_mode", &get_distance_mode, &set_distance_mode)
+	.add_property("feed_mode", &get_feed_mode, &set_feed_mode)
+	.add_property("ijk_distance_mode", &get_ijk_distance_mode, &set_ijk_distance_mode)
+	.add_property("input_index", &get_input_index, &set_input_index)
+	.add_property("length_units", &get_length_units, &set_length_units)
+	.add_property("loggingLevel", &get_loggingLevel, &set_loggingLevel)
+	.add_property("motion_mode", &get_motion_mode, &set_motion_mode)
+	.add_property("origin_index", &get_origin_index, &set_origin_index)
+	.add_property("plane", &get_plane, &set_plane)
+	.add_property("pockets_max", &get_pockets_max, &set_pockets_max)
+	.add_property("random_toolchanger", &get_random_toolchanger, &set_random_toolchanger)
+	.add_property("remap_level", &get_remap_level, &set_remap_level)
+	.add_property("retract_mode", &get_retract_mode, &set_retract_mode)
+	.add_property("selected_pocket", &get_selected_pocket, &set_selected_pocket)
+	.add_property("selected_tool", &get_selected_tool, &set_selected_tool)
+	.add_property("sequence_number", &get_sequence_number, &set_sequence_number)
+	.add_property("speed_feed_mode", &get_speed_feed_mode, &set_speed_feed_mode)
+	.add_property("spindle_mode", &get_spindle_mode, &set_spindle_mode)
+	.add_property("spindle_turning", &get_spindle_turning, &set_spindle_turning)
+	.add_property("stack_index", &get_stack_index, &set_stack_index)
+	.add_property("value_returned", &get_value_returned, &set_value_returned)
 
-	.def_readwrite("a_axis_wrapped", &Interp::_setup.a_axis_wrapped)
-	.def_readwrite("b_axis_wrapped", &Interp::_setup.b_axis_wrapped)
-	.def_readwrite("c_axis_wrapped", &Interp::_setup.c_axis_wrapped)
-	.def_readwrite("a_indexer", &Interp::_setup.a_indexer)
-	.def_readwrite("b_indexer", &Interp::_setup.b_indexer)
-	.def_readwrite("c_indexer", &Interp::_setup.c_indexer)
-
-	.def_readwrite("AA_axis_offset", &Interp::_setup.AA_axis_offset)
-	.def_readwrite("AA_current", &Interp::_setup.AA_current)
-	.def_readwrite("AA_origin_offset", &Interp::_setup.AA_origin_offset)
-	.def_readwrite("BB_axis_offset", &Interp::_setup.BB_axis_offset)
-	.def_readwrite("BB_current", &Interp::_setup.BB_current)
-	.def_readwrite("BB_origin_offset", &Interp::_setup.BB_origin_offset)
-	.def_readwrite("CC_axis_offset", &Interp::_setup.CC_axis_offset)
-	.def_readwrite("CC_current", &Interp::_setup.CC_current)
-	.def_readwrite("CC_origin_offset", &Interp::_setup.CC_origin_offset)
-	.def_readwrite("arc_not_allowed", &Interp::_setup.arc_not_allowed)
-	.def_readwrite("axis_offset_x", &Interp::_setup.axis_offset_x)
-	.def_readwrite("axis_offset_y", &Interp::_setup.axis_offset_y)
-	.def_readwrite("axis_offset_z", &Interp::_setup.axis_offset_z)
-	.def_readwrite("call_level", &Interp::_setup.call_level)
-	.def_readwrite("current_pocket", &Interp::_setup.current_pocket)
-	.def_readwrite("current_tool", &Interp::_setup.tool_table[0].toolno)
-	.def_readwrite("current_x", &Interp::_setup.current_x)
-	.def_readwrite("current_y", &Interp::_setup.current_y)
-	.def_readwrite("current_z", &Interp::_setup.current_z)
-	.def_readwrite("cutter_comp_firstmove", &Interp::_setup.cutter_comp_firstmove)
-	.def_readwrite("cutter_comp_orientation", &Interp::_setup.cutter_comp_orientation)
-	.def_readwrite("cutter_comp_radius", &Interp::_setup.cutter_comp_radius)
-	.def_readwrite("cutter_comp_side", &Interp::_setup.cutter_comp_side)
-	.def_readwrite("cycle_cc", &Interp::_setup.cycle_cc)
-	.def_readwrite("cycle_i", &Interp::_setup.cycle_i)
-	.def_readwrite("cycle_il", &Interp::_setup.cycle_il)
-	.def_readwrite("cycle_il_flag", &Interp::_setup.cycle_il_flag)
-	.def_readwrite("cycle_j", &Interp::_setup.cycle_j)
-	.def_readwrite("cycle_k", &Interp::_setup.cycle_k)
-	.def_readwrite("cycle_l", &Interp::_setup.cycle_l)
-	.def_readwrite("cycle_p", &Interp::_setup.cycle_p)
-	.def_readwrite("cycle_q", &Interp::_setup.cycle_q)
-	.def_readwrite("cycle_r", &Interp::_setup.cycle_r)
-	.def_readwrite("debugmask", &Interp::_setup.debugmask)
-	.def_readwrite("distance_mode", &Interp::_setup.distance_mode)
-	.def_readwrite("feed_mode", &Interp::_setup.feed_mode)
-	.def_readwrite("feed_override", &Interp::_setup.feed_override)
-	.def_readwrite("feed_rate", &Interp::_setup.feed_rate)
-	.def_readwrite("ijk_distance_mode", &Interp::_setup.ijk_distance_mode)
-	.def_readwrite("input_digital", &Interp::_setup.input_digital)
-	.def_readwrite("input_flag", &Interp::_setup.input_flag)
-	.def_readwrite("input_index", &Interp::_setup.input_index)
-	.def_readwrite("length_units", &Interp::_setup.length_units)
-	.def_readwrite("loggingLevel", &Interp::_setup.loggingLevel)
-	.def_readwrite("mdi_interrupt", &Interp::_setup.mdi_interrupt)
-	.def_readwrite("mist", &Interp::_setup.mist)
-	.def_readwrite("motion_mode", &Interp::_setup.motion_mode)
-	.def_readwrite("origin_index", &Interp::_setup.origin_index)
-	.def_readwrite("origin_offset_x", &Interp::_setup.origin_offset_x)
-	.def_readwrite("origin_offset_y", &Interp::_setup.origin_offset_y)
-	.def_readwrite("origin_offset_z", &Interp::_setup.origin_offset_z)
-	.def_readwrite("percent_flag", &Interp::_setup.percent_flag)
-	.def_readwrite("plane", &Interp::_setup.plane)
-	.def_readwrite("pockets_max", &Interp::_setup.pockets_max)
-	.def_readwrite("probe_flag", &Interp::_setup.probe_flag)
-	.def_readwrite("program_x", &Interp::_setup.program_x)
-	.def_readwrite("program_y", &Interp::_setup.program_y)
-	.def_readwrite("program_z", &Interp::_setup.program_z)
-	.def_readwrite("random_toolchanger", &Interp::_setup.random_toolchanger)
-	.def_readwrite("remap_level", &Interp::_setup.remap_level)
-	.def_readwrite("retract_mode", &Interp::_setup.retract_mode)
-	.def_readwrite("return_value", &Interp::_setup.return_value)
-	.def_readwrite("value_returned", &Interp::_setup.value_returned)
-	.def_readwrite("rotation_xy", &Interp::_setup.rotation_xy)
-	.def_readwrite("selected_pocket", &Interp::_setup.selected_pocket)
-	.def_readwrite("selected_tool", &Interp::_setup.selected_tool)
-	.def_readwrite("sequence_number", &Interp::sequence_number)
-	.def_readwrite("speed", &Interp::_setup.speed)
-	.def_readwrite("speed_feed_mode", &Interp::_setup.speed_feed_mode)
-	.def_readwrite("speed_override", &Interp::_setup.speed_override)
-	.def_readwrite("spindle_mode", &Interp::_setup.spindle_mode)
-	.def_readwrite("spindle_turning", &Interp::_setup.spindle_turning)
-	.def_readwrite("tool_offset", &Interp::_setup.tool_offset)
-	.def_readwrite("toolchange_flag", &Interp::_setup.toolchange_flag)
-	.def_readwrite("traverse_rate", &Interp::_setup.traverse_rate)
-	.def_readwrite("u_axis_offset", &Interp::_setup.u_axis_offset)
-	.def_readwrite("u_current", &Interp::_setup.u_current)
-	.def_readwrite("u_origin_offset", &Interp::_setup.u_origin_offset)
-	.def_readwrite("v_axis_offset", &Interp::_setup.v_axis_offset)
-	.def_readwrite("v_current", &Interp::_setup.v_current)
-	.def_readwrite("v_origin_offset", &Interp::_setup.v_origin_offset)
-	.def_readwrite("w_axis_offset", &Interp::_setup.w_axis_offset)
-	.def_readwrite("w_current", &Interp::_setup.w_current)
-	.def_readwrite("w_origin_offset", &Interp::_setup.w_origin_offset)
-	.def_readwrite("remaps",  &Interp::_setup.remaps)
+	.add_property("current_tool", &get_current_tool, &set_current_tool)
 
 	.add_property( "params",
 		       bp::make_function( &param_wrapper,
@@ -734,18 +997,5 @@ BOOST_PYTHON_MODULE(interpreter) {
 					  bp::with_custodian_and_ward_postcall< 0, 1 >()))
 	;
 
-
-    pp::register_array_1< int, ACTIVE_G_CODES> ("ActiveGcodesArray" );
-    pp::register_array_1< int, ACTIVE_M_CODES> ("ActiveMcodesArray" );
-    pp::register_array_1< double, ACTIVE_SETTINGS> ("ActiveSettingsArray");
-    pp::register_array_1< block, MAX_NESTED_REMAPS,
-	bp::return_internal_reference< 1, bp::default_call_policies > > ("BlocksArray");
-    pp::register_array_1< double, RS274NGC_MAX_PARAMETERS > ("ParametersArray");
-    pp::register_array_1< CANON_TOOL_TABLE, CANON_POCKETS_MAX,
-	bp::return_internal_reference< 1, bp::default_call_policies > > ("ToolTableArray");
-    pp::register_array_1< context, INTERP_SUB_ROUTINE_LEVELS,
-	bp::return_internal_reference< 1, bp::default_call_policies > > ("SubcontextArray");
-    pp::register_array_1< int, 16> ("GmodesArray");
-    pp::register_array_1< int, 11> ("MmodesArray");
-    pp::register_array_1< double, INTERP_SUB_PARAMS> ("SubroutineParamsArray");
+    export_Arrays();
 }

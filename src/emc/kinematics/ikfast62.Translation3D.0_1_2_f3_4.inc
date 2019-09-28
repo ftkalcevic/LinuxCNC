@@ -95,11 +95,11 @@ void dgetrs_(const char *trans, const int *n, const int *nrhs, double *a, const 
 void dgeev_(const char *jobvl, const char *jobvr, const int *n, double *a, const int *lda, double *wr, double *wi,double *vl, const int *ldvl, double *vr, const int *ldvr, double *work, const int *lwork, int *info);
 
 
-inline double IKabs(double f) { return fabs(f); }
+static inline double IKabs(double f) { return fabs(f); }
 
-inline double IKsqr(double f) { return f*f; }
+static inline double IKsqr(double f) { return f*f; }
 
-inline double IKlog(double f) { return log(f); }
+static inline double IKlog(double f) { return log(f); }
 
 // allows asin and acos to exceed 1
 #ifndef IKFAST_SINCOS_THRESH
@@ -116,7 +116,7 @@ inline double IKlog(double f) { return log(f); }
 #define IKFAST_SOLUTION_THRESH ((IkReal)1e-6)
 #endif
 
-inline double IKasin(double f)
+static inline double IKasin(double f)
 {
 IKFAST_ASSERT( f > -1-IKFAST_SINCOS_THRESH && f < 1+IKFAST_SINCOS_THRESH ); // any more error implies something is wrong with the solver
 if( f <= -1 ) return -IKPI_2;
@@ -125,7 +125,7 @@ return asin(f);
 }
 
 // return positive value in [0,y)
-inline double IKfmod(double x, double y)
+static inline double IKfmod(double x, double y)
 {
     while(x < 0) {
         x += y;
@@ -133,18 +133,18 @@ inline double IKfmod(double x, double y)
     return fmod(x,y);
 }
 
-inline double IKacos(double f)
+static inline double IKacos(double f)
 {
 IKFAST_ASSERT( f > -1-IKFAST_SINCOS_THRESH && f < 1+IKFAST_SINCOS_THRESH ); // any more error implies something is wrong with the solver
 if( f <= -1 ) return IKPI;
 else if( f >= 1 ) return 0;
 return acos(f);
 }
-inline double IKsin(double f) { return sin(f); }
-inline double IKcos(double f) { return cos(f); }
-inline double IKtan(double f) { return tan(f); }
-inline double IKsqrt(double f) { if( f <= 0.0 ) return 0.0; return sqrt(f); }
-inline double IKatan2(double fy, double fx) {
+static inline double IKsin(double f) { return sin(f); }
+static inline double IKcos(double f) { return cos(f); }
+static inline double IKtan(double f) { return tan(f); }
+static inline double IKsqrt(double f) { if( f <= 0.0 ) return 0.0; return sqrt(f); }
+static inline double IKatan2(double fy, double fx) {
     if( isnan(fy) ) {
         IKFAST_ASSERT(!isnan(fx)); // if both are nan, probably wrong value will be returned
         return IKPI_2;
@@ -156,7 +156,7 @@ inline double IKatan2(double fy, double fx) {
 }
 
 
-inline double IKsign(double f) {
+static inline double IKsign(double f) {
     if( f > 0 ) {
         return 1.0;
     }

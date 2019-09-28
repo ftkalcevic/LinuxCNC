@@ -22,7 +22,7 @@
  *
  *  You should have received a copy of the GNU General Public
  *  License along with this library; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111 USA
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  *
  *  THE AUTHORS OF THIS LIBRARY ACCEPT ABSOLUTELY NO LIABILITY FOR
  *  ANY HARM OR LOSS RESULTING FROM ITS USE.  IT IS _EXTREMELY_ UNWISE
@@ -42,6 +42,7 @@
 #include "hal.h"		/* HAL public API decls */
 #include "../hal_priv.h"	/* private HAL decls */
 #include "halcmd_commands.h"
+#include <rtapi_mutex.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -51,7 +52,6 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <signal.h>
 #include <errno.h>
 #include <time.h>
 #include <fnmatch.h>
@@ -90,6 +90,7 @@ static void save_signals(FILE *dst, int only_unlinked);
 static void save_links(FILE *dst, int arrows);
 static void save_nets(FILE *dst, int arrows);
 static void save_params(FILE *dst);
+static void save_unconnected_input_pin_values(FILE *dst);
 static void save_threads(FILE *dst);
 static void print_help_commands(void);
 
@@ -183,7 +184,7 @@ int do_linkpp_cmd(char *first_pin_name, char *second_pin_name)
     rtapi_mutex_give(&(hal_data->mutex));
     
     /* check that both pins have the same type, 
-       don't want to create a sig, which after that won't be usefull */
+       don't want to create a sig, which after that won't be useful */
     if (first_pin->type != second_pin->type) {
 	halcmd_error("pins '%s' and '%s' not of the same type\n",
                 first_pin_name, second_pin_name);
@@ -299,6 +300,14 @@ int do_stop_cmd(void) {
     return retval;
 }
 
+int do_echo_cmd(void) {
+    printf("Echo on\n");
+    return 0;
+}
+int do_unecho_cmd(void) {
+    printf("Echo off\n");
+    return 0;
+}
 int do_addf_cmd(char *func, char *thread, char **opt) {
     char *position_str = opt ? opt[0] : NULL;
     int position = -1;
@@ -510,7 +519,7 @@ int do_newinst_cmd(char *comp_name, char *inst_name) {
         return -EINVAL;
     }	
 
-#if defined(RTAPI_SIM)
+#if defined(RTAPI_USPACE)
     {
         char *argv[MAX_TOK];
         int m = 0, result;
@@ -612,6 +621,8 @@ int do_newsig_cmd(char *name, char *type)
 	retval = hal_signal_new(name, HAL_U32);
     } else if (strcasecmp(type, "s32") == 0) {
 	retval = hal_signal_new(name, HAL_S32);
+    } else if (strcasecmp(type, "port") == 0) {
+	retval = hal_signal_new(name, HAL_PORT);
     } else {
 	halcmd_error("Unknown signal type '%s'\n", type);
 	retval = -EINVAL;
@@ -628,6 +639,7 @@ static int set_common(hal_type_t type, void *d_ptr, char *value) {
     double fval;
     long lval;
     unsigned long ulval;
+    unsigned uval;
     char *cp = value;
 
     switch (type) {
@@ -672,6 +684,20 @@ static int set_common(hal_type_t type, void *d_ptr, char *value) {
 	    *((hal_u32_t *) (d_ptr)) = ulval;
 	}
 	break;
+    case HAL_PORT:
+        uval = strtoul(value, &cp, 0);
+        if ((*cp != '\0') && (!isspace(*cp))) {
+            halcmd_error("value '%s' invalid for PORT\n", value);
+            retval = -EINVAL;
+        } else {
+            if((*((hal_port_t*)d_ptr) != 0) && (hal_port_buffer_size(*((hal_port_t*)d_ptr)) > 0)) {
+                halcmd_error("port is already allocated with %u bytes.\n", hal_port_buffer_size(*((hal_port_t*)d_ptr)));
+                retval = -EINVAL;
+        } else {
+            *((hal_port_t*) (d_ptr)) = hal_port_alloc(uval);
+        }
+    }
+    break;
     default:
 	/* Shouldn't get here, but just in case... */
 	halcmd_error("bad type %d\n", type);
@@ -774,7 +800,7 @@ int do_ptype_cmd(char *name)
     }   
     
     rtapi_mutex_give(&(hal_data->mutex));
-    halcmd_error("parameter '%s' not found\n", name);
+    halcmd_error("pin or parameter '%s' not found\n", name);
     return -EINVAL;
 }
 
@@ -819,7 +845,7 @@ int do_getp_cmd(char *name)
     }   
     
     rtapi_mutex_give(&(hal_data->mutex));
-    halcmd_error("parameter '%s' not found\n", name);
+    halcmd_error("pin or parameter '%s' not found\n", name);
     return -EINVAL;
 }
 
@@ -840,8 +866,8 @@ int do_sets_cmd(char *name, char *value)
 	halcmd_error("signal '%s' not found\n", name);
 	return -EINVAL;
     }
-    /* found it - does it have a writer? */
-    if (sig->writers > 0) {
+    /* found it - it have a writer? if it is a port we can set its buffer size */
+    if ((sig->type != HAL_PORT) && (sig->writers > 0)) {
 	rtapi_mutex_give(&(hal_data->mutex));
 	halcmd_error("signal '%s' already has writer(s)\n", name);
 	return -EINVAL;
@@ -926,6 +952,7 @@ static int get_type(char ***patterns) {
     if(strcmp(typestr, "u32") == 0) return HAL_U32;
     if(strcmp(typestr, "signed") == 0) return HAL_S32;
     if(strcmp(typestr, "unsigned") == 0) return HAL_U32;
+    if(strcmp(typestr, "port") == 0) return HAL_PORT;
     return -1;
 }
 
@@ -1054,7 +1081,7 @@ int do_loadrt_cmd(char *mod_name, char *args[])
     hal_comp_t *comp;
     char *argv[MAX_TOK+3];
     char *cp1;
-#if defined(RTAPI_SIM)
+#if defined(RTAPI_USPACE)
     argv[m++] = "-Wn";
     argv[m++] = mod_name;
     argv[m++] = EMC2_BIN_DIR "/rtapi_app";
@@ -1079,11 +1106,21 @@ int do_loadrt_cmd(char *mod_name, char *args[])
 	halcmd_error("Module path too long\n");
 	return -1;
     }
+
     /* make full module name '<path>/<name>.o' */
-    strcpy (mod_path, rtmod_dir);
-    strcat (mod_path, "/");
-    strcat (mod_path, mod_name);
-    strcat (mod_path, MODULE_EXT);
+    {
+        int r;
+        r = snprintf(mod_path, sizeof(mod_path), "%s/%s%s", rtmod_dir, mod_name, MODULE_EXT);
+        if (r < 0) {
+            halcmd_error("error making module path for %s/%s%s\n", rtmod_dir, mod_name, MODULE_EXT);
+            return -1;
+        } else if (r >= sizeof(mod_path)) {
+            // truncation!
+            halcmd_error("module path too long (max %lu) for %s/%s%s\n", (unsigned long)sizeof(mod_path)-1, rtmod_dir, mod_name, MODULE_EXT);
+            return -1;
+        }
+    }
+
     /* is there a file with that name? */
     if ( stat(mod_path, &stat_buf) != 0 ) {
         /* can't find it */
@@ -1107,11 +1144,11 @@ int do_loadrt_cmd(char *mod_name, char *args[])
 #endif
 
     if ( retval != 0 ) {
-	halcmd_error("insmod failed, returned %d\n"
-#if !defined(RTAPI_SIM)
+	halcmd_error("insmod for %s failed, returned %d\n"
+#if !defined(RTAPI_USPACE)
             "See the output of 'dmesg' for more information.\n"
 #endif
-        , retval );
+        , mod_name, retval );
 	return -1;
     }
     /* make the args that were passed to the module into a single string */
@@ -1179,7 +1216,7 @@ int do_delsig_cmd(char *mod_name)
 	rtapi_mutex_give(&(hal_data->mutex));
 	sigs[n][0] = '\0';
 
-	if ( ( sigs[0][0] == '\0' )) {
+	if ( sigs[0][0] == '\0' ) {
 	    /* desired signals not found */
 	    halcmd_error("no signals found to be deleted\n");
 	    return -1;
@@ -1282,6 +1319,11 @@ int do_unloadrt_cmd(char *mod_name)
     n = 0;
     retval1 = 0;
     while ( comps[n][0] != '\0' ) {
+        // special case: initial prefix means it is not a real comp
+        if (strstr(comps[n],HAL_PSEUDO_COMP_PREFIX) == comps[n] ) {
+           n++;
+           continue;
+        }
 	retval = unloadrt_comp(comps[n++]);
 	/* check for fatal error */
 	if ( retval < -1 ) {
@@ -1303,7 +1345,7 @@ static int unloadrt_comp(char *mod_name)
     int retval;
     char *argv[4];
 
-#if defined(RTAPI_SIM)
+#if defined(RTAPI_USPACE)
     argv[0] = EMC2_BIN_DIR "/rtapi_app";
     argv[1] = "unload";
 #else
@@ -1361,6 +1403,29 @@ static char *guess_comp_name(char *prog_name)
     return name;
 }
 
+static void reset_getopt_state() {
+/*
+
+It turns out that it is not portable to reset the state of getopt, so that
+a different argv list can be parsed.
+
+https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=192834
+
+(though that thread ends with the bug being closed as fixed in lenny, it
+is not fixed or has regressed by debian jessie)
+*/
+
+#ifdef __GNU_LIBRARY__
+    optind = 0;
+#else
+    optind = 1;
+#endif
+
+#ifdef HAVE_OPTRESET
+    optreset = 1;
+#endif
+}
+
 int do_loadusr_cmd(char *args[])
 {
     int wait_flag, wait_comp_flag, ignore_flag;
@@ -1383,7 +1448,7 @@ int do_loadusr_cmd(char *args[])
     prog_name = NULL;
 
     /* check for options (-w, -i, and/or -r) */
-    optind = 0;
+    reset_getopt_state();
     while (1) {
 	int c = getopt(argc, args, "+wWin:");
 	if(c == -1) break;
@@ -1439,7 +1504,12 @@ int do_loadusr_cmd(char *args[])
 	    /* check for program ending */
 	    retval = waitpid( pid, &status, WNOHANG );
 	    if ( retval != 0 ) {
-		exited = 1;
+		    exited = 1;
+	        if (WIFEXITED(status) && WEXITSTATUS(status)) {
+	            halcmd_error("waitpid failed %s %s\n",prog_name,new_comp_name);
+	            ready = 0;
+	            break;
+	        }
 	    }
 	    /* check for program becoming ready */
             rtapi_mutex_get(&(hal_data->mutex));
@@ -1517,8 +1587,8 @@ int do_waitusr_cmd(char *comp_name)
     comp = halpr_find_comp_by_name(comp_name);
     if (comp == NULL) {
 	rtapi_mutex_give(&(hal_data->mutex));
-	halcmd_error("component '%s' not found\n", comp_name);
-	return -EINVAL;
+	halcmd_info("component '%s' not found or already exited\n", comp_name);
+	return 0;
     }
     if (comp->type != 0) {
 	rtapi_mutex_give(&(hal_data->mutex));
@@ -1857,9 +1927,35 @@ static void print_thread_info(char **patterns)
 	tptr = SHMPTR(next_thread);
 	if ( match(patterns, tptr->name) ) {
 		/* note that the scriptmode format string has no \n */
-		// TODO FIXME add thread runtime and max runtime to this print
-	    halcmd_output(((scriptmode == 0) ? "%11ld  %-3s  %20s ( %8ld, %8ld )\n" : "%ld %s %s %ld %ld"),
-		tptr->period, (tptr->uses_fp ? "YES" : "NO"), tptr->name, (long)tptr->runtime, (long)tptr->maxtime);
+            char name[HAL_NAME_LEN+1];
+            hal_pin_t* pin;
+            hal_sig_t *sig;
+            void *dptr;
+  
+            snprintf(name, sizeof(name), "%s.time",tptr->name);
+            pin = halpr_find_pin_by_name(name);
+            if (pin) {
+                if (pin->signal != 0) {
+                    sig = SHMPTR(pin->signal);
+                    dptr = SHMPTR(sig->data_ptr);
+                } else {
+                    sig = 0;
+                    dptr = &(pin->dummysig);
+                }
+
+                halcmd_output(((scriptmode == 0) ? "%11ld  %-3s  %20s ( %8ld, %8ld )\n"
+                                                 : "%ld %s %s %8ld %ld"),
+                              tptr->period,
+                              (tptr->uses_fp ? "YES" : "NO"),
+                              tptr->name,
+                              (long)*(long*)dptr,
+                              (long)tptr->maxtime);
+            } else {
+                rtapi_print_msg(RTAPI_MSG_ERR,
+                     "unexpected: cannot find time pin for %s thread",tptr->name);
+            }
+
+
 	    list_root = &(tptr->funct_list);
 	    list_entry = list_next(list_root);
 	    n = 1;
@@ -2101,6 +2197,9 @@ static const char *data_type(int type)
     case HAL_U32:
 	type_str = "u32  ";
 	break;
+    case HAL_PORT:
+	type_str = "port ";
+	break;
     default:
 	/* Shouldn't get here, but just in case... */
 	type_str = "undef";
@@ -2124,6 +2223,9 @@ static const char *data_type2(int type)
 	break;
     case HAL_U32:
 	type_str = "u32";
+	break;
+    case HAL_PORT:
+	type_str = "port";
 	break;
     default:
 	/* Shouldn't get here, but just in case... */
@@ -2243,6 +2345,10 @@ static char *data_value(int type, void *valptr)
 	snprintf(buf, 14, "  0x%08lX", (unsigned long)*((hal_u32_t *) valptr));
 	value_str = buf;
 	break;
+    case HAL_PORT:
+	snprintf(buf, 14, "  %10u", hal_port_buffer_size(*((hal_port_t*) valptr)));
+	value_str = buf;
+	break;
     default:
 	/* Shouldn't get here, but just in case... */
 	value_str = "   undef    ";
@@ -2276,6 +2382,11 @@ static char *data_value2(int type, void *valptr)
 	snprintf(buf, 14, "%ld", (unsigned long)*((hal_u32_t *) valptr));
 	value_str = buf;
 	break;
+    case HAL_PORT:
+	snprintf(buf, 14, "%u", hal_port_buffer_size(*((hal_port_t*) valptr)));
+	value_str = buf;
+	break;
+
     default:
 	/* Shouldn't get here, but just in case... */
 	value_str = "unknown_type";
@@ -2303,13 +2414,17 @@ int do_save_cmd(char *type, char *filename)
     if (type == 0 || *type == '\0') {
 	type = "all";
     }
-    if (strcmp(type, "all" ) == 0) {
+    if (   (strcmp(type, "all")  == 0)
+	|| (strcmp(type, "allu") == 0) ) {
 	/* save everything */
 	save_comps(dst);
 	save_aliases(dst);
-        save_signals(dst, 1);
-        save_nets(dst, 3);
+	save_signals(dst, 1);
+	save_nets(dst, 3);
 	save_params(dst);
+	if (strcmp(type,"allu") == 0) {
+	    save_unconnected_input_pin_values(dst);
+	}
 	save_threads(dst);
     } else if (strcmp(type, "comp") == 0) {
 	save_comps(dst);
@@ -2339,6 +2454,8 @@ int do_save_cmd(char *type, char *filename)
 	save_params(dst);
     } else if (strcmp(type, "thread") == 0) {
 	save_threads(dst);
+    } else if (strcmp(type, "unconnectedinpins") == 0) {
+	save_unconnected_input_pin_values(dst);
     } else {
 	halcmd_error("Unknown 'save' type '%s'\n", type);
         if (dst != stdout) fclose(dst);
@@ -2357,19 +2474,38 @@ static void save_comps(FILE *dst)
 
     fprintf(dst, "# components\n");
     rtapi_mutex_get(&(hal_data->mutex));
+
+    int ncomps = 0;
     next = hal_data->comp_list_ptr;
     while (next != 0) {
 	comp = SHMPTR(next);
 	if ( comp->type == 1 ) {
-	    /* only print realtime components */
-	    if ( comp->insmod_args == 0 ) {
-		fprintf(dst, "#loadrt %s  (not loaded by loadrt, no args saved)\n", comp->name);
-	    } else {
-		fprintf(dst, "loadrt %s %s\n", comp->name,
-		    (char *)SHMPTR(comp->insmod_args));
-	    }
-	}
+            ncomps ++;
+        }
 	next = comp->next_ptr;
+    }
+
+    hal_comp_t *comps[ncomps], **compptr = comps;
+    next = hal_data->comp_list_ptr;
+    while(next != 0)  {
+	comp = SHMPTR(next);
+	if ( comp->type == 1 ) {
+            *compptr++ = SHMPTR(next);
+        }
+	next = comp->next_ptr;
+    }
+
+    int i;
+    for(i=ncomps; i--;)
+    {
+        comp = comps[i];
+        /* only print realtime components */
+        if ( comp->insmod_args == 0 ) {
+            fprintf(dst, "#loadrt %s  (not loaded by loadrt, no args saved)\n", comp->name);
+        } else {
+            fprintf(dst, "loadrt %s %s\n", comp->name,
+                (char *)SHMPTR(comp->insmod_args));
+        }
     }
 #if 0  /* newinst deferred to version 2.2 */
     next = hal_data->comp_list_ptr;
@@ -2590,6 +2726,25 @@ static void save_threads(FILE *dst)
     rtapi_mutex_give(&(hal_data->mutex));
 }
 
+static void save_unconnected_input_pin_values(FILE *dst)
+{
+    hal_pin_t *pin;
+    void *dptr;
+    int next;
+    fprintf(dst, "# unconnected pin values\n");
+    for(next = hal_data->pin_list_ptr; next; next=pin->next_ptr)
+    {
+        pin = SHMPTR(next);
+        if (   (pin->signal == 0)
+            && ( (pin->dir == HAL_IN) || (pin->dir == HAL_IO) )
+           ) {
+            dptr = &(pin->dummysig);
+            fprintf(dst, "setp %s %s\n",
+                   pin->name, data_value((int) pin->type, dptr));
+        }
+    }
+}
+
 int do_setexact_cmd() {
     int retval = 0;
     rtapi_mutex_get(&(hal_data->mutex));
@@ -2645,7 +2800,7 @@ int do_help_cmd(char *command)
 	printf("  Starts user space program 'progname', passing\n");
 	printf("  'progargs' to it.  Options are:\n");
 	printf("  -W  wait for HAL component to become ready\n");
-	printf("  -Wn name to wait for the component, which will have the given name.\n");
+	printf("  -Wn NAME  wait for component named NAME to become ready\n");
 	printf("  -w  wait for program to finish\n");
 	printf("  -i  ignore program return value (use with -w)\n");
     } else if ((strcmp(command, "linksp") == 0) || (strcmp(command,"linkps") == 0)) {
@@ -2680,7 +2835,7 @@ int do_help_cmd(char *command)
     } else if (strcmp(command, "newsig") == 0) {
 	printf("newsig signame type\n");
 	printf("  Creates a new signal called 'signame'.  Type\n");
-	printf("  is 'bit', 'float', 'u32', or 's32'.\n");
+	printf("  is 'bit', 'float', 'port', 'u32', or 's32'.\n");
     } else if (strcmp(command, "delsig") == 0) {
 	printf("delsig signame\n");
 	printf("  Deletes signal 'signame'.  If 'signame is 'all',\n");
@@ -2703,7 +2858,9 @@ int do_help_cmd(char *command)
 #endif
     } else if (strcmp(command, "sets") == 0) {
 	printf("sets signame value\n");
-	printf("  Sets signal 'signame' to 'value' (if signal has no writers).\n");
+	printf("  Sets a non-port signal 'signame' to 'value' (if signal has no writers).\n");
+    printf("  If 'signame' is a port signal (that has not previously been allocated),\n");
+    printf("  then 'value' is the new maximum size in bytes of that port.\n");
     } else if (strcmp(command, "getp") == 0) {
 	printf("getp paramname\n");
 	printf("getp pinname\n");
@@ -2715,6 +2872,7 @@ int do_help_cmd(char *command)
     } else if (strcmp(command, "gets") == 0) {
 	printf("gets signame\n");
 	printf("  Gets the value of signal 'signame'.\n");
+    printf("  If signal 'signame' is a port, returns the buffer size of that port.\n");
     } else if (strcmp(command, "stype") == 0) {
 	printf("stype signame\n");
 	printf("  Gets the type of signal 'signame'\n");
@@ -2760,10 +2918,15 @@ int do_help_cmd(char *command)
 	printf("  Prints HAL state to 'filename' (or stdout), as a series\n");
 	printf("  of HAL commands.  State can later be restored by using\n");
 	printf("  \"halcmd -f filename\".\n");
-	printf("  Type can be 'comp', 'sig', 'link[a]', 'net[a]', 'netl', 'param',\n");
-	printf("  or 'thread'.  ('linka' and 'neta' show arrows for pin\n");
-	printf("  direction.)  If 'type' is omitted or 'all', does the\n");
-	printf("  equivalent of 'comp', 'netl', 'param', and 'thread'.\n");
+	printf("  Type can be 'comp', 'alias', 'sig[u]', 'signal', 'link[a]'\n");
+        printf("  'net[a]', 'netl', 'netla', netal', 'param', 'parameter,\n");
+	printf("  'unconnectedinpins', 'all, 'allu', or 'thread'.\n");
+        printf("  (A final 'a' character (like 'neta' means show arrows for pin direction.)\n");
+        printf("  If 'type' is 'allu'), does the equivalent of:\n");
+	printf("  'comp', 'alias', 'sigu', 'netla', 'param', 'unconnectedinpins' and 'thread'.\n\n");
+        printf("  If 'type' is omitted (or type is 'all'), does the equivalent of:\n");
+	printf("  'comp', 'alias', 'sigu', 'netla', 'param', and 'thread'.\n\n");
+        printf("  See the man page ($man halcmd) for save option details\n");
     } else if (strcmp(command, "start") == 0) {
 	printf("start\n");
 	printf("  Starts all realtime threads.\n");
@@ -2791,6 +2954,14 @@ int do_help_cmd(char *command)
         printf("  Removes any alias from the pin or parameter \"name\".\n");
         printf("  \"type\" must be pin or param\n");
         printf("  \"name\" must be an existing name or alias of the specified type.\n");
+    } else if (strcmp(command, "echo") == 0) {
+        printf("echo\n");
+        printf("echo the commands from stdin to stderr\n");
+        printf("Useful for debugging scripted commands from a running program\n");
+    } else if (strcmp(command, "unecho") == 0) {
+        printf("unecho\n");
+        printf("Turn off echo of commands from stdin to stdout\n");
+
     } else {
 	printf("No help for unknown command '%s'\n", command);
     }
@@ -2823,5 +2994,6 @@ static void print_help_commands(void)
     printf("  save                Print config as commands\n");
     printf("  start, stop         Start/stop realtime threads\n");
     printf("  alias, unalias      Add or remove pin or parameter name aliases\n");
+    printf("  echo, unecho        Echo commands from stdin to stderr\n");
     printf("  quit, exit          Exit from halcmd\n");
 }

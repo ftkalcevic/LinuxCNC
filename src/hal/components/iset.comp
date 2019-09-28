@@ -1,0 +1,10 @@
+component iset "Set the output value when the input bit goes high";
+pin in bit in;
+pin out s32 out "Is set to value when in is true";
+pin in s32 value;
+function _;
+license "GPL";
+;;
+FUNCTION(_) {
+    if(in) out = value;
+}

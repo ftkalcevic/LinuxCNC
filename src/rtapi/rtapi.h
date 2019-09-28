@@ -44,7 +44,7 @@
 
     You should have received a copy of the GNU Lesser General Public
     License along with this library; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111 USA
+    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
     THE AUTHORS OF THIS LIBRARY ACCEPT ABSOLUTELY NO LIABILITY FOR
     ANY HARM OR LOSS RESULTING FROM ITS USE.  IT IS _EXTREMELY_ UNWISE
@@ -66,14 +66,8 @@
 #error "Can't define both RTAPI and ULAPI!"
 #endif
 
-/** Provide fixed length types of the form __u8, __s32, etc.  These
-    can be used in both kernel and user space.  There are also types
-    without the leading underscores, but they work in kernel space
-    only.  Since we have a simulator that runs everything in user
-    space, the non-underscore types should NEVER be used.
-*/
-#include <asm/types.h>
-#include <rtapi_errno.h>
+#include <stddef.h> // provides NULL
+
 
 #define RTAPI_NAME_LEN   31	/* length for module, etc, names */
 
@@ -174,7 +168,7 @@ RTAPI_BEGIN_DECLS
 	RTAPI_MSG_ALL
     } msg_level_t;
 
-    extern void rtapi_print_msg(int level, const char *fmt, ...)
+    extern void rtapi_print_msg(msg_level_t level, const char *fmt, ...)
 	    __attribute__((format(printf,2,3)));
 
 
@@ -200,61 +194,6 @@ RTAPI_BEGIN_DECLS
     extern void rtapi_set_msg_handler(rtapi_msg_handler_t handler);
     extern rtapi_msg_handler_t rtapi_get_msg_handler(void);
 #endif
-
-/***********************************************************************
-*                  LIGHTWEIGHT MUTEX FUNCTIONS                         *
-************************************************************************/
-#if defined(RTAPI) && !defined(SIM)
-#include <linux/sched.h>	/* for blocking when needed */
-#else
-#include <sched.h>		/* for blocking when needed */
-#endif
-#include "rtapi_bitops.h"	/* atomic bit ops for lightweight mutex */
-
-/** These three functions provide a very simple way to do mutual
-    exclusion around shared resources.  They do _not_ replace
-    semaphores, and can result in significant slowdowns if contention
-    is severe.  However, unlike semaphores they can be used from both
-    user and kernel space.  The 'try' and 'give' functions are non-
-    blocking, and can be used anywhere.  The 'get' function blocks if
-    the mutex is already taken, and can only be used in user space or
-    the init code of a realtime module, _not_ in realtime code.
-*/
-
-/** 'rtapi_mutex_give()' releases the mutex pointed to by 'mutex'.
-    The release is unconditional, even if the caller doesn't have
-    the mutex, it will be released.
-*/
-    static __inline__ void rtapi_mutex_give(unsigned long *mutex) {
-	test_and_clear_bit(0, mutex);
-    }
-/** 'rtapi_mutex_try()' makes a non-blocking attempt to get the
-    mutex pointed to by 'mutex'.  If the mutex was available, it
-    returns 0 and the mutex is no longer available, since the
-    caller now has it.  If the mutex is not available, it returns
-    a non-zero value to indicate that someone else has the mutex.
-    The programer is responsible for "doing the right thing" when
-    it returns non-zero.  "Doing the right thing" almost certainly
-    means doing something that will yield the CPU, so that whatever
-    other process has the mutex gets a chance to release it.
-*/ static __inline__ int rtapi_mutex_try(unsigned long *mutex) {
-	return test_and_set_bit(0, mutex);
-    }
-
-/** 'rtapi_mutex_get()' gets the mutex pointed to by 'mutex',
-    blocking if the mutex is not available.  Because of this,
-    calling it from a realtime task is a "very bad" thing to
-    do.
-*/
-    static __inline__ void rtapi_mutex_get(unsigned long *mutex) {
-	while (test_and_set_bit(0, mutex)) {
-#if defined(RTAPI) && !defined(SIM)
-	    schedule();
-#else
-	    sched_yield();
-#endif
-	}
-    }
 
 /***********************************************************************
 *                      TIME RELATED FUNCTIONS                          *
@@ -283,6 +222,8 @@ RTAPI_BEGIN_DECLS
     available from user (non-realtime) code.
 */
     extern long int rtapi_clock_set_period(long int nsecs);
+#endif /* RTAPI */
+
 /** rtapi_delay() is a simple delay.  It is intended only for short
     delays, since it simply loops, wasting CPU cycles.  'nsec' is the
     desired delay, in nano-seconds.  'rtapi_delay_max() returns the
@@ -297,7 +238,6 @@ RTAPI_BEGIN_DECLS
     extern void rtapi_delay(long int nsec);
     extern long int rtapi_delay_max(void);
 
-#endif /* RTAPI */
 
 /** rtapi_get_time returns the current time in nanoseconds.  Depending
     on the RTOS, this may be time since boot, or time since the clock
@@ -474,8 +414,8 @@ RTAPI_BEGIN_DECLS
 */
     extern int rtapi_task_pause(int task_id);
 
-/** 'rtapi_task_self()' returns the task ID of the current task.
-    Call only from a realtime task.
+/** 'rtapi_task_self()' returns the task ID of the current task or -EINVAL.
+    May be called from init/cleanup code, and from within realtime tasks.
 */
     extern int rtapi_task_self(void);
 
@@ -588,7 +528,7 @@ RTAPI_BEGIN_DECLS
 */
 
 /* NOTE - RTAI fifos require (stacksize >= fifosze + 256) to avoid
-   oops messages on removal. (Does this apply to rtlinux as well ?)
+   oops messages on removal.
 */
     extern int rtapi_fifo_new(int key, int module_id,
 	unsigned long int size, char mode);
@@ -721,7 +661,7 @@ RTAPI_BEGIN_DECLS
 */
     extern unsigned char rtapi_inb(unsigned int port);
 
-#if defined(RTAPI) && !defined(SIM)
+#if defined(__KERNEL__)
 /** 'rtapi_request_region() reserves I/O memory starting at 'base',
     going for 'size' bytes, for component 'name'.
 
@@ -735,11 +675,7 @@ RTAPI_BEGIN_DECLS
 
     static __inline__ void *rtapi_request_region(unsigned long base,
             unsigned long size, const char *name) {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,4,0)
         return (void*)request_region(base, size, name);
-#else
-        return (void*)-1;
-#endif
     }
 
 /** 'rtapi_release_region() releases I/O memory reserved by 
@@ -749,10 +685,11 @@ RTAPI_BEGIN_DECLS
 */
     static __inline__ void rtapi_release_region(unsigned long base,
             unsigned long int size) {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,4,0)
         release_region(base, size);
-#endif
     }
+#else
+    #define rtapi_request_region(base, size, name) ((void*)-1)
+    #define rtapi_release_region(base, size) ((void)0)
 #endif
 
 /***********************************************************************
@@ -779,9 +716,10 @@ RTAPI_BEGIN_DECLS
     'num' is the number of elements in an array.
 */
 
-#ifdef SIM
+#if !defined(__KERNEL__)
 #define MODULE_INFO1(t, a, c) __attribute__((section(".modinfo"))) \
     t rtapi_info_##a = c; EXPORT_SYMBOL(rtapi_info_##a);
+#define MODULE_INFO2x(t, a, b, c) MODULE_INFO2(t,a,b,c)
 #define MODULE_INFO2(t, a, b, c) __attribute__((section(".modinfo"))) \
     t rtapi_info_##a##_##b = c; EXPORT_SYMBOL(rtapi_info_##a##_##b);
 #define MODULE_PARM(v,t) MODULE_INFO2(const char*, type, v, t) MODULE_INFO2(void*, address, v, &v)
@@ -789,11 +727,14 @@ RTAPI_BEGIN_DECLS
 #define MODULE_LICENSE(s) MODULE_INFO1(const char*, license, s)
 #define MODULE_AUTHOR(s) MODULE_INFO1(const char*, author, s)
 #define MODULE_DESCRIPTION(s) MODULE_INFO1(const char*, description, s)
+#define MODULE_SUPPORTED_DEVICE(s) MODULE_INFO1(const char*, supported_device, s)
+#define MODULE_DEVICE_TABLE(x,y) MODULE_INFO2(struct rtapi_pci_device_id*, device_table, x, y)
+#define MODULE_INFO(x,y) MODULE_INFO2x(char*, x, __LINE__, y)
 #define EXPORT_SYMBOL(x) __attribute__((section(".rtapi_export"))) \
     char rtapi_exported_##x[] = #x;
-#endif
-
-#if !defined(RTAPI_SIM)
+#define EXPORT_SYMBOL_GPL(x) __attribute__((section(".rtapi_export"))) \
+    char rtapi_exported_##x[] = #x;
+#else
 #ifndef LINUX_VERSION_CODE
 #include <linux/version.h>
 #endif
@@ -806,7 +747,7 @@ RTAPI_BEGIN_DECLS
 #define LINUX_VERSION_CODE 0
 #endif
 
-#if defined(SIM) || (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0))
+#if !defined(__KERNEL__)
 #define RTAPI_STRINGIFY(x)    #x
 
    
@@ -822,21 +763,23 @@ RTAPI_BEGIN_DECLS
   MODULE_PARM(var,"s");            \
   MODULE_PARM_DESC(var,descr);
 
-#define RTAPI_MP_ARRAY_INT(var,num,descr)          \
-  MODULE_PARM(var,"1-" RTAPI_STRINGIFY(num) "i");  \
+#define RTAPI_MP_ARRAY(type, var, num, descr)      \
+  MODULE_PARM(var,type);                           \
+  MODULE_INFO2(int, size, var, num);               \
   MODULE_PARM_DESC(var,descr);
+
+#define RTAPI_MP_ARRAY_INT(var,num,descr)          \
+  RTAPI_MP_ARRAY("i", var, num, descr);
 
 #define RTAPI_MP_ARRAY_LONG(var,num,descr)         \
-  MODULE_PARM(var,"1-" RTAPI_STRINGIFY(num) "l");  \
-  MODULE_PARM_DESC(var,descr);
+  RTAPI_MP_ARRAY("l", var, num, descr);
 
 #define RTAPI_MP_ARRAY_STRING(var,num,descr)       \
-  MODULE_PARM(var,"1-" RTAPI_STRINGIFY(num) "s");  \
-  MODULE_PARM_DESC(var,descr);
+  RTAPI_MP_ARRAY("s", var, num, descr);
 
-#else /* version 2.6 */
+#else /* kernel */
 
-#include <linux/param.h>
+#include <linux/module.h>
 
 #define RTAPI_MP_INT(var,descr)    \
   module_param(var, int, 0);       \
@@ -865,21 +808,30 @@ RTAPI_BEGIN_DECLS
   module_param_array(var, charp, &(__dummy_##var), 0);  \
   MODULE_PARM_DESC(var,descr);
 
-#endif /* version < 2.6 */
-
-#if !defined(SIM)
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,4,0)
-#define MODULE_LICENSE(license)         \
-static const char __module_license[] __attribute__((section(".modinfo"))) =   \
-"license=" license
-#endif
 #endif
 
 #endif /* RTAPI */
 
-#if defined(SIM)
+#if !defined(__KERNEL__)
 extern long int simple_strtol(const char *nptr, char **endptr, int base);
+
+#include <spawn.h>
+
+int rtapi_spawn_as_root(pid_t *pid, const char *path,
+    const posix_spawn_file_actions_t *file_actions,
+    const posix_spawnattr_t *attrp,
+    char *const argv[], char *const envp[]);
+
+int rtapi_spawnp_as_root(pid_t *pid, const char *path,
+    const posix_spawn_file_actions_t *file_actions,
+    const posix_spawnattr_t *attrp,
+    char *const argv[], char *const envp[]);
 #endif
+
+extern int rtapi_is_kernelspace(void);
+extern int rtapi_is_realtime(void);
+
+int rtapi_open_as_root(const char *filename, int mode);
 
 RTAPI_END_DECLS
 

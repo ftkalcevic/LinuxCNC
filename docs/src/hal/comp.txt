@@ -1,28 +1,30 @@
-= Comp HAL Component Generator
+[[cha:hal-component-generator]]
 
-[[cha:comp-hal-component-generator]] (((Comp HAL Component Generator)))
+= The HAL Component Generator
 
 == Introduction
 
 Writing a HAL component can be a tedious process, most of it in setup
 calls to 'rtapi_' and 'hal_' functions and associated error checking.
-'comp' will write all this code for you, automatically.
+'halcompile' will write all this code for you, automatically.
 
-Compiling a HAL component is also much easier when using 'comp',
+Compiling a HAL component is also much easier when using 'halcompile',
 whether the component is part of the LinuxCNC source tree, or outside it.
 
 For instance, when coded in C, a simple component such as "ddt" is around 80
 lines of code. The equivalent component is very short when written using the
-'comp' preprocessor:
+'halcompile' preprocessor:
 
-.Simple Comp Example [[code:simple-comp-example]]
+[[code:simple-comp-example]]
+
+.Simple Component Example
 ----
 component ddt "Compute the derivative of the input function";
 pin in float in;
 pin out float out;
-variable float old;
+variable double old;
 function _;
-license "GPLv2 or later";
+license "GPL"; // indicates GPL v2 or later
 ;;
 float tmp = in;
 out = (tmp - old) / fperiod;
@@ -31,19 +33,39 @@ old = tmp;
 
 == Installing
 
-If your working with an installed version of LinuxCNC you need to install
-the development packages by using the following line in a terminal or using the 
-Synaptic Package Manager from the main Ubuntu menu.
+To compile a component you need to install dev.
 
-.Installing Dev
 ----
-sudo apt-get emc2-dev
+sudo apt install linuxcnc-dev
+or
+sudo apt install linuxcnc-uspace-dev
 ----
+
+Another method is to use the Synaptic Package Manager to install linuxcnc-dev or
+linuxcnc-uspace-dev.
+
+== Using a Component
+
+Components need to be loaded and added to a thread before it can be used.
+
+.Example
+----
+loadrt threads name1=servo-thread period1=1000000
+loadrt ddt
+addf ddt.0 servo-thread
+----
+
+More information on 'loadrt' and 'addf' can be found in the
+<<cha:basic-hal-reference,Hal Basic Referece>>.
+
+To test your component you can follow the examples in the
+<<cha:hal-tutorial,HAL Tutorial>>.
 
 == Definitions
 
-* 'component' - A component is a single real-time module, which is loaded with 'halcmd
-    loadrt'. One '.comp' file specifies one component.
+* 'component' - A component is a single real-time module, which is loaded with
+    'halcmd loadrt'. One '.comp' file specifies one component. The component
+    name and file name must match.
 
 * 'instance' - A component can have zero or more instances. Each instance of a
     component is created equal (they all have the same pins, parameters,
@@ -63,17 +85,18 @@ sudo apt-get emc2-dev
 For a singleton, the one instance is created when the component is
 loaded.
 
-For a non-singleton, the 'count' module parameter determines how many numbered
-instances are created.  If not specified, the 'name' module parameter
-determines how many named instances are created.  Otherwise, a single numbered
-instance is created.
+For a non-singleton, the 'count' module parameter determines how
+many numbered instances are created.  If 'count' is not specified, the
+'names' module parameter determines how many named instances are created.
+If neither 'count' nor 'names' is specified, a single numbered instance
+is created.
 
 == Implicit Parameters
 
 Functions are implicitly passed the 'period' parameter which is the time in
-nanoseconds of the last period to execute the comp.  Functions which use
+nanoseconds of the last period to execute the component.  Functions which use
 floating-point can also refer to 'fperiod' which is the floating-point time in
-seconds, or (period*1e-9).  This can be useful in comps that need the timing
+seconds, or (period*1e-9).  This can be useful in components that need the timing
 information.
 
 == Syntax
@@ -91,9 +114,11 @@ Declarations include:
 * 'option OPT (VALUE);'
 * 'variable CTYPE STARREDNAME ([SIZE]);'
 * 'description DOC;'
+* 'notes DOC;'
 * 'see_also DOC;'
 * 'license LICENSE;'
 * 'author AUTHOR;'
+* 'include HEADERFILE;'
 
 Parentheses indicate optional items. A vertical bar indicates
 alternatives. Words in 'CAPITALS' indicate variable text, as follows:
@@ -141,13 +166,13 @@ collide with reserved names or keywords (e.g., 'min') can be used.
 |x.##    | x(MM)        | x.MM 
 |========================================
 --
-* 'if CONDITION' - An expression involving the variable 'personality' which is nonzero
+* 'if CONDITION' - An expression involving the variable 'personality' which is nonzero
     when the pin or parameter should be created
 
 * 'SIZE' - A number that gives the size of an array. The array items are numbered
     from 0 to 'SIZE'-1.
 
-* 'MAXSIZE : CONDSIZE' - A number that gives the maximum size of the array followed by an
+* 'MAXSIZE : CONDSIZE' - A number that gives the maximum size of the array followed by an
     expression involving the variable 'personality' and which always
     evaluates to less than 'MAXSIZE'. When the array is created its size
     will be 'CONDSIZE'.
@@ -170,13 +195,23 @@ Hopefully these paragraphs have allowed you to understand "zot"
 better."""
 ----
 +
+Or a string may be preceded by the literal character 'r', in which
+case the string is interpreted like a Python raw-string.
++
 The documentation string is in "groff -man" format. For more
 information on this markup format, see 'groff_man(7)'. Remember that
-comp interprets backslash escapes in strings, so for instance 
+'halcompile' interprets backslash escapes in strings, so for instance
 to set the italic font for the word 'example', write: 
 +
 ----
 "\\fIexample\\fB"
+----
++
+In this case, r-strings are particularly useful, because the backslashes
+in an r-string need not be doubled:
++
+----
+r"\fIexample\fB"
 ----
 
 * 'TYPE' - One of the HAL types: 'bit', 'signed', 'unsigned', or 'float'. The old
@@ -194,12 +229,18 @@ to set the italic font for the word 'example', write:
     specified, then the default is '0' or 'FALSE', depending on the type of
     the item.
 
+* 'HEADERFILE' - The name of a header file, either in double-quotes
+    (`include "myfile.h";`) or in angle brackets (`include
+    <systemfile.h>;`).  The header file will be included (using
+    C's #include) at the top of the file, before pin and parameter
+    declarations.
+
 === HAL functions
 
 * 'fp' - Indicates that the function performs floating-point calculations.
 
 * 'nofp' - Indicates that it only performs integer calculations. If neither is
-    specified, 'fp' is assumed. Neither comp nor gcc can detect the use of
+    specified, 'fp' is assumed. Neither 'halcompile' nor gcc can detect the use of
     floating-point calculations in functions that are tagged 'nofp', but use of
     such operations results in undefined behavior.
 
@@ -207,64 +248,78 @@ to set the italic font for the word 'example', write:
 
 The currently defined options are:
 
-* 'option singleton yes' - (default: no)
+* 'option singleton yes' - (default: no)
    Do not create a 'count' module parameter, and always create a single
    instance. With 'singleton', items are named 'component-name.item-name' 
    and without 'singleton', items for numbered instances are named 
    'component-name.<num>.item-name'.
 
-* 'option default_count number' - (default: 1)
+* 'option default_count number' - (default: 1)
    Normally, the module parameter 'count' defaults to 1. If specified,
    the 'count' will default to this value instead.
 
-* 'option count_function yes' - (default: no)
+* 'option count_function yes' - (default: no)
    Normally, the number of instances to create is specified in the
    module parameter 'count'; if 'count_function' is specified, the value
    returned by the function 'int get_count(void)' is used instead, 
    and the 'count' module parameter is not defined.
 
-* 'option rtapi_app no' - (default: yes)
-   Normally, the functions 'rtapi_app_main' and 'rtapi_app_exit' are
+* 'option rtapi_app no' - (default: yes)
+   Normally, the functions `rtapi_app_main()` and `rtapi_app_exit()` are
    automatically defined. With 'option rtapi_app no', they are not, and
-   must be provided in the C code. 
-   When implementing your own 'rtapi_app_main', call the function 'int 
-   export(char *prefix, long extra_arg)' to register the pins, 
-   parameters, and functions for 'prefix'.
+   must be provided in the C code.  Use the following prototypes:
+   +
+   `int rtapi_app_main(void);`
+   +
+   `void rtapi_app_exit(void);`
+   +
+   When implementing your own `rtapi_app_main()`, call the function `int
+   export(char *prefix, long extra_arg)` to register the pins,
+   parameters, and functions for `prefix`.
 
-* 'option data TYPE' - (default: none) *deprecated*
+* 'option data TYPE' - (default: none) *deprecated*
    If specified, each instance of the component will have an associated
    data block of type 'TYPE' (which can be a simple type like 'float' or the
    name of a type created with 'typedef'). 
    In new components, 'variable' should be used instead. 
 
-* 'option extra_setup yes' - (default: no)
+* 'option extra_setup yes' - (default: no)
    If specified, call the function defined by 'EXTRA_SETUP' for each
    instance. If using the automatically defined 'rtapi_app_main',
    'extra_arg' is the number of this instance.
 
-* 'option extra_cleanup yes' - (default: no)
+* 'option extra_cleanup yes' - (default: no)
    If specified, call the function defined by 'EXTRA_CLEANUP' from the
    automatically defined 'rtapi_app_exit', or if an error is detected
    in the automatically defined 'rtapi_app_main'.
 
-* 'option userspace yes' - (default: no)
-   If specified, this file describes a userspace component, rather
-   than a real one. A userspace component may not have functions 
+* 'option userspace yes' - (default: no)
+   If specified, this file describes a userspace (ie, non-realtime) component, rather
+   than a regular (ie, realtime) one. A userspace component may not have functions
    defined by the 'function'  directive. Instead, after all the 
-   instances are constructed, the C function 'user_mainloop()' 
+   instances are constructed, the C function `void user_mainloop(void);`
    is called. When this function returns, the component exits. 
    Typically, 'user_mainloop()' will use 'FOR_ALL_INSTS()' to 
    perform the update action for each instance, then sleep for 
    a short time. Another common action in 'user_mainloop()' may 
    be to call the event handler loop of a GUI toolkit. 
 
-* 'option userinit yes' - (default: no)
-   If specified, the function 'userinit(argc,argv)' is called before
-   'rtapi_app_main()' (and thus before the call to 'hal_init()' ). This
-   function may process the commandline arguments or take other 
-   actions. Its return type is 'void'; it may call 'exit()' if it
-   wishes to terminate rather than create a HAL component 
-   (for instance, because the commandline arguments were invalid).
+* 'option userinit yes' - (default: no)
+   This option is ignored if the option 'userspace' (see above) is set to
+   'no'.  If 'userinit' is specified, the function 'userinit(argc,argv)'
+   is called before 'rtapi_app_main()' (and thus before the call to
+   'hal_init()' ). This function may process the commandline arguments or
+   take other actions. Its return type is 'void'; it may call 'exit()'
+   if it wishes to terminate rather than create a HAL component (for
+   instance, because the commandline arguments were invalid).
+
+* 'option extra_link_args "..."' - (default: "")
+   This option is ignored if the option 'userspace' (see above) is set to
+   'no'.  When linking a userspace component, the arguments given are inserted
+   in the link line.  Note that because compilation takes place in a temporary
+   directory, "-L." refers to the temporary directory and not the directory where
+   the .comp source file resides.
+
 
 If an option's VALUE is not specified, then it is equivalent to 
 specifying 'option … yes'. 
@@ -275,26 +330,27 @@ The result of using any other option is undefined.
 
 * 'LICENSE' - Specify the license of the module for the documentation and for the
     MODULE_LICENSE() module declaration. For example, to specify that the
-    module's license is GPL, 
+    module's license is GPL v2 or later,
 
-        license "GPLv2 or greater";
+        license "GPL"; // indicates GPL v2 or later
 +   
 For additional information on the meaning of MODULE_LICENSE() and
-additional license identifiers, see '<linux/module.h>'.
+additional license identifiers, see '<linux/module.h>'. or the manual page
+'rtapi_module_param(3)'
 +   
-Starting in EMC 2.3, this declaration is required.
+This declaration is required.
 
 * 'AUTHOR' - Specify the author of the module for the documentation.
 
 === Per-instance data storage
 
-* 'variable CTYPE STARREDNAME;'
+* 'variable CTYPE STARREDNAME;'
 
-* 'variable CTYPE STARREDNAME[SIZE];'
+* 'variable CTYPE STARREDNAME[SIZE];'
 
-* 'variable CTYPE STARREDNAME = DEFAULT;'
+* 'variable CTYPE STARREDNAME = DEFAULT;'
 
-* 'variable CTYPE STARREDNAME[SIZE] = DEFAULT;'
+* 'variable CTYPE STARREDNAME[SIZE] = DEFAULT;'
 +
 Declare a per-instance variable 'STARREDNAME' of type 'CTYPE', optionally as
 an array of 'SIZE' items, and optionally with a default value
@@ -326,19 +382,34 @@ C-style multi-line comments (/* ... */) are both supported in the declaration se
 == Restrictions
 
 Though HAL permits a pin, a parameter, and a function to have the same
-name, comp does not.
+name, 'halcompile' does not.
 
-Variable names that can not be used or likly to cause problems include
-'state', 'inst', 'first_inst', 'last_inst', 'buf', 'count', 'default_count'.
+Variable and function names that can not be used or are likely to cause
+problems include:
+
+* Anything beginning with '__comp_'.
+
+* 'comp_id'
+
+* 'fperiod'
+
+* 'rtapi_app_main'
+
+* 'rtapi_app_exit'
+
+* 'extra_setup'
+
+* 'extra_cleanup'
+
 
 == Convenience Macros
 
-Based on the items in the declaration section, 'comp' creates a C
-structure called 'struct state'. However, instead of referring to the
-members of this structure (e.g., '*(inst\->name)' ), they will generally
+Based on the items in the declaration section, 'halcompile' creates a C
+structure called `struct __comp_state`. However, instead of referring to the
+members of this structure (e.g., `*(inst->name)`), they will generally
 be referred to using the macros below. The 
-details of 'struct state' and these macros may change from one version
-of 'comp' to the next.
+details of `struct __comp_state` and these macros may change from one version
+of 'halcompile' to the next.
 
 * 'FUNCTION(name)' - Use this macro to begin the definition of a realtime function which
     was previously declared with 'function NAME'. The function includes a
@@ -378,8 +449,8 @@ When the item is a conditional item, it is only legal to refer to it
 * 'fperiod' - The floating-point number of seconds between calls to this realtime
     function.
 
-* 'FOR_ALL_INSTS() {...}' - For userspace components. This macro uses the variable 'struct
-    state 'inst' to iterate over all the defined instances. Inside the
+* 'FOR_ALL_INSTS() {...}' - For userspace components. This macro
+    iterates over all the defined instances. Inside the
     body of the 
      loop, the 'pin_name', 'parameter_name', and 'data' macros work as they
     do in realtime functions.
@@ -402,53 +473,87 @@ for a variable number of input pins to each logic gate and to allow
 for a selection of any of the basic boolean logic functions 'and', 
 'or', and 'xor'. 
 
+The default number of allowed 'personality' items is a
+compile-time setting (64).  The default applies to numerous
+components included in the distribution that are built using
+halcompile.
+
+To alter the allowed number of personality items for user-built
+components, use the '--personality' option with halcompile.  For
+example, to allow up to 128 personality times:
+
+----
+  [sudo] halcompile --personality=128 --install ...
+----
+
+When using components with personality, normal usage is to
+specify a personality item for *each* specified component
+instance.  Example for 3 instances of the logic component:
+
+----
+loadrt logic names=and4,or3,nand5, personality=0x104,0x203,0x805
+----
+
+[NOTE]
+
+If a loadrt line specifies more instances than personalities, the
+instances with unspecified personalities are assigned a
+personality of 0.  If the requested number of instances
+excedes the number of allowed personalities, personalities are
+assigned by indexing modulo the number of allowed personalities.
+A message is printed denoting such assignments.
+
 == Compiling
 
 Place the '.comp' file in the source directory
-'emc2/src/hal/components' and re-run 'make'. 
+'linuxcnc/src/hal/components' and re-run 'make'.
 'Comp' files are automatically detected by the build system.
 
 If a '.comp' file is a driver for hardware, it may be placed in
-'emc2/src/hal/components' and will be built unless LinuxCNC is 
+'linuxcnc/src/hal/drivers' and will be built unless LinuxCNC is
 configured as a userspace simulator.
 
-[[sec:Compiling-realtime-components]]
 == Compiling realtime components outside the source tree
-(((Compiling realtime components outside the source tree)))
 
-'comp' can process, compile, and install a realtime component 
-in a single step, placing 'rtexample.ko' in the LinuxCNC realtime 
+'halcompile' can process, compile, and install a realtime component
+in a single step, placing 'rtexample.ko' in the LinuxCNC realtime
 module directory:
 
 ----
-comp --install rtexample.comp
+[sudo] halcompile --install rtexample.comp
 ----
+
+[NOTE]
+
+sudo (for root permission) is needed when using LinuxCNC from
+a deb package install.  When using a Run-In-Place (RIP) build,
+root privileges should not be needed.
 
 Or, it can process and compile in one step, leaving 'example.ko' (or
 'example.so' for the simulator) in the current directory:
 
 ----
-comp --compile rtexample.comp
+halcompile --compile rtexample.comp
 ----
 
 Or it can simply process, leaving 'example.c' in the current directory:
 
 ----
-comp rtexample.comp
+halcompile rtexample.comp
 ----
 
-'comp' can also compile and install a component written in C, using
+'halcompile' can also compile and install a component written in C, using
 the '--install' and '--compile' options shown above:
 
 ----
-comp --install rtexample2.c
+[sudo] halcompile --install rtexample2.c
 ----
 
 man-format documentation can also be created from the information in
 the declaration section:
 
 ----
-comp --document rtexample.comp
+halcompile --document rtexample.comp
 ----
 
 The resulting manpage, 'example.9' can be viewed with
@@ -461,13 +566,13 @@ or copied to a standard location for manual pages.
 
 == Compiling userspace components outside the source tree
 
-'comp' can process, compile, install, and document userspace components:
+'halcompile' can process, compile, install, and document userspace components:
 
 ----
-comp usrexample.comp
-comp --compile usrexample.comp
-comp --install usrexample.comp
-comp --document usrexample.comp
+halcompile usrexample.comp
+halcompile --compile usrexample.comp
+[sudo] halcompile --install usrexample.comp
+halcompile --document usrexample.comp
 ----
 
 This only works for '.comp' files, not for '.c' files.
@@ -476,8 +581,8 @@ This only works for '.comp' files, not for '.c' files.
 
 === constant
 
-Note that the declaration "function _" creates functions
-named "constant.0", etc.
+Note that the declaration "function _" creates functions named "constant.0"
+, etc. The file name must match the component name.
 
 [source,c]
 ----
@@ -485,7 +590,7 @@ component constant;
 pin out float out;
 param r float value = 1.0;
 function _;
-license "GPLv2 or later";
+license "GPL"; // indicates GPL v2 or later
 ;;
 FUNCTION(_) { out = value; }
 ----
@@ -508,7 +613,7 @@ pin out float sin_;
 pin out float cos_;
 pin in float theta;
 function _;
-license "GPLv2 or later";
+license "GPL"; // indicates GPL v2 or later
 ;;
 #include <rtapi_math.h>
 FUNCTION(_) { sin_ = sin(theta); cos_ = cos(theta); }
@@ -538,11 +643,12 @@ option extra_setup;
 option extra_cleanup;
 option constructable no;
 
-license "GPLv2 or later";
+license "GPL"; // indicates GPL v2 or later
 ;;
 #include <asm/io.h>
 
-#define MAX 8 int io[MAX] = {0,};
+#define MAX 8
+int io[MAX] = {0,};
 RTAPI_MP_ARRAY_INT(io, MAX, "I/O addresses of out8 boards");
 
 int get_count(void) {
@@ -553,8 +659,8 @@ int get_count(void) {
 
 EXTRA_SETUP() {
     if(!rtapi_request_region(io[extra_arg], 1, "out8")) {
-    // set this I/O port to 0 so that EXTRA_CLEANUP does not release the IO
-    // ports that were never requested.
+        // set this I/O port to 0 so that EXTRA_CLEANUP does not release the IO
+        // ports that were never requested.
         io[extra_arg] = 0;
         return -EBUSY;
     }
@@ -599,7 +705,7 @@ component arraydemo "4-bit Shift register";
 pin in bit in;
 pin out bit out-# [4];
 function _ nofp;
-license "GPLv2 or later";
+license "GPL"; // indicates GPL v2 or later
 ;;
 int i;
 for(i=3; i>0; i--) out(i) = out(i-1);
@@ -617,7 +723,7 @@ component rand;
 option userspace;
 
 pin out float out;
-license "GPLv2 or later";
+license "GPL"; // indicates GPL v2 or later
 ;;
 #include <unistd.h>
 
@@ -654,7 +760,7 @@ The number of input pins, usually from 2 to 16
 512 (0x200)  if the 'or' output is desired
 .IP \\(bu
 1024 (0x400)  if the 'xor' (exclusive or) output is desired""";
-license "GPLv2 or later";
+license "GPL"; // indicates GPL v2 or later
 ;;
 FUNCTION(_) {
     int i, a=1, o=0, x=0;
@@ -682,3 +788,16 @@ which creates the following pins:
    logic.2.in-01, logic.2.in-02
 
 
+== Command Line Usage
+
+The halcompile man page gives details for invoking halcompile.
+
+----
+$ man halcompile
+----
+
+A brief summary of halcompile usage is given by:
+
+----
+$ halcompile --help
+----

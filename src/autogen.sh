@@ -1,5 +1,5 @@
-#!/bin/bash
-rm -rf auto4mte.cache
+#!/bin/sh
+rm -rf autom4te.cache
 AUTOGEN_TARGET=${AUTOGEN_TARGET-configure:config.h.in}
 set -e
 case :$AUTOGEN_TARGET: in

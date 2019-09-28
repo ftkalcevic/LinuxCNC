@@ -13,6 +13,12 @@
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
+#define BOOST_PYTHON_MAX_ARITY 4
+#include "python_plugin.hh"
+#include "interp_python.hh"
+#include <boost/python/list.hpp>
+namespace bp = boost::python;
+
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,7 +31,6 @@
 #include "rs274ngc_interp.hh"
 #include "interp_internal.hh"
 
-namespace bp = boost::python;
 
 
 bool Interp::has_user_mcode(setup_pointer settings,block_pointer block)
@@ -136,7 +141,7 @@ int Interp::convert_remapped_code(block_pointer block,
     block_pointer eblock = &EXECUTING_BLOCK(*settings);
     eblock->call_type = CT_REMAP; 
     CHKS(status != INTERP_OK,
-	 "convert_remapped_code: inital read returned %s",
+	 "convert_remapped_code: initial read returned %s",
 	 interp_status(status));
     return(- phase);
 }
@@ -193,11 +198,11 @@ int Interp::add_parameters(setup_pointer settings,
     // if any Python handlers are present, create a kwargs dict
     bool pydict = rptr->remap_py || rptr->prolog_func || rptr->epilog_func;
 
-    memset(missing,0,sizeof(missing));
-    memset(optional,0,sizeof(optional));
-    memset(required,0,sizeof(required));
-    memset(msg,0,sizeof(msg));
-    memset(tail,0,sizeof(tail));
+    std::fill(missing, std::end(missing), 0);
+    std::fill(optional, std::end(optional), 0);
+    std::fill(required, std::end(required), 0);
+    std::fill(msg, std::end(msg), 0);
+    std::fill(tail, std::end(tail), 0);
 
     s = argspec = rptr->argspec;
     CHKS((argspec == NULL),"BUG: add_parameters: argspec = NULL");
@@ -208,7 +213,6 @@ int Interp::add_parameters(setup_pointer settings,
 	if (strchr(">^Nn",*s) && !strchr(required,*s)) *r++ = *s;
 	s++;
     }
-    o = optional;
     block = &CONTROLLING_BLOCK((*settings));
 
     logNP("add_parameters code=%s argspec=%s call_level=%d r=%s o=%s pydict=%d\n",
@@ -217,7 +221,7 @@ int Interp::add_parameters(setup_pointer settings,
 #define STORE(name,value)						\
     if (pydict) {							\
 	try {								\
-	    active_frame->kwargs[name] = value;				\
+	    active_frame->pystuff.impl->kwargs[name] = value;		\
         }								\
         catch (bp::error_already_set) {					\
 	    PyErr_Print();						\
@@ -296,7 +300,7 @@ int Interp::add_parameters(setup_pointer settings,
     // special cases:
     // N...add line number
     if (strchr(required,'n') || strchr(required,'N')) {
-	STORE("n",(double) block->line_number);
+	STORE("n",(double) cblock->saved_line_number);
     }
 
     // >...require positive feed
@@ -309,9 +313,10 @@ int Interp::add_parameters(setup_pointer settings,
 	}
     }
     // ^...require positive speed
+    //FIXME: How do we decide which spindle they want to use? (andypugh 17/7/16)
     if (strchr(required,'^')) {
-	if (settings->speed > 0.0) {
-	    STORE("s",settings->speed);
+	if (settings->speed[0] > 0.0) {
+	    STORE("s",settings->speed[0]);
 	} else {
 	    strcat(tail,"S>0,");
 	    errored = true;
@@ -512,10 +517,7 @@ int Interp::parse_remap(const char *inistring, int lineno)
 	break;
 
     case 'm':
-	if (sscanf(code + 1, "%d", &mcode) == 1) {
-	    _setup.remaps[code] = r;
-	    _setup.m_remapped[mcode] = &_setup.remaps[code];
-	} else {
+	if (sscanf(code + 1, "%d", &mcode) != 1) {
 	    Error("parsing M-code: expecting integer like 'M420', got '%s' : %d:REMAP = %s",
 		  code,lineno,inistring);
 	    goto fail;
@@ -526,10 +528,12 @@ int Interp::parse_remap(const char *inistring, int lineno)
 	    r.modal_group = MCODE_DEFAULT_MODAL_GROUP;
 	}
 	if (!M_MODE_OK(r.modal_group)) {
-	    Error("error: code '%s' : invalid modalgroup=<int> given (currently valid: 5..10) : %d:REMAP = %s",
+	    Error("error: code '%s' : invalid modalgroup=<int> given (currently valid: 4..10) : %d:REMAP = %s",
 		  code,lineno,inistring);
 	    goto fail;
 	}
+        _setup.remaps[code] = r;
+        _setup.m_remapped[mcode] = &_setup.remaps[code];
 	break;
     case 'g':
 
@@ -538,17 +542,19 @@ int Interp::parse_remap(const char *inistring, int lineno)
 	if (sscanf(code + 1, "%d.%d", &g1, &g2) == 2) {
 	    gcode = g1 * 10 + g2;
 	}
-	if (( gcode == -1) &&  (sscanf(code + 1, "%d", &gcode) != 1)) {
-	    Error("code '%s' : cant parse G-code : %d:REMAP = %s",
-		  code, lineno, inistring);
-	    goto fail;
+	if ( gcode == -1) {
+	    if (sscanf(code + 1, "%d", &gcode) != 1) {
+		Error("code '%s' : cant parse G-code : %d:REMAP = %s",
+		      code, lineno, inistring);
+		goto fail;
+	    }
+	    gcode *= 10;
 	}
 	r.motion_code = gcode;
 	if (r.modal_group == -1) {
 	    Error("warning: code '%s' : no modalgroup=<int> given, using default group %d : %d:REMAP = %s",
 		  code, GCODE_DEFAULT_MODAL_GROUP, lineno, inistring);
 	    r.modal_group = GCODE_DEFAULT_MODAL_GROUP;
-	    break;
 	}
 	if (!G_MODE_OK(r.modal_group)) {
 	    Error("error: code '%s' : %s modalgroup=<int> given  : %d:REMAP = %s",

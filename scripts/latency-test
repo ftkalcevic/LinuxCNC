@@ -8,8 +8,8 @@ T=`mktemp -d`
 trap 'cd /; [ -d $T ] && rm -rf $T' SIGINT SIGTERM EXIT
 cd $T
 
-calc() { echo "scale=1; $1" | bc; }
-icalc() { echo "scale=0; ($1)*1" | bc | sed 's/\..*//'; }
+calc() { awk "BEGIN { print ($1); }" < /dev/null; }
+icalc() { awk "BEGIN { printf \"%.0f\n\", ($1); }" < /dev/null; }
 
 parse_time () {
     case $1 in
@@ -18,7 +18,7 @@ parse_time () {
     *us|*µs) icalc "1000*${1%us}" ;;
     *ms) icalc "1000*1000*${1%ms}" ;;
     *s)  icalc "1000*1000*1000*${1%s}" ;;
-    *)   if [ $1 -lt 1000 ]; then icalc "1000$*1"; else icalc "$1"; fi ;;
+    *)   if [ $1 -lt 1000 ]; then icalc "1000*$1"; else icalc "$1"; fi ;;
     esac
 }
 
@@ -31,14 +31,17 @@ human_time () {
     fi
 }
 
-BASE=$(parse_time 25us); SERVO=$(parse_time 1ms)
-case $# in
-0) ;;
-1) BASE=$(parse_time $1) ;;
-2) BASE=$(parse_time $1); SERVO=$(parse_time $2) ;;
-*)
-    echo "Usage: latency-test [base-period [servo-period]]"
-    echo "Default: latency-test 25us 1ms"
+usage () {
+    echo "Usage:"
+    echo "       latency-test [base-period [servo-period]]"
+    echo "   or:"
+    echo "       latency-test period -      # for single thread"
+    echo "   or:"
+    echo "       latency-test -h | --help   # (this text)"
+    echo ""
+    echo "Defaults:     base-period=${BASE}nS servo-period=${SERVO}nS"
+    echo "Equivalently: base-period=$(human_time $BASE) servo-period=$(human_time $SERVO)"
+    echo ""
     echo "Times may be specified with suffix \"s\", \"ms\", \"us\" \"µs\", or \"ns\""
     echo "Times without a suffix and less than 1000 are taken to be in us;"
     echo "other times without a suffix are taken to be in ns"
@@ -46,6 +49,19 @@ case $# in
     echo "The worst-case latency seen in any run of latency-test"
     echo "is written to the file ~/.latency"
     exit 1
+}
+
+BASE=$(parse_time 25us); SERVO=$(parse_time 1ms)
+
+case $1 in
+  -h|--help) usage;;
+esac
+
+case $# in
+0) ;;
+1) BASE=$(parse_time $1) ;;
+2) BASE=$(parse_time $1); SERVO=$(parse_time $2) ;;
+*) usage;;
 esac
 
 if [ "$BASE" -gt "$SERVO" ]; then TEMP=$BASE; BASE=$SERVO; SERVO=$TEMP; fi
@@ -70,12 +86,12 @@ EOF
 
 cat > lat.xml <<EOF
 <pyvcp>
-<title title="EMC2 / HAL Latency Test"/>
+<title title="LinuxCNC / HAL Latency Test"/>
 <axisoptions/>
 <table>
 <tablerow/><tablespan columns="5"/><label wraplength="5i" justify="left">
 <text>
-"""Let this test run for a few minutes, then note the maximum Jitter.  You will use it while configuring emc2.
+"""Let this test run for a few minutes, then note the maximum Jitter. You will use it while configuring LinuxCNC.
 
 While the test is running, you should "abuse" the computer. Move windows around on the screen. Surf the web. Copy some large files around on the disk. Play some music. Run an OpenGL program such as glxgears. The idea is to put the PC through its paces while the latency test checks to see what the worst case numbers are."""
 </text>
@@ -115,12 +131,12 @@ EOF
 
 cat > lat.xml <<EOF
 <pyvcp>
-<title title="EMC2 / HAL Latency Test"/>
+<title title="LinuxCNC / HAL Latency Test"/>
 <axisoptions/>
 <table>
 <tablerow/><tablespan columns="5"/><label wraplength="5i" justify="left">
 <text>
-"""Let this test run for a few minutes, then note the maximum Jitter.  You will use it while configuring emc2.
+"""Let this test run for a few minutes, then note the maximum Jitter. You will use it while configuring LinuxCNC.
 
 While the test is running, you should "abuse" the computer. Move windows around on the screen. Surf the web. Copy some large files around on the disk. Play some music. Run an OpenGL program such as glxgears. The idea is to put the PC through its paces while the latency test checks to see what the worst case numbers are."""
 </text>

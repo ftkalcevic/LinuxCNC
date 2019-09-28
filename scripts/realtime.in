@@ -1,4 +1,4 @@
-#! /bin/bash
+#!/bin/bash
 #
 # @configure_input@ 
 # on @DATE@
@@ -6,7 +6,8 @@
 
 export LANG=C
 
-PIDOF=@PIDOF@
+GREP=@GREP@
+PS=@PS@
 
 CheckKernel() {
     case "@KERNEL_VERS@" in
@@ -75,36 +76,31 @@ CheckConfig(){
     MODULES_LOAD=
     MODULES_UNLOAD=
     case $RTPREFIX in
-    sim) SHM_DEV=/dev/zero;;
-    *)
-        for  MOD in $MODULES ; do
-            eval MOD=\${MODPATH_$MOD}
-            if [ -z "$MOD" ]; then continue; fi
-            if [ -L $MOD ]; then
-                MOD=${MOD%/*}/$(readlink $MOD)
-            fi
-            MODULES_LOAD="$MODULES_LOAD $MOD"
-            MOD="${MOD##*/}"
-            MOD="${MOD%$MODULE_EXT}"
-            MODULES_UNLOAD="$MOD $MODULES_UNLOAD"
-        done
+    uspace) SHM_DEV=/dev/zero;;
+    esac
+    for  MOD in $MODULES ; do
+        eval MOD=\${MODPATH_$MOD}
+        if [ -z "$MOD" ]; then continue; fi
+        if [ -L $MOD ]; then
+            MOD=${MOD%/*}/$(readlink $MOD)
+        fi
+        MODULES_LOAD="$MODULES_LOAD $MOD"
+        MOD="${MOD##*/}"
+        MOD="${MOD%.*}"
+        MODULES_UNLOAD="$MOD $MODULES_UNLOAD"
+    done
+    case $RTPREFIX in
+    *rtai*)
         MODULES_LOAD="$MODULES_LOAD $RTLIB_DIR/rtapi$MODULE_EXT $RTLIB_DIR/hal_lib$MODULE_EXT"
         MODULES_UNLOAD="hal_lib rtapi $MODULES_UNLOAD"
-        case "$MODULES" in
-        *rtai_shm*)
-            SHM_DEV=/dev/rtai_shm
-        ;;
-        *mbuff*)
-            SHM_DEV=/dev/mbuff
-        ;;
-        esac
+        SHM_DEV=/dev/rtai_shm
     esac
 }
 
 CheckStatus(){
     case $RTPREFIX in
-    sim)
-        if [ -z "$($PIDOF rtapi_app)" ]; then
+    uspace)
+        if [ -z "$($PS -o comm= -C rtapi_app | $GREP -v '<defunct>')" ]; then
             exit 1
         else
             exit 0
@@ -113,7 +109,7 @@ CheckStatus(){
         # check loaded/unloaded status of modules
         unset NOTLOADED
         for MOD in $MODULES_UNLOAD ; do
-            if @LSMOD@ | awk '{print $1}' | grep -x $MOD >/dev/null ; then
+            if @LSMOD@ | awk '{print $1}' | $GREP -x $MOD >/dev/null ; then
                 echo "$MOD is loaded"
             else
                 echo "$MOD is not loaded"
@@ -151,17 +147,12 @@ CheckMem(){
 
 Load(){
     CheckKernel
-    case $RTPREFIX in
-    sim)
-    ;;
-    *)
-        for MOD in $MODULES_LOAD ; do
-            $INSMOD $MOD || return $?
-        done
-        if [ "$DEBUG" != "" ] && [ -w /proc/rtapi/debug ] ; then
-            echo "$DEBUG" > /proc/rtapi/debug
-        fi
-    esac
+    for MOD in $MODULES_LOAD ; do
+        $INSMOD $MOD || return $?
+    done
+    if [ "$DEBUG" != "" ] && [ -w /proc/rtapi/debug ] ; then
+        echo "$DEBUG" > /proc/rtapi/debug
+    fi
 }
 
 CheckLoaded(){
@@ -181,17 +172,31 @@ CheckLoaded(){
 Unload(){
     CheckKernel
     case $RTPREFIX in
-    sim)
+    uspace)
         rtapi_app exit 
+
+        # wait 5 seconds for rtapi_app to die and be reaped by its parent
+        START=$SECONDS
+        local NPROCS
+        while [ 5 -gt $((SECONDS-START)) ]; do
+            NPROCS=$(ps -C rtapi_app -o comm= | $GREP -v '<defunct>' | wc -l)
+            if [ $NPROCS -eq 0 ]; then
+                break
+            fi
+            sleep 0.1
+        done
+        NPROCS=$(ps -C rtapi_app -o comm= | $GREP -v '<defunct>' | wc -l)
+        if [ $NPROCS -gt 0 ]; then
+            echo "ERROR: rtapi_app failed to die" 1>&2
+        fi
+
         ipcrm -M 0x48414c32 2>/dev/null ;# HAL_KEY
         ipcrm -M 0x90280A48 2>/dev/null ;# RTAPI_KEY
         ipcrm -M 0x48484c34 2>/dev/null ;# UUID_KEY
-        ;;
-    *)
-        for module in $MODULES_UNLOAD ; do
-            $RMMOD $module
-        done
     esac
+    for module in $MODULES_UNLOAD ; do
+        $RMMOD $module
+    done
 }
 
 CheckUnloaded(){
@@ -199,7 +204,7 @@ CheckUnloaded(){
     STATUS=
     for module in $MODULES_UNLOAD ; do
 	# check to see if the module is installed
-	if @LSMOD@ | awk '{print $1}' | grep -x $module >/dev/null ; then
+	if @LSMOD@ | awk '{print $1}' | $GREP -x $module >/dev/null ; then
 	    echo "ERROR: Could not unload '$module'"
 	    STATUS=error
 	fi

@@ -3,7 +3,7 @@
 
 = Aperçu global d'une machine CNC
 
-[[cha:Apercu-machine-CNC]] (((Aperçu machine CNC)))
+[[cha:Apercu-machine-CNC]]
 
 Cette section donne une description des différents organes constituant une
 machine à commande numérique (CNC).
@@ -134,12 +134,12 @@ points de tangence à la pièce, de face et sur le côté de l'outil.
 
 Pour mener un outil sur une trajectoire spécifiée, une machine à commande
 numérique doit coordonner les mouvements de plusieurs axes. Nous utilisons le
-terme _mouvement linéaire coordonné_ pour décrire une situation dans
+terme 'mouvement linéaire coordonné' pour décrire une situation dans
 laquelle, nominalement, chacun des axes se déplace à vitesse constante
 et tous les axes se déplacent de leur point de départ à leur point
 d'arrivée en même temps. Si deux des axes X, Y, Z (ou les trois) se
 déplacent, ceci produit un mouvement en ligne droite, d'où le mot
-_linéaire_ dans le terme. Dans les véritables mouvements, ce n'est
+'linéaire' dans le terme. Dans les véritables mouvements, ce n'est
 souvent pas possible de maintenir la vitesse constante à cause des
 accélérations et décélérations nécessaires en début et fin de
 mouvement. C'est faisable, cependant, de contrôler les axes ainsi,
@@ -154,13 +154,13 @@ rotation de la broche. Si les limites physiques de l'axe rendent le
 déplacement impossible, tous les axes seront ralentis pour maintenir
 le parcours prévu.
 
-=== Vitesse[[sec:Vitesse-d-avance]]
+=== [[sub:Vitesse-d-avance]]Vitesse d'avance
 
 (((vitesse d'avance)))
 
 La vitesse à laquelle le point contrôlé se déplace est ajustable par
 l'opérateur. Sauf cas particulier, vitesse inverse du temps, vitesse
-par tour, voir la section <<sec:G93-G94-G95-Set, sur les modes de vitesse>>, dans
+par tour, voir la section <<sec:G93-G94-G95-Modes, sur les modes de vitesse>>, dans
 l'interpréteur, l'interprétation des vitesses est la suivante:
 
  . Si le déplacement concerne un des axes XYZ, F est en unités machine
@@ -194,12 +194,12 @@ la broche est en tours par minute. Les positions des axes rotatifs sont
 exprimées en degrés. Les vitesses d'avance sont exprimées en unités
 machine par minute ou en degrés par minute ou en unités de longueur par
 tour de broche, comme décrit dans la section
-<<sec:Vitesse-d-avance, des vitesses>>.
+<<sub:Vitesse-d-avance, des vitesses>>.
 
 === Position courante
 
-Le point contrôlé est toujours à un emplacement appelé la _position
-courante_, et le contrôleur sait toujours où est cette position. Les
+Le point contrôlé est toujours à un emplacement appelé la 'position
+courante', et le contrôleur sait toujours où est cette position. Les
 valeurs représentant la position courante doivent être ajustées en
 l'absence de tout mouvement des axes si un de ces événements a lieu:
 
@@ -239,7 +239,7 @@ Les boutons des correcteurs de vitesses peuvent être activés (ils
 fonctionnent normalement) ou rendus inopérants (Ils n'ont plus aucun
 effet). Le langage RS274/NGC dispose d'une commande qui active tous les
 boutons et une autre qui les désactive. Voir l'inhibition et l'activation
-<<sec:M48-Activation-Correcteurs-Vitesse, des correcteurs>>.
+<<sec:M48-M49, des correcteurs de vitesse>>.
 Voir également <<sec:Interaction-vitesses, ici pour d'autres détails>>.
 
 === Modes de contrôle de trajectoire[[sec:Modes-de-controle-trajectoires]]
@@ -259,7 +259,8 @@ trajectoire:
     légèrement arrondis pour que la vitesse soit maintenue (sans dépasser la 
     tolérance, si elle est spécifiée). 
     
-Voir également les G-codes <<sec:G61-G61-1-G64, de contrôle de trajectoire>>.
+Voir également les G-codes <<sec:G61-G61_1,G61/G61.1>> et <<sec:G64,G64>> des
+contrôles de trajectoire.
 
 [[sec:Interaction-vitesses]] (((Interraction vitesse)))
 [[sec:Interaction-effacement-de-bloc]] (((effacement de bloc)))
@@ -283,7 +284,7 @@ autorisés.
 
 === Bouton d'effacement de bloc
 
-Si le bouton _Effacement de bloc_ est actif, les lignes de code
+Si le bouton 'Effacement de bloc' est actif, les lignes de code
 RS274/NGC commençant par le caractère barre de fraction (caractère
 d'effacement de bloc) ne sont pas interprétées. Si le bouton est
 désactivé, ces mêmes lignes sont interprétées. Normalement le bouton

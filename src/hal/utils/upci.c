@@ -17,7 +17,7 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public
 License along with this library; if not, write to the Free Software
-Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111 USA
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 THE AUTHORS OF THIS LIBRARY ACCEPT ABSOLUTELY NO LIABILITY FOR
 ANY HARM OR LOSS RESULTING FROM ITS USE.  IT IS _EXTREMELY_ UNWISE
@@ -115,6 +115,7 @@ static void errmsg(const char *funct, const char *fmt, ...)
     fprintf(stderr, "ERROR in %s(): ", funct);
     vfprintf(stderr, fmt, vp);
     fprintf(stderr, "\n");
+    va_end(vp);
 }
 
 void upci_reset(void)
@@ -365,9 +366,16 @@ static int incr_io_usage ( void )
 	retval = iopl(3);
 	eno = errno;
 	/* drop priviliges */
-	seteuid(getuid());
+	if(seteuid(getuid()) != 0)
+	{
+	    errmsg(__func__, "unable to drop root privileges");
+	    /* Don't continue past this point, because following code may
+	     * execute with unexpected privileges
+	     */
+	    _exit(99);
+	}
 	/* check result */
-	if(iopl(3) < 0) {
+	if(retval < 0 || iopl(3) < 0) {
 	    errmsg(__func__,"opening I/O ports: %s", strerror(eno));
 	    return -1;
 	}
@@ -407,7 +415,14 @@ static int incr_mem_usage ( void )
 	memfd = open("/dev/mem", O_RDWR);
 	eno = errno;
 	/* drop priviliges */
-	seteuid(getuid());
+	if(seteuid(getuid()) != 0)
+	{
+	    errmsg(__func__, "unable to drop root privileges");
+	    /* Don't continue past this point, because following code may
+	     * execute with unexpected privileges
+	     */
+	    _exit(99);
+	}
 	/* check result */
 	if ( memfd < 0 ) {
 	    errmsg(__func__,"can't open /dev/mem: %s", strerror(eno));

@@ -260,10 +260,10 @@ void updateQueue() {
         q.front().setPriority(MAX_PRIORITY); // Lock job as first job
         if (interlocksOk()) {
           sendFeedOverride(((double) q.front().getFeedOverride()) / 100.0);
-          sendSpindleOverride(((double) q.front().getSpindleOverride()) / 100.0);             
+          sendSpindleOverride(0, ((double) q.front().getSpindleOverride()) / 100.0);
           sendMdi();
           sendMdiCmd("G92.1\n");
-          if (emcCommandWaitDone(emcCommandSerialNumber) != 0) {
+          if (emcCommandWaitDone() != 0) {
             queueStatus = qsError;
             return;
             }
@@ -279,7 +279,7 @@ void updateQueue() {
               case 8: sendMdiCmd("G59.2\n"); break;
               case 9: sendMdiCmd("G59.3\n");
               }
-            if (emcCommandWaitDone(emcCommandSerialNumber) != 0) {
+            if (emcCommandWaitDone() != 0) {
               queueStatus = qsError;
               return;
               }
@@ -288,12 +288,12 @@ void updateQueue() {
              q.front().getOffsets(x, y, z);
              sprintf(cmd, "G0 X%f Y%f Z%f\n", x, y, z); 
              sendMdiCmd(cmd);
-             if (emcCommandWaitDone(emcCommandSerialNumber) != 0) {
+             if (emcCommandWaitDone() != 0) {
                queueStatus = qsError;
                return;
                }
              sendMdiCmd("G92 X0 Y0 Z0\n");
-             if (emcCommandWaitDone(emcCommandSerialNumber) != 0) {
+             if (emcCommandWaitDone() != 0) {
                queueStatus = qsError;
                return;
                }

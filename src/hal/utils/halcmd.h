@@ -22,7 +22,7 @@
  *
  *  You should have received a copy of the GNU General Public
  *  License along with this library; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111 USA
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  *
  *  THE AUTHORS OF THIS LIBRARY ACCEPT ABSOLUTELY NO LIABILITY FOR
  *  ANY HARM OR LOSS RESULTING FROM ITS USE.  IT IS _EXTREMELY_ UNWISE
@@ -46,13 +46,14 @@ extern void halcmd_shutdown();
 extern int halcmd_parse_cmd(char * tokens[]);
 extern int halcmd_parse_line(char * line);
 extern void halcmd_shutdown(void);
-extern int prompt_mode, errorcount, halcmd_done;
+extern int prompt_mode, echo_mode, errorcount, halcmd_done;
 extern int halcmd_preprocess_line ( char *line, char **tokens);
 
 void halcmd_info(const char *format,...) __attribute__((format(printf,1,2)));
 void halcmd_output(const char *format,...) __attribute__((format(printf,1,2)));
 void halcmd_warning(const char *format,...) __attribute__((format(printf,1,2)));
 void halcmd_error(const char *format,...) __attribute__((format(printf,1,2)));
+void halcmd_echo(const char *format,...) __attribute__((format(printf,1,2)));
 
 void halcmd_set_filename(const char *new_filename);
 const char *halcmd_get_filename(void);
@@ -86,7 +87,7 @@ extern int halcmd_ncommands;
 
 extern FILE *halcmd_inifile;
 
-#define MAX_TOK 20
+#define MAX_TOK 32
 #define MAX_CMD_LEN 1024
 #define MAX_EXPECTED_SIGS 999
 

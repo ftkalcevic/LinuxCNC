@@ -6,9 +6,10 @@
 *
 * Usage:  halcmd loadrt hal_ppmc port_addr=<addr1>[,addr2[,addr3]]
 *		[extradac=<slotcode1>,[<slotcode2>]]
-*		[extradout=<slotcode1,[<slotcode2>]]
-*               [timestamp=<slotcode1,[<slotcode2>]]
-*
+*		[extradout=<slotcode1>,[<slotcode2>]]
+*               [timestamp=<slotcode1>,[<slotcode2>]]
+*               [enc_clock=<slotcode1>,[<slotcode2>]]
+*               [epp_dir=<1 | 0>  [, 1 | 0]  [,1 | 0]]
 *               where 'addr1', 'addr2', and 'addr3' are the addresses
 *               of up to three parallel ports.
 *
@@ -22,7 +23,15 @@
 *		optional DAC or digital outs installed.
 *               timestamp works the same way, for UPC boards of rev 4
 *               or higher that have the timestamp feature.
-*              
+*               enc_clock specifes a 3-digit hex value, where the 1st is a
+*               code of 1,2, 5 or 10 to indicate an encoder clock rate of 1, 2.5, 5 or 10 MHz.
+*               The following 2 digits work as above, bus and board address.
+*               Only rev 4 and above PPMC encoder boards have this clock select feature.
+*               epp_dir defaults to 0, in which case the EPP parallel port automatically selects the
+*               par port data bus direction.  If epp_dir=1 is given, then this driver explicitly forces the
+*               port direction every time it needs to be changed.  This is known to cause at least one PCIe
+*               port card to malfunction.
+
 * Author: John Kasunich, Jon Elson, Stephen Wille Padnos
 * License: GPL Version 2
 *    
@@ -47,7 +56,7 @@
 
     You should have received a copy of the GNU General Public
     License along with this library; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111 USA
+    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
     THE AUTHORS OF THIS LIBRARY ACCEPT ABSOLUTELY NO LIABILITY FOR
     ANY HARM OR LOSS RESULTING FROM ITS USE.  IT IS _EXTREMELY_ UNWISE
@@ -62,7 +71,8 @@
     information, go to www.linuxcnc.org.
 */
 
-#include <linux/slab.h>		/* kmalloc() */
+#include <rtapi_slab.h>		/* kmalloc() */
+#include <rtapi_io.h>		/* kmalloc() */
 #include "rtapi.h"		/* RTAPI realtime OS API */
 #include "rtapi_app.h"		/* RTAPI realtime module decls */
 #include "hal.h"		/* HAL public API decls */
@@ -95,6 +105,13 @@ int timestamp[MAX_BUS*8] = {
         -1,-1,-1,-1,-1,-1,-1,-1,
         -1,-1,-1,-1,-1,-1,-1,-1 };  /* default, no extra stuff */
 RTAPI_MP_ARRAY_INT(timestamp, MAX_BUS*8, "bus/slot locations of timestamped encoders");
+int enc_clock[MAX_BUS*8] = {
+        -1,-1,-1,-1,-1,-1,-1,-1,
+        -1,-1,-1,-1,-1,-1,-1,-1,
+        -1,-1,-1,-1,-1,-1,-1,-1 };  /* default, no extra stuff */
+RTAPI_MP_ARRAY_INT(enc_clock, MAX_BUS*8, "bus/slot locations of encoder clock settings");
+int  epp_dir[MAX_BUS] = {0 , [1 ... MAX_BUS-1] = 0 };
+RTAPI_MP_ARRAY_INT(epp_dir, MAX_BUS, "EPP is commanded port direction");
 
 /***********************************************************************
 *                DEFINES (MOSTLY REGISTER ADDRESSES)                   *
@@ -117,6 +134,7 @@ RTAPI_MP_ARRAY_INT(timestamp, MAX_BUS*8, "bus/slot locations of timestamped enco
 
 #define ENCCTRL     0x03	/* EPP address of encoder control register */
 #define ENCRATE     0x04	/* interrupt rate register, only on master encoder */
+#define ENCCLOCK    0x05	/* encoder digital filter clock rate (1,2.5, 5 or 10 MHz PPMC only) */
 #define ENCISR      0x0C	/* index detect latch register (read only) */
 #define ENCINDX     0x0D	/* index reset register (write only) */
                                 /* only available with rev 2 and above FPGA config */
@@ -310,11 +328,11 @@ typedef struct slot_data_s {
     unsigned char strobe;	/* does this slot need a latch strobe */
     unsigned char slot_base;	/* base addr of this 16 byte slot */
     unsigned int port_addr;	/* addr of parport */
-    __u32 read_bitmap;		/* map showing which registers to read */
+    rtapi_u32 read_bitmap;		/* map showing which registers to read */
     unsigned char num_rd_functs;/* number of read functions */
     unsigned char rd_buf[32];	/* cached data read from epp bus */
     slot_funct_t *rd_functs[MAX_FUNCT];	/* array of read functions */
-    __u32 write_bitmap;		/* map showing which registers to write */
+    rtapi_u32 write_bitmap;		/* map showing which registers to write */
     unsigned char num_wr_functs;/* number of write functions */
     unsigned char wr_buf[32];	/* cached data to be written to epp bus */
     slot_funct_t *wr_functs[MAX_FUNCT];	/* array of write functions */
@@ -326,7 +344,8 @@ typedef struct slot_data_s {
     DACs_t *DAC;                /* ptr to shmem data for DACs */
     int extra_mode;		/* indicates if/how "extra" port is used */
     extra_t *extra;		/* ptr to shmem for "extra" port */
-  unsigned int use_timestamp;   /* indicates whether to use timestamp encoder feature */
+    unsigned int use_timestamp;   /* indicates whether to use timestamp encoder feature */
+    unsigned int enc_freq  ;     /* encoder clock rate (PPMC only) */
 } slot_data_t;
 
 /* this structure contains the runtime data for a complete EPP bus */
@@ -355,6 +374,9 @@ typedef struct {
 static bus_data_t *bus_array[MAX_BUS];
 static int comp_id;		/* component ID */
 static long read_period;        /* makes real time period available to called functions */
+static int slotnum;             
+static int currentbus;             /* made global so SelRead can see which parport is being handled */
+                                /* to deal with epp_dir option  */
 
 /***********************************************************************
 *                    REALTIME FUNCTION DECLARATIONS                    *
@@ -389,9 +411,9 @@ static void WrtMore(unsigned char byte, unsigned int port_addr);
 *                  LOCAL FUNCTION DECLARATIONS                         *
 ************************************************************************/
 
-static __u32 block(int min, int max);
-static int add_rd_funct(slot_funct_t *funct, slot_data_t *slot, __u32 cache_bitmap );
-static int add_wr_funct(slot_funct_t *funct, slot_data_t *slot, __u32 cache_bitmap );
+static rtapi_u32 block(int min, int max);
+static int add_rd_funct(slot_funct_t *funct, slot_data_t *slot, rtapi_u32 cache_bitmap );
+static int add_wr_funct(slot_funct_t *funct, slot_data_t *slot, rtapi_u32 cache_bitmap );
 
 static int export_UxC_digin(slot_data_t *slot, bus_data_t *bus);
 static int export_UxC_digout(slot_data_t *slot, bus_data_t *bus);
@@ -409,9 +431,11 @@ static int export_timestamp(slot_data_t *slot, bus_data_t *bus);
 *                       INIT AND EXIT CODE                             *
 ************************************************************************/
 
+void rtapi_app_exit(void);
+
 int rtapi_app_main(void)
 {
-    int msg, rv, rv1, busnum, slotnum, n, boards;
+  int msg, rv, rv1, busnum, slotnum, n, boards;
     int bus_slot_code, need_extra_dac, need_extra_dout, need_timestamp;
     int idcode, id, ver;
     bus_data_t *bus;
@@ -430,6 +454,7 @@ int rtapi_app_main(void)
        of msg_level and restore it later.  If you actually need to log this
        function's actions, change the second line below */
     msg = rtapi_get_msg_level();
+        rtapi_set_msg_level(RTAPI_MSG_INFO);
     //    rtapi_set_msg_level(RTAPI_MSG_ERR);
 
     /* validate port addresses */
@@ -441,6 +466,8 @@ int rtapi_app_main(void)
        might have been allocated before we return. */
     rv = 0;
     for ( busnum = 0 ; busnum < MAX_BUS ; busnum++ ) {
+      rtapi_print_msg(RTAPI_MSG_INFO, "PPMC: bus %d epp_dir = %d\n",busnum, epp_dir[busnum]);
+
 	/* init pointer to bus data */
 	bus_array[busnum] = NULL;
 	/* check to see if a port address was specified */
@@ -481,7 +508,7 @@ int rtapi_app_main(void)
 	    busnum, port_addr[busnum]);
 	boards = 0;
 	/* allocate memory for bus data - this is not shared memory */
-	bus = kmalloc(sizeof(bus_data_t), GFP_KERNEL);
+	bus = rtapi_kmalloc(sizeof(bus_data_t), RTAPI_GFP_KERNEL);
 	if (bus == 0) {
 	    rtapi_print_msg(RTAPI_MSG_ERR,
 		"PPMC: ERROR: kmalloc() failed\n");
@@ -544,10 +571,13 @@ int rtapi_app_main(void)
 	
 	    /* check slot */
 	    idcode = SelRead(slot->slot_base+SLOT_ID_OFFSET, slot->port_addr);
-	    if ( ( idcode == 0 ) || ( idcode == 0xFF ) ) {
+	    if ((idcode == 0)||(idcode == 0xFF)||((idcode&0x0f) == 0x0f)) {
+	    // version of 0x0f will not be used so we can detect SLOT_ID_OFFSET
+	    //   being left on the bus by a non-implemented device slot
 		slot->id = 0;
 		slot->ver = 0;
-		rtapi_print_msg(RTAPI_MSG_INFO, "nothing detected\n");
+		rtapi_print_msg(RTAPI_MSG_INFO, "nothing detected at addr %x reads %x\n",
+				slotnum,idcode);
 		ClrTimeout(slot->port_addr);
 		/* skip to next slot */
 		continue;
@@ -556,6 +586,7 @@ int rtapi_app_main(void)
 	    slot->id = id = idcode & 0xF0;
 	    slot->ver = ver = idcode & 0x0F;
 	    slot->use_timestamp = 0; /* default is no timestamp */
+	    slot->enc_freq = 0; /* default is 1 MHz */
 	    /* mark slot as occupied */
 	    bus->slot_valid[slotnum] = 1;
 	    
@@ -563,8 +594,35 @@ int rtapi_app_main(void)
 	    switch ( id ) {
 	    case 0x10:
 		boards++;
-		rtapi_print_msg(RTAPI_MSG_INFO, "PPMC encoder card\n");
+		//		rtapi_print_msg(RTAPI_MSG_INFO, "PPMC encoder card\n");
+		bus_slot_code = (busnum << 4) | slotnum;
+		rtapi_print_msg(RTAPI_MSG_INFO, "PPMC encoder card %x\n",bus_slot_code);
+		need_timestamp = 0;
+		for ( n = 0; n < MAX_BUS*8 ; n++ ) {
+		  if ( timestamp[n] == bus_slot_code ) {
+		    need_timestamp = 1;
+		    timestamp[n] = -1;
+		  }
+		}
+		if ( need_timestamp ) {
+		    rv1 += export_timestamp(slot, bus);
+		}		
+		for ( n = 0; n < MAX_BUS*8 ; n++ ) {
+		  if ( (enc_clock[n] & 0xff) == bus_slot_code) {
+		    //		    rtapi_print_msg(RTAPI_MSG_ERR,"PPMC detected enc_clock parameter%x\n",enc_clock[n]);
+		    if (slot->ver < 4) {
+		      rtapi_print_msg(RTAPI_MSG_ERR, 
+				      "PPMC encoder does not support adjustable encoder clock, ignoring\n");
+		    }
+		    slot->enc_freq = (enc_clock[n]) >> 8; // the clock selection is in bits 12-8
+		    //		    rtapi_print_msg(RTAPI_MSG_ERR,"PPMC enc_freq=%x\n",slot->enc_freq);
+		  }
+		}
+		// can't export encoder until we know if it uses timestamp
+		// and/or enc_clock feature
 		rv1 += export_encoders(slot, bus);
+		/* encoder ver 4 and above occupy two slot addresses */
+		if (slot->ver >= 4) slotnum++;
 		break;
 	    case 0x20:
 		boards++;
@@ -649,7 +707,7 @@ int rtapi_app_main(void)
 		slotnum++;
 		break;
 	    default:
-	      rtapi_print_msg(RTAPI_MSG_ERR, "PPMC: Check Parallel Port connection.\n");
+	      rtapi_print_msg(RTAPI_MSG_INFO, "PPMC: Check Parallel Port connection.\n");
 		/* mark slot as empty */
 		bus->slot_valid[slotnum] = 0;
 		/* mark bus failed */
@@ -748,7 +806,7 @@ void rtapi_app_exit(void)
 		}
 	    }
 	    /* and free the memory block */
-	    kfree(bus);
+	    rtapi_kfree(bus);
 	}
     }
 
@@ -769,9 +827,10 @@ static void read_all(void *arg, long period)
 {
     bus_data_t *bus;
     slot_data_t *slot;
-    int slotnum, functnum, addr_ok;
+    //    int slotnum, functnum, addr_ok;
+    int functnum, addr_ok;
     unsigned char n, eppaddr;
-    __u32 bitmap;
+    rtapi_u32 bitmap;
 
     read_period = period;          /* make thread period available to called functions */
     /* get pointer to bus data structure */
@@ -782,6 +841,7 @@ static void read_all(void *arg, long period)
     }
     /* loop thru all slots */
     for ( slotnum = 0 ; slotnum < NUM_SLOTS ; slotnum++ ) {
+      currentbus = bus->busnum;  /* make bus in use available for epp_dir logic */
 	/* check for anthing in slot */
 	if ( bus->slot_valid[slotnum] ) {
 	    /* point at slot data */
@@ -837,7 +897,7 @@ static void write_all(void *arg, long period)
     slot_data_t *slot;
     int slotnum, functnum, addr_ok;
     unsigned char n, eppaddr;
-    __u32 bitmap;
+    rtapi_u32 bitmap;
 
     /* get pointer to bus data structure */
     bus = *(bus_data_t **)(arg);
@@ -849,6 +909,7 @@ static void write_all(void *arg, long period)
     for ( slotnum = 0 ; slotnum < NUM_SLOTS ; slotnum++ ) {
 	/* check for anthing in slot */
 	if ( bus->slot_valid[slotnum] ) {
+	  currentbus = bus->busnum;  /* make bus in use available for epp_dir logic */
 	    /* point at slot data */
 	    slot = &(bus->slot_data[slotnum]);
 	    /* loop thru all functions associated with slot */
@@ -1581,10 +1642,10 @@ static void write_extra_dout(slot_data_t *slot)
    to be passed to add_rd_funct() or add_wr_funct()
 */
 
-static __u32 block(int min, int max)
+static rtapi_u32 block(int min, int max)
 {
     int n;
-    __u32 mask;
+    rtapi_u32 mask;
 
     mask = 0;
     for ( n = min ; n <= max ; n++ ) {
@@ -1603,7 +1664,7 @@ static __u32 block(int min, int max)
 */
 
 static int add_rd_funct(slot_funct_t *funct, slot_data_t *slot,
-			__u32 cache_bitmap )
+			rtapi_u32 cache_bitmap )
 {
     if ( slot->num_rd_functs >= MAX_FUNCT ) {
 	rtapi_print_msg(RTAPI_MSG_ERR, 
@@ -1616,7 +1677,7 @@ static int add_rd_funct(slot_funct_t *funct, slot_data_t *slot,
 }
 
 static int add_wr_funct(slot_funct_t *funct, slot_data_t *slot,
-			__u32 cache_bitmap )
+			rtapi_u32 cache_bitmap )
 {
     if ( slot->num_wr_functs >= MAX_FUNCT ) {
 	rtapi_print_msg(RTAPI_MSG_ERR, 
@@ -2053,7 +2114,7 @@ static int export_PPMC_DAC(slot_data_t *slot, bus_data_t *bus)
 
 static int export_encoders(slot_data_t *slot, bus_data_t *bus)
 {
-    int retval, n;
+  int retval, n, m;
     
     rtapi_print_msg(RTAPI_MSG_INFO, "PPMC: exporting encoder pins / params\n");
 
@@ -2098,6 +2159,31 @@ static int export_encoders(slot_data_t *slot, bus_data_t *bus)
     }
     slot->encoder[0].indres = 0;  /* clear reset-on-index reg copy */
     /* export per-encoder pins and params */
+    if (slot->enc_freq != 0) {
+      switch (slot->enc_freq) {
+      case 1:
+	m = 0;
+	rtapi_print_msg(RTAPI_MSG_INFO, "PPMC: setting encoder clock to 1 MHz.\n");
+	break;
+      case 2:
+	m = 1;
+	rtapi_print_msg(RTAPI_MSG_INFO, "PPMC: setting encoder clock to 2.5 MHz.\n");
+	break;
+      case 5:
+	m = 2;
+	rtapi_print_msg(RTAPI_MSG_INFO, "PPMC: setting encoder clock to 5 MHz.\n");
+	break;
+      case 10:
+	m = 3;
+	rtapi_print_msg(RTAPI_MSG_INFO, "PPMC: setting encoder clock to 10 MHz.\n");
+	break;
+      default:
+	m = 0;
+	rtapi_print_msg(RTAPI_MSG_ERR, "PPMC: invalid encoder clock setting.\n");
+	break;
+      }
+      SelWrt(m, slot->slot_base+ENCCLOCK, slot->port_addr);  // make the setting
+    }
     for ( n = 0 ; n < 4 ; n++ ) {
         /* scale input parameter */
         retval = hal_param_float_newf(HAL_RW, &(slot->encoder[n].scale), comp_id,
@@ -2129,17 +2215,17 @@ static int export_encoders(slot_data_t *slot, bus_data_t *bus)
 	if (retval != 0) {
 		return retval;
 	}
+	retval = hal_pin_float_newf(HAL_OUT, &(slot->encoder[n].vel), comp_id,
+	    "ppmc.%d.encoder.%02d.velocity",bus->busnum,bus->last_encoder);
+	if (retval != 0) {
+	  return retval;
+	}
 	if (slot->ver >= 2) {
 	  /* encoder index enable bit */
 	  /* if the ver of the board firmware is >= 2 then the board supports
 	     this function, so export the pin */
 	  retval = hal_pin_bit_newf(HAL_IO, &(slot->encoder[n].index_enable), comp_id,
 		"ppmc.%d.encoder.%02d.index-enable", bus->busnum, bus->last_encoder);
-	  if (retval != 0) {
-	    return retval;
-	  }
-	  retval = hal_pin_float_newf(HAL_OUT, &(slot->encoder[n].vel), comp_id,
-	        "ppmc.%d.encoder.%02d.velocity",bus->busnum,bus->last_encoder);
 	  if (retval != 0) {
 	    return retval;
 	  }
@@ -2215,14 +2301,17 @@ static int export_extra_dac(slot_data_t *slot, bus_data_t *bus)
     int n;
 
     /* does the board have the timestamp feature? */
+    /* ID = 10 for PPMC encoder, ID = 50 for UPC, either needs to be
+       above ver 4 to have the timestamp feature */
     n=0;
-    //    if (slot->id == 0x40) n=1;
-    if (slot->id == 0x50 && slot->ver >= 4) n=1;
+    if ((slot->id == 0x10 || slot->id == 0x50) && slot->ver >= 4) n=1;
     if ( n == 0 ) {
 	rtapi_print_msg(RTAPI_MSG_ERR,
 	    "PPMC: ERROR: board firmware doesn't support encoder timestamp.\n");
 	return -1;
     }
+    rtapi_print_msg(RTAPI_MSG_INFO, "PPMC: exporting encoder timestamp pins\n");
+
     slot->use_timestamp = 1;    /* tell encoder function to process timestamp */
     return 0;
 }
@@ -2315,8 +2404,10 @@ static unsigned short SelRead(unsigned char epp_addr, unsigned int port_addr)
     rtapi_outb(0x04,CONTROLPORT(port_addr));
     /* write epp address to port */
     rtapi_outb(epp_addr,ADDRPORT(port_addr));
-    /* set port direction to input */
-    rtapi_outb(0x24,CONTROLPORT(port_addr));
+    if (epp_dir[currentbus] == 1) {
+      /* set port direction to input */
+      rtapi_outb(0x24,CONTROLPORT(port_addr));
+    }
     /* read data value */
     b = rtapi_inb(DATAPORT(port_addr));
     return b;

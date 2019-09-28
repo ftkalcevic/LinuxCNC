@@ -14,19 +14,19 @@
 #
 #    You should have received a copy of the GNU General Public License
 #    along with this program; if not, write to the Free Software
-#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+#    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 '''Manual Data Input - issue a single line of g-code to the running system
 
 mdi.py may be specified on the commandline, e.g.,
-        bin/mdi configs/sim/emc.nml g0 x0
+        bin/mdi g0 x0
 '''
 import sys, os
 import linuxcnc
 
-if len(sys.argv) > 1:
-    linuxcnc.nmlfile = sys.argv[1]
-    del sys.argv[1]
+#if len(sys.argv) > 1:
+#    linuxcnc.nmlfile = sys.argv[1]
+#    del sys.argv[1]
 
 c = linuxcnc.command()
 s = linuxcnc.stat()

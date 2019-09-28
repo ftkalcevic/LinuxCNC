@@ -9,6 +9,8 @@
 #
 #   Added initval to checkbutton/scale for initial values,  Dallur 15 April 2007 (jarl stefansson) (jarl stefansson)
 #
+#   Multiple additions and amendments as per notations - ArcEye 2013
+#
 #    This program is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
 #    the Free Software Foundation; either version 2 of the License, or
@@ -21,7 +23,7 @@
 #
 #    You should have received a copy of the GNU General Public License
 #    along with this program; if not, write to the Free Software
-#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+#    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 """ A widget library for pyVCP 
     
@@ -53,6 +55,7 @@ import time
 
 # -------------------------------------------
 
+
 class pyvcp_dial(Canvas):
     # Dial widget by tomp
     """ A dial that outputs a HAL_FLOAT 
@@ -69,6 +72,7 @@ class pyvcp_dial(Canvas):
             [ <initval>123</initval> ]           (initial value a whole number must end in '.')
             [ <resolution>.001</resolution> ]          (scale value a whole number must end in '.')
             [ <halpin>"anaout"</halpin> ]
+            [ <param_pin>1</param_pin>] creates param pin if > 0, set to initval, value can then be set externally, ArcEye 2013
         </dial>
                 
                 key bindings:
@@ -107,7 +111,8 @@ class pyvcp_dial(Canvas):
     #TJP cpr is overloaded, now it means "chgs per rev" not "counts per rev"
     #TJP the tik marks could get very fine, avoid high cpr to size ratios (easily seen)
     
-    def __init__(self,root,pycomp,halpin=None,size=200,cpr=40,dialcolor="", \
+   
+    def __init__(self,root,pycomp,halpin=None,halparam=None,param_pin=0,size=200,cpr=40,dialcolor="", \
             edgecolor="",dotcolor="grey",min_=None,max_=None, \
             text=None,initval=0,resolution=0.1, \
             **kw):
@@ -190,12 +195,22 @@ class pyvcp_dial(Canvas):
         # create the hal pin
         if halpin == None:
             halpin = "dial."+str(pyvcp_dial.n)+".out"
-            pyvcp_dial.n += 1
+        self.halpin=halpin            
+
+        if halparam == None:
+            self.param_pin = param_pin
+            if self.param_pin == 1:
+                halparam = "dial." + str(pyvcp_dial.n) + ".param_pin"
+                self.halparam=halparam        
+                pycomp.newpin(halparam, HAL_FLOAT, HAL_IN)
+
+        pyvcp_dial.n += 1
+        self.pycomp=pycomp
         pycomp.newpin(halpin, HAL_FLOAT, HAL_OUT)
 
-        self.halpin=halpin
-        self.pycomp=pycomp
-
+        pycomp[self.halparam] = self.origValue
+        self.oldValue = self.origValue
+        self.value = self.origValue
 
     def chgScaleDn(self,event):
         # reduces the scale by 10x
@@ -319,10 +334,17 @@ class pyvcp_dial(Canvas):
     def update(self,pycomp):
         self.pycomp[self.halpin] = self.out
 
-
-
+        self.value = pycomp[self.halparam]
+        if self.value != self.oldValue :
+            self.counts = int(round(self.value / self.funit))
+            self.out= self.counts * self.funit
+            self.update_dot()
+            self.update_dro()
+            self.oldValue = self.value
 
 # -------------------------------------------
+
+
 
 class pyvcp_meter(Canvas):
     """ Meter - shows the value of a FLOAT with an analog meter
@@ -440,8 +462,6 @@ class pyvcp_meter(Canvas):
              
 # -------------------------------------------
 
-
-
 class pyvcp_jogwheel(Canvas):
     """" A jogwheel that outputs a HAL_FLOAT count
         reacts to both mouse-wheel and mouse dragging
@@ -449,7 +469,7 @@ class pyvcp_jogwheel(Canvas):
             [ <cpr>33</cpr> ]                       (counts per revolution)
             [ <halpin>"myjogwheel"</halpin> ]
             [ <size>300</size> ]
-        </jogwheel>
+         </jogwheel>
     """
     # FIXME:
     # -jogging should be enabled only when the circle has focus
@@ -498,7 +518,7 @@ class pyvcp_jogwheel(Canvas):
         self.halpin=halpin
         pycomp[self.halpin] = self.count
         self.pycomp=pycomp
-
+                 
     def dot_coords(self):
         DOTR=0.06*self.size
         DOTPOS=0.85
@@ -558,19 +578,29 @@ class pyvcp_jogwheel(Canvas):
         # when first connected to a signal
         self.pycomp[self.halpin] = self.count
         
-
-
-
-
 # -------------------------------------------
+## ArcEye - added - no example given and the one in docs misses out initval  ##
+
+"""" A radiobutton will set one of the halpins true. The other pins are set false.
+    <radiobutton>
+        <choices>["one","two","three"]</choices>    labels next to each button
+        <halpin>"radio"</halpin>                    pin giving index of active button
+        <initval>0</initval>                        index of button pin to set true at start
+        <orient>HORIZONTAL</orient>                 add horizontal tag default is vertical
+    </radiobutton>
+    """
+################################################################################
 
 class pyvcp_radiobutton(Frame):
     n=0
-    def __init__(self,master,pycomp,halpin=None,initval=0,choices=[],**kw):
+    def __init__(self,master,pycomp,halpin=None,initval=0,orient=None,choices=[],**kw):
         f=Frame.__init__(self,master,bd=2,relief=GROOVE)
         self.v = IntVar()
         self.v.set(1)
         self.choices=choices
+        self.side = 'top'
+        if orient != None:
+            self.side = 'left'
         if halpin == None:
             halpin = "radiobutton."+str(pyvcp_radiobutton.n)
             pyvcp_radiobutton.n += 1
@@ -578,27 +608,27 @@ class pyvcp_radiobutton(Frame):
         self.halpins=[]
         n=0
         for c in choices:
-            b=Radiobutton(self,f, text=str(c)
-                        ,variable=self.v, value=pow(2,n))
-            b.pack()
-            if n==initval:
+            b=Radiobutton(self,f, text=str(c),variable=self.v, value=pow(2,n))
+            b.pack(side=self.side)
+            if n==initval: 
                 b.select()
-
             c_halpin=halpin+"."+str(c)
             pycomp.newpin(c_halpin, HAL_BIT, HAL_OUT)
             self.halpins.append(c_halpin)
             n+=1
 
-    # FIXME
-    # this is a fairly stupid way of updating the pins
-    # since the calculation is done every 100ms wether a change
-    # has happened or not. see below.   
+        self.selected = initval
+        pycomp[self.halpins[initval]]=1 
+
+## ArcEye - FIXED - only update the pins if changed  ##
     def update(self,pycomp):
-        index=math.log(self.v.get(),2)
-        index=int(index)
-        for pin in self.halpins:
-            pycomp[pin]=0;
-        pycomp[self.halpins[index]]=1;
+        index=int(math.log(self.v.get(),2))
+        if index != self.selected: 
+            for pin in self.halpins:
+                pycomp[pin]=0;
+            pycomp[self.halpins[index]]=1;
+            self.selected = index
+
 
     # FIXME
     # this would be a much better way of updating the
@@ -634,7 +664,6 @@ class pyvcp_label(Label):
             self.halpin_disable = halpin_disable
             pycomp.newpin(halpin_disable, HAL_BIT, HAL_IN)   
         
-
     def update(self,pycomp):
         if self.disable_pin: 
             is_disabled = pycomp[self.halpin_disable]     
@@ -645,6 +674,86 @@ class pyvcp_label(Label):
 
 
 # -------------------------------------------
+
+### ArcEye 01052013 - added new widget #############################################
+
+class pyvcp_multilabel(Label):
+    """ Selectable text label, can display up to 6 label legends
+        when associated bit pin is activated
+        <multilabel>
+            <legends>["Label1" "Label2" "Label3" "Label4" "Label5" "Label6"]</legends>
+            <font>("Helvetica", 20)</font>
+            <disable_pin>True</disable_pin>
+            <initval>0</initval>    Which legend to display by default (make sure it matches initval for linked widget if any) 
+            <halpin>None</halpin>   Optional alternative name base for pins
+        </multilabel>
+    """
+    
+    n=0
+    def __init__(self,master,pycomp,halpin=None,disable_pin=False,legends=[],initval=0,**kw):
+        Label.__init__(self,master,**kw)
+        self.disable_pin=disable_pin
+        
+        if halpin == None:
+            halpin = "multilabel."+str(pyvcp_multilabel.n)
+            pyvcp_multilabel.n += 1
+        
+        self.halpins=[]
+        n=0
+        for c in legends:
+            c_halpin=halpin+".legend"+str(n)
+            pycomp.newpin(c_halpin, HAL_BIT, HAL_IN)
+            self.halpins.append(c_halpin)
+            n+=1
+            #limit to 6 legends
+            if n >= 6:
+                break
+        self.legends = legends
+        self.num_pins = n
+        
+        if disable_pin:
+            halpin_disable = halpin+".disable"
+            self.halpin_disable = halpin_disable
+            pycomp.newpin(halpin_disable, HAL_BIT, HAL_IN)
+
+        # test for out of range initval number
+        if initval >= 0 and initval <= self.num_pins :
+            val = initval
+        else :
+            val = 0
+            
+        Label.config(self,text= legends[val])
+        pycomp[self.halpins[val]] = 1
+        self.pin_index = val
+
+    def update(self,pycomp):
+        if self.disable_pin: 
+            is_disabled = pycomp[self.halpin_disable]     
+            if is_disabled == 1: 
+                Label.config(self,state=DISABLED)
+            else: 
+                Label.config(self,state=NORMAL)
+                
+        # no telling how people will use this, so just break at first
+        # set pin that is not the existing set one
+        # if several pins are set one after another, the legend for the
+        # last one set will end up being displayed
+        index = -1
+        for x in xrange(0, self.num_pins):
+            state = pycomp[self.halpins[x]]
+            if state == 1 :
+                index = x
+                if index != self.pin_index :
+                    break
+                
+        if index > -1 and index != self.pin_index:
+            for x in xrange(0, self.num_pins):
+                pycomp[self.halpins[x]] = 0
+
+            pycomp[self.halpins[index]] = 1
+            Label.config(self,text= self.legends[index])
+            self.pin_index = index
+
 
 
 class pyvcp_vbox(Frame):
@@ -759,7 +868,6 @@ class pyvcp_tabs(bwidget.NoteBook):
 
 # -------------------------------------------
 
-
 class pyvcp_spinbox(Spinbox):
     """ (control) controls a float, also shown as text 
         reacts to the mouse wheel 
@@ -767,12 +875,14 @@ class pyvcp_spinbox(Spinbox):
             [ <halpin>"my-spinbox"</halpin> ]
             [ <min_>55</min_> ]   sets the minimum value to 55
             [ <max_>123</max_> ]  sets the maximum value to 123
-            [ <initval>100</initval> ]  sets intial value to 100  TJP 12 04 2007
+            [ <initval>100</initval> ]  sets initial value to 100  TJP 12 04 2007
+            [ <param_pin>1</param_pin>] creates param pin if > 0, set to initval, value can then be set externally, ArcEye 2013            
         </spinbox>
     """
     # FIXME: scale resolution when shift/ctrl/alt is held down?
+ 
     n=0
-    def __init__(self,master,pycomp,halpin=None,
+    def __init__(self,master,pycomp,halpin=None, halparam=None,param_pin=0,
                     min_=0,max_=100,initval=0,resolution=1,format="2.1f",**kw):
         self.v = DoubleVar()
         if 'increment' not in kw: kw['increment'] = resolution
@@ -781,10 +891,21 @@ class pyvcp_spinbox(Spinbox):
         if 'format' not in kw: kw['format'] = "%" + format
         kw['command'] = self.command
         Spinbox.__init__(self,master,textvariable=self.v,**kw)
+        
         if halpin == None:
             halpin = "spinbox."+str(pyvcp_spinbox.n)
-            pyvcp_spinbox.n += 1
+            
         self.halpin=halpin
+
+        if halparam == None:
+            self.param_pin = param_pin
+            if self.param_pin == 1:
+                halparam = "spinbox." + str(pyvcp_spinbox.n) + ".param_pin"
+                self.halparam=halparam
+                pycomp.newpin(halparam, HAL_FLOAT, HAL_IN)
+
+        pyvcp_spinbox.n += 1
+        
         if initval < min_:
             self.value=min_
         elif initval > max_:
@@ -792,14 +913,30 @@ class pyvcp_spinbox(Spinbox):
         else:
             self.value=initval
         self.oldvalue=min_
+
+        if self.param_pin == 1:
+            self.init=self.value
+            self.oldinit=self.init
+            pycomp[self.halparam] = self.init
+            
         self.format = "%(b)"+format
         self.max_=max_
         self.min_=min_
         self.resolution=resolution
         self.v.set( str( self.format  % {'b':self.value} ) )
         pycomp.newpin(halpin, HAL_FLOAT, HAL_OUT)
+        
         self.bind('<Button-4>',self.wheel_up)
         self.bind('<Button-5>',self.wheel_down)
+        self.bind('<Return>',self.return_pressed)
+
+    def return_pressed(self, event):
+        self.value = self.v.get()
+        if self.value < self.min_:
+            self.value = self.min_
+        if self.value > self.max_:
+            self.value = self.max_
+
 
     def command(self):
         self.value = self.v.get()
@@ -809,6 +946,13 @@ class pyvcp_spinbox(Spinbox):
         if self.value != self.oldvalue:
             self.v.set( str( self.format  % {'b':self.value} ) )
             self.oldvalue=self.value
+
+        if self.param_pin == 1:            
+            self.init = pycomp[self.halparam]
+            if self.init != self.oldinit:
+                self.v.set( str( self.format  % {'b':self.init} ) )
+                self.oldinit=self.init    
+                self.value=self.init
           
     def wheel_up(self,event):
         self.value += self.resolution
@@ -958,17 +1102,42 @@ class pyvcp_timer(Label):
 # -------------------------------------------
 
 class pyvcp_bar(Canvas):
-    """ (indicator) a bar-indicator for a float"""
+
+## reworked by ArcEye 10022014
+## allow value ranges in different colours
+
+    """ (indicator) a bar-indicator for a float
+    <bar>
+        <halpin>"my-bar"</halpin>
+        <min_>0</min_>
+        <max_>150</max_>
+        <bgcolor>"grey"</bgcolor>
+        <range1>(0,100,"green")</range1>
+        <range2>(101,129,"orange")</range2>
+        <range3>(130,150,"red")</range3>
+        <fillcolor>"green"</fillcolor>
+        <canvas_width>200</canvas_width>
+        <canvas_height>50</canvas_height>
+        <bar_height>30</bar_height>
+        <bar_width>150</bar_width>
+        <format>"3.1f"</format>
+    </bar>
+    """
     n=0
-    # FIXME logarithmic scale?
-    def __init__(self,master,pycomp,
-              fillcolor="green",bgcolor="grey",
-               halpin=None,min_=0.0,max_=100.0,**kw):
-    
-        self.cw=200    # canvas width
-        self.ch=50     # canvas height
-        self.bh=30     # bar height
-        self.bw=150    # bar width
+
+    def __init__(self,master,pycomp,fillcolor="green",bgcolor="grey",
+               halpin=None,min_=0.0,max_=100.0,range1=None,range2=None,
+               range3=None,format='3.1f', canvas_width=200,
+               canvas_height=50, bar_height=30, bar_width=150,**kw):
+
+        self.cw=canvas_width
+        self.ch=canvas_height
+        self.bh=bar_height
+        self.bw=bar_width
+        #self.cw=200    # canvas width
+        #self.ch=50     # canvas height
+        #self.bh=30     # bar height
+        #self.bw=150    # bar width
         self.pad=((self.cw-self.bw)/2)
 
         Canvas.__init__(self,master,width=self.cw,height=self.ch)
@@ -979,9 +1148,14 @@ class pyvcp_bar(Canvas):
         self.halpin=halpin
         self.endval=max_
         self.startval=min_
-        self.value=0.0 # some dummy value to start with   
-        pycomp.newpin(halpin, HAL_FLOAT, HAL_IN)
+        self.format = "%" + format
 
+        pycomp.newpin(halpin, HAL_FLOAT, HAL_IN)
+        
+        self.value=0.0 # some dummy value to start with  
+             
+        pycomp[self.halpin] = self.value
+        
         # the border
         border=self.create_rectangle(self.pad,1,self.pad+self.bw,self.bh)
         self.itemconfig(border,fill=bgcolor)
@@ -991,9 +1165,9 @@ class pyvcp_bar(Canvas):
         start=tmp[0]
         end=tmp[1]
         self.bar=self.create_rectangle(start,2,end,self.bh-1)
+	    # default fill unless overriden
         self.itemconfig(self.bar,fill=fillcolor)
-         
-          
+
         # start text
         start_text=self.create_text(self.pad,self.bh+10,text=str(self.startval) )
         #end text
@@ -1001,7 +1175,27 @@ class pyvcp_bar(Canvas):
         # value text
         self.val_text=self.create_text(self.pad+self.bw/2,
                                    self.bh/2,text=str(self.value) )
-    
+
+        if range1!=None and range2!=None and range3!=None:
+            self.range1 = range1
+            self.range2 = range2
+            self.range3 = range3
+            self.ranges = True
+        else:
+            self.ranges = False
+        
+    def set_fill(self, (start1, end1, color1),(start2, end2, color2), (start3, end3, color3)):
+        if self.value:
+    	    if (self.value > start1) and (self.value <= end1):
+    		self.itemconfig(self.bar,fill=color1)	
+    	    else:
+    		if (self.value > start2) and (self.value <= end2):
+    		    self.itemconfig(self.bar,fill=color2)	
+		else:
+		    if (self.value > start3) and (self.value <= end3):
+    			self.itemconfig(self.bar,fill=color3)	
+	
+	
     def bar_coords(self):
         """ calculates the coordinates in pixels for the bar """
         # the bar should start at value = zero 
@@ -1019,27 +1213,24 @@ class pyvcp_bar(Canvas):
             bar_start = min_pixels
 
         return [bar_start, bar_end]
-          
+    
+			
     def update(self,pycomp):
         # update value
         newvalue=pycomp[self.halpin]
         if newvalue != self.value:
             self.value = newvalue
-            # percent = self.value/(self.endval-self.startval)
-            # if percent < 0.0:
-            #     percent = 0
-            # elif percent > 1.0:
-            #    percent = 1.0  
-            # set value text
-            valtext = str( "%(b)3.1f" % {'b':self.value} )
+            valtext = str(self.format % self.value)
             self.itemconfig(self.val_text,text=valtext)
+            # set bar colour
+            if self.ranges:
+                self.set_fill(self.range1, self.range2, self.range3)
             # set bar size
             tmp=self.bar_coords()
             start=tmp[0]
             end=tmp[1]
             self.coords(self.bar, start, 2, 
                         end, self.bh-1)
-
 
 
 
@@ -1146,17 +1337,17 @@ class pyvcp_rectled(Canvas):
 
 # -------------------------------------------
 
-
-
-
-
+## ArcEye - the initval field is missing from the docs, so few people aware it can be preselected
+## 12022014 added changepin which allows toggling of value from HAL without GUI action
 
 class pyvcp_checkbutton(Checkbutton):
+
     """ (control) a check button 
         halpin is 1 when button checked, 0 otherwise 
         <checkbutton>
             [ <halpin>"my-checkbutton"</halpin> ]
-            [ <initval>1</initval> ]  sets intial value to 1, all values >=0.5 are assumed to be 1
+            [ <text>"Name of Button"</text>]  text set in widget
+            [ <initval>1</initval> ]  sets initial value to 1, all values >=0.5 are assumed to be 1
         </checkbutton>
     """
     n=0
@@ -1165,25 +1356,39 @@ class pyvcp_checkbutton(Checkbutton):
         Checkbutton.__init__(self,master,variable=self.v,onvalue=1, offvalue=0,**kw)
         if halpin == None:
             halpin = "checkbutton."+str(pyvcp_checkbutton.n)
-            pyvcp_checkbutton.n += 1
-        self.halpin=halpin
+	self.halpin=halpin
+	pycomp.newpin(halpin, HAL_BIT, HAL_OUT)
+	changepin = halpin + ".changepin"
+	self.changepin=changepin
+	pycomp.newpin(changepin, HAL_BIT, HAL_IN)
+        pycomp[self.changepin] = 0
+
+	pyvcp_checkbutton.n += 1
+		
         if initval >= 0.5:
             self.value=1
         else:
             self.value=0
         self.v.set(self.value)
-        pycomp.newpin(halpin, HAL_BIT, HAL_OUT)
-       
-
+        self.reset = 0
+		
     def update(self,pycomp):
-        pycomp[self.halpin]=self.v.get()
-
+        # prevent race condition if connected to permanently on pin
+	if pycomp[self.changepin] and not(self.reset):
+	    self.v.set(not(self.v.get()))
+	    self.reset = 1
+    	    pycomp[self.changepin] = 0 # try to reset, but may not work
+	    
+	if not(pycomp[self.changepin]) and(self.reset):
+    	    self.reset = 0 
+    	    pycomp[self.changepin] = 0   # make sure is reset now
+	
+	pycomp[self.halpin]=self.v.get()
 
 
 
 
 # -------------------------------------------
-
 
 
 
@@ -1240,9 +1445,6 @@ class pyvcp_button(Button):
 
 # -------------------------------------------
 
-
-
-
 class pyvcp_scale(Scale):
     """ (control) a slider 
         halpin-i is integer output 
@@ -1254,24 +1456,37 @@ class pyvcp_scale(Scale):
             [ <orient>HORIZONTAL</orient>  ] aligns the scale horizontal
             [ <min_>-33</min_> ] sets the minimum value to -33
             [ <max_>26</max_> ] sets the maximum value to 26
-            [ <initval>10</initval> ]  sets intial value to 10
+            [ <initval>10</initval> ]  sets initial value to 10
+            [ <param_pin>1</param_pin>] creates param pin if > 0, set to initval, value can then be set externally, ArcEye 2013
         </scale>
 
     """
     # FIXME scale resolution when ctrl/alt/shift is held down?
     # FIXME allow user to specify size
     n=0
+
     def __init__(self,master,pycomp,
-                    resolution=1,halpin=None,min_=0,max_=10,initval=0,**kw):
+                    resolution=1,halpin=None,halparam=None,min_=0,max_=10,initval=0,param_pin=0,**kw):
         self.resolution=resolution
         Scale.__init__(self,master,resolution=self.resolution,
                          from_=min_,to=max_,**kw)
+
         if halpin == None:
             halpin = "scale."+str(pyvcp_scale.n)
-            pyvcp_scale.n += 1
         self.halpin=halpin
+
+        if halparam == None:
+            self.param_pin = param_pin
+            if self.param_pin == 1:
+                halparam = "scale."+str(pyvcp_scale.n)+".param_pin"
+                self.halparam=halparam        
+                pycomp.newpin(halparam, HAL_FLOAT, HAL_IN)
+
+        pyvcp_scale.n += 1       
+        
         pycomp.newpin(halpin+"-i", HAL_S32, HAL_OUT)
         pycomp.newpin(halpin+"-f", HAL_FLOAT, HAL_OUT)
+        
         self.bind('<Button-4>',self.wheel_up)
         self.bind('<Button-5>',self.wheel_down)
         
@@ -1284,10 +1499,22 @@ class pyvcp_scale(Scale):
             self.value=initval
 
         self.set(self.value)
+        
+        if self.param_pin == 1:       
+            self.oldInit=self.value
+            self.init=self.value
+            pycomp[self.halparam] = self.value
 
     def update(self,pycomp):
         pycomp[self.halpin+"-f"]=self.get()
         pycomp[self.halpin+"-i"]=int(self.get())
+        
+        if self.param_pin == 1:
+            self.init = pycomp[self.halparam]
+            if self.init != self.oldInit :
+                self.set(self.init)
+                self.value=self.init
+                self.oldInit=self.init
 
     def wheel_up(self,event):
         self.set(self.get()+self.resolution)
@@ -1297,8 +1524,33 @@ class pyvcp_scale(Scale):
 
 
 class pyvcp_table(Frame):
-    def __init__(self, master, pycomp, flexible_rows=[], flexible_columns=[], uniform_columns="", uniform_rows=""):
-        Frame.__init__(self, master)
+    """ Grid layout widget with rows and columns.
+        * flexible_columns - list of column indexes that should be flexible width
+        * flexible_rows - list of row indexes that should be flexible width
+        * uniform_columns - string of characters for each column, in order. Columns with the same character will be the same width.
+        * uniform_rows - string of characters for each row, in order. Rows with the same character will be the same height.
+        * (also accepts Tk options for Frame)
+
+        <table flexible_rows="[3]" flexible_columns="[3]" uniform_columns="aab" uniform_rows="aab" highlightthickness="10" highlightbackground="#CCCCCC">
+            <tablesticky sticky="nwes"/>
+            <!-- row 1 -->
+            <tablerow/>
+            <label text="AAAAAAAAA" />
+            <label text="BBBBBBBBB" />
+            <label text="CCCCCCCCC" />
+            <!-- row 2 -->
+            <tablerow/>
+            <label text="A" />
+            <label text="B" />
+            <label text="C" />
+            <!-- row 3 -->
+            <tablerow/>
+            <tablespan columns="3"/>
+            <label text="Merged columns" />
+        </table>
+    """
+    def __init__(self, master, pycomp, flexible_rows=[], flexible_columns=[], uniform_columns="", uniform_rows="", **kw):
+        Frame.__init__(self, master, **kw)
         for r in flexible_rows:
             self.grid_rowconfigure(r, weight=1)
         for c in flexible_columns:

@@ -17,7 +17,7 @@
 
     You should have received a copy of the GNU General Public
     License along with this library; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111 USA
+    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
     THE AUTHORS OF THIS LIBRARY ACCEPT ABSOLUTELY NO LIABILITY FOR
     ANY HARM OR LOSS RESULTING FROM ITS USE.  IT IS _EXTREMELY_ UNWISE
@@ -95,7 +95,10 @@ int rtapi_app_main(void)
     shm_id = rtapi_shmem_new(SCOPE_SHM_KEY, comp_id, shm_size);
     if (shm_id < 0) {
 	rtapi_print_msg(RTAPI_MSG_ERR,
-	    "SCOPE: ERROR: failed to get shared memory\n");
+	    "SCOPE RT: ERROR: failed to get shared memory (key=0x%x, size=%lu)\n",
+            SCOPE_SHM_KEY,
+            shm_size
+        );
 	hal_exit(comp_id);
 	return -1;
     }

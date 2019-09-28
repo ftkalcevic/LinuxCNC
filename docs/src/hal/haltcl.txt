@@ -1,6 +1,6 @@
-= HAL TCL Files
+[[cha:haltcl]]
 
-[[cha:hal-tcl]] (((HAL TCL Files)))
+= HALTCL Files
 
 The halcmd language excels in specifiying components and connections but
 offers no computational capabilities.  As a result, ini files are limited in
@@ -95,12 +95,49 @@ $::SECTION(ITEM)
 For example, an ini file item like:
 
 ----
-[AXIS_0]
+[JOINT_0]
 MAX_VELOCITY = 4
 ----
 
-is expressed as   [AXIS_0]MAX_VELOCITY  in .hal files for halcmd
-and as          $::AXIS_0(MAX_VELOCITY) in .tcl files for haltcl
+is expressed as   [JOINT_0]MAX_VELOCITY  in .hal files for halcmd +
+and as          $::JOINT_0(MAX_VELOCITY) in .tcl files for haltcl +
+
+Because inifiles can repat the same ITEM in the same SECTION multiple times,
+$::SECTION(ITEM) is actually a Tcl list of each individual value.
+
+When there is just one value and it is a simple value (all values that
+are just letters and numbers without whitespace are in this group), then it is
+possible to treat $::SECTION(ITEM) as though it is not a list.
+
+When the value could contain special characters--quote characters,
+curly-brace characters, embedded whitespace, and other characters that
+have special meaning in Tcl--it is necessary to distinguish between the list of
+values and the initial (and possibly only) value in the list.
+
+In Tcl, this is written `[lindex $::SECTION(ITEM) 0]`.
+
+For example: given the following ini values
+----
+[HOSTMOT2]
+DRIVER=hm2_eth
+IPADDR="10.10.10.10"
+BOARD=7i92
+CONFIG="num_encoders=0 num_pwmgens=0 num_stepgens=6"
+----
+And this loadrt command:
+----
+loadrt $::HOSTMOT2(DRIVER) board_ip=$::HOSTMOT2(IPADDR) config=$::HOSTMOT2(CONFIG)
+----
+Here is the actual command that is run:
+----
+loadrt hm2_eth board_ip={"10.10.10.10"} config={"num_encoders=0 num_pwmgens=0 num_stepgens=6"}
+----
+This fails because loadrt does not recognize the braces.
+
+So to get the values just as entered in the ini file, re-write the loadrt line like this:
+----
+loadrt $::HOSTMOT2(DRIVER) board_ip=[lindex $::HOSTMOT2(IPADDR) 0] config=[lindex $::HOSTMOT2(CONFIG) 0]
+----
 
 == Converting .hal files to .tcl files
 
@@ -121,15 +158,15 @@ is implicitly treated as an expression in the tcl language.
 
 .Example
 ----
-# set gain to convert deg/sec to units/min for AXIS_0 radius
-setp scale.0.gain 6.28/360.0*$::AXIS_0(radius)*60.0
+# set gain to convert deg/sec to units/min for JOINT_0 radius
+setp scale.0.gain 6.28/360.0*$::JOINT_0(radius)*60.0
 ----
 
 Whitespace in the bare expression is not allowed, use quotes
 for that:
 
 ----
-setp scale.0.gain "6.28 / 360.0 * $::AXIS_0(radius) * 60.0"
+setp scale.0.gain "6.28 / 360.0 * $::JOINT_0(radius) * 60.0"
 ----
 
 In other contexts, such as 'loadrt', you must explicitly use
@@ -148,7 +185,7 @@ planner.  So, when using halcmd files, we force inifiles to have a manually
 calculated value.
 
 ----
-[AXIS_0]
+[JOINT_0]
 MAXACCEL = 10.0
 STEPGEN_MAXACCEL = 10.5
 ----
@@ -157,7 +194,7 @@ With haltcl, you can use tcl commands to do the computation and
 eliminate the STEPGEN_MAXACCEL inifile item altogether.
 
 ----
-setp stepgen.0.maxaccel $::AXIS_0(MAXACCEL)*1.05
+setp stepgen.0.maxaccel $::JOINT_0(MAXACCEL)*1.05
 ----
 
 Another haltcl feature is looping and testing.  For example, many simulator
@@ -168,13 +205,13 @@ code would work for any combination of axes in a trivkins machine.
 ----
 # Create position, velocity and acceleration signals for each axis
 set ddt 0
-foreach axis {X Y Z A B C U V W} axno {0 1 2 3 4 5 6 7 8} {
+for {set jnum 0} {$jnum < $::KINS(JOINTS)} {incr jnum} {
   # 'list pin' returns an empty list if the pin doesn't exist
-  if {[hal list pin axis.$axno.motor-pos-cmd] == {}} {
+  if {[hal list pin joint.${jnum}.motor-pos-cmd] == {}} {
     continue
   }
-  net ${axis}pos axis.$axno.motor-pos-cmd => axis.$axno.motor-pos-fb \
-                                          => ddt.$ddt.in
+  net ${jnum}pos joint.${jnum}.motor-pos-cmd => joint.$axno.motor-pos-fb \
+                                             => ddt.$ddt.in
   net ${axis}vel <= ddt.$ddt.out
   incr ddt
   net ${axis}vel => ddt.$ddt.in
@@ -199,7 +236,7 @@ $ halrun -T haltclfile.tcl
 
 == Haltcl Distribution Examples (sim)
 
-The configs/sim/simtcl directory includes an ini file that uses a .tcl file
+The configs/sim/axis/simtcl directory includes an ini file that uses a .tcl file
 to demonstrate a haltcl configuration in conjunction with the usage of
 twopass processing.  The example shows the use of tcl procedures, looping, the
 use of comments, and output to the terminal.
