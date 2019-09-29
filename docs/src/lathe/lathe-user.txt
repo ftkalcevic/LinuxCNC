@@ -1,9 +1,6 @@
+[[cha:lathe-user-information]]
+
 = Lathe User Information
-
-[[cha:lathe-user-information]] (((Lathe User Information)))
-
-This chapter attempts to bring together all the lathe specific
-information and is currently under construction.
 
 == Lathe Mode
 
@@ -13,9 +10,9 @@ best results from LinuxCNC.
 
 If you are using the AXIS display, 
 have Axis display your lathe tools properly. 
-See the INI Configuration section of the Integrator Manual for 
-more details but you will probably want to make an entry like this 
-to set up AXIS for Lathe Mode. 
+See the <<cha:ini-configuration,INI Configuration>> section for more details.
+
+To set up AXIS for Lathe Mode.
 
 ---------------------------------------
 [DISPLAY]
@@ -34,6 +31,9 @@ must program that in the preamble of each gcode file or
 # g-code modal codes (modes) that the interpreter is initialized with on startup
 RS274NGC_STARTUP_CODE = G18 G20 G90
 ---------------------------------------
+
+If your using Gmoccapy then see the
+<<gmoccapy:lathe-section,the Gmoccapy Lathe section>>.
 
 == Lathe Tool Table [[sec:lathe-tool-table]]
 
@@ -59,32 +59,38 @@ with the center line angle of each orientation and
 info on FRONTANGLE and BACKANGLE.
 The FRONTANGLE and BACKANGLE are clockwise starting at a line parallel to Z+.
 
-.Lathe Tool Orientations[[cap:Lathe-Tool-Orientations]]
+.Lathe Tool Orientations
 
-image::images/tool_positions.png[]
+image::images/tool-positions_en.svg[align="center", alt="Lathe Tool Orientations"]
 
 In AXIS the following figures show what the Tool Positions look like, as entered in the tool table.
 
-.Tool Positions 1, 2, 3 & 4[[fig:Tool-Positions-1-2-3-4]]
+.Tool Positions 1, 2, 3 & 4
 
-image::images/tool_pos_1.png[] 
-image::images/tool_pos_2.png[] 
-image::images/tool_pos_3.png[] 
-image::images/tool_pos_4.png[]
+image:images/tool-pos-1_en.svg[alt="Tool Position 1"]
+image:images/tool-pos-2_en.svg[alt="Tool Position 2"]
+image:images/tool-pos-3_en.svg[alt="Tool Position 3"]
+image:images/tool-pos-4_en.svg[alt="Tool Position 4"]
 
-.Tool Positions 5, 6, 7 & 8[[fig:Tool-Positions-5-6-7-8]]
+.Tool Positions 5, 6, 7 & 8
 
-image::images/tool_pos_5.png[] 
-image::images/tool_pos_6.png[] 
-image::images/tool_pos_7.png[] 
-image::images/tool_pos_8.png[]
+image:images/tool-pos-5_en.svg[alt="Tool Position 5"]
+image:images/tool-pos-6_en.svg[alt="Tool Position 6"]
+image:images/tool-pos-7_en.svg[alt="Tool Position 7"]
+image:images/tool-pos-8_en.svg[alt="Tool Position 8"]
 
 == Tool Touch Off
 
 When running in lathe mode in AXIS you can set the X and Z in the tool
-table using the Touch Off window.
+table using the Touch Off window. If you have a tool turret you normally
+have 'Touch off to fixture' selected when setting up your turret. When
+setting the material Z zero you have 'Touch off to material' selected.
+For more information on the G codes used for tools see
+<<mcode:m6,M6>>, <<sec:select-tool,Tn>>, and <<gcode:g43,G43>>.
+For more information on tool touch off options in Axis see 
+<<axis:tool-touch-off,Tool Touch Off>>.
 
-=== The X Tool Offset
+=== X Touch Off
 
 The X axis offset for each tool is normally an offset 
 from the center line of the spindle.
@@ -105,7 +111,7 @@ so the current tool is the current offset.
 A typical session might be:
 
  . Home each axis if not homed.
- . Set the current tool with "Tn M6" where "n" is the tool number.
+ . Set the current tool with 'Tn M6 G43' where 'n' is the tool number.
  . Select the X axis in the Manual Control window.
  . Move the X to a known position or take a test cut and measure the diameter. 
  . Select Touch Off and pick Tool Table then enter the position or the diameter. 
@@ -113,7 +119,7 @@ A typical session might be:
 
 Note: if you are in Radius Mode you must enter the radius, not the diameter. 
 
-=== The Z Tool Offset
+=== Z Touch Off
 
 The Z axis offsets can be a bit confusing at first 
 because there are two elements to the Z offset. 
@@ -129,7 +135,7 @@ A typical session might be:
 
  . Home each axis if not homed.
  . Make sure no offsets are in effect for the current coordinate system.
- . Set the current tool with "TnM6" where "n" is the tool number.
+ . Set the current tool with 'Tn M6 G43' where 'n' is the tool number.
  . Select the Z axis in the Manual Control window.
  . Bring the tool close to the control surface. Using a cylinder move the
    Z away from the control surface until the cylinder just passes between
@@ -164,21 +170,28 @@ machine coordinate system offset, you will not get what you expect,
 as the tool offset will be added to the current offset when 
 the tool is used in your program.
 
-== Threading
+== Spindle Synchronized Motion
 
-Threading with a lathe requires feedback from the spindle to LinuxCNC.
-Typically an encoder is used to provide the feedback. 
-See the Integrator Manual for more information on spindle feedback.
+Spindle synchronized motion requires a quadrature encoder connected
+to the spindle with one index pulse per revolution. See the motion
+man page and the <<cha:spindle-control,Spindle Control Example>> for more
+information.
 
+.Threading
 The G76 threading cycle is used for both internal and external threads.
-For more information see the <<sec:G76-Threading-Canned,G76>> Section.
+For more information see the <<gcode:g76,G76>> Section.
 
-== Constant Surface Speed
+.Constant Surface Speed
+CSS or Constant Surface Speed uses the machine X origin modified by the tool X
+offset to compute the spindle speed in RPM. CSS will track changes in tool
+offsets. The X <<sec.machine-corrdinate-system,machine origin>> should be when
+the reference tool (the one with zero offset) is at the center of rotation.
+For more information see the <<gcode:g96-g97,G96>> Section.
 
-CSS or Constant Surface Speed (G96) uses the machine X origin modified
-by the tool X offset to compute the spindle speed in RPM. CSS will
-track changes in tool offsets. The X machine origin should be when the
-reference tool (the one with zero offset) is at the center of rotation.
+.Feed per Revolution
+Feed per revolution will move the Z axis by the F amount per revolution.
+This is not for threading, use G76 for threading.
+For more information see the <<gcode:g93-g94-g95,G95>> Section.
 
 == Arcs
 
@@ -232,9 +245,9 @@ the programmed path unless cutter comp is in effect. In the following
 figures you can see how the control point does not follow the tool edge
 as you might assume.
 
-.Control Point[[fig:Control-Point]]
+.Control Point
 
-image::images/control_point.png[]
+image::images/control-point_en.svg[align="center", alt="Control Point"]
 
 === Cutting Angles without Cutter Comp
 
@@ -245,7 +258,7 @@ as we are moving in an X or Z direction only.
 
 .Ramp Entry
 
-image::images/ramp_entry.png[]
+image::images/ramp-entry_en.svg[align="center", alt="Ramp Entry"]
 
 Now as the control point progresses along the programmed path the
 actual cutter edge does not follow the programmed path as shown in the
@@ -254,7 +267,7 @@ adjusting your programmed path to compensate for tip radius.
 
 .Ramp Path
 
-image::images/ramp_cut.png[]
+image::images/ramp-cut_en.svg[align="center", alt="Ramp Path"]
 
 In the above example it is a simple exercise to adjust the programmed
 path to give the desired actual path by moving the programmed path for
@@ -269,7 +282,7 @@ path and the tool is touching the OD of the part.
 
 .Turning Cut
 
-image::images/radius_1.png[]
+image::images/radius-1_en.svg[align="center", alt="Turning Cut"]
 
 In this next figure you can see as the tool approaches the end of the
 part the control point still follows the path but the tool tip has left
@@ -278,14 +291,14 @@ has been programmed the part will actually end up with a square corner.
 
 .Radius Cut
 
-image::images/radius_2.png[]
+image::images/radius-2_en.svg[align="center", alt="Radius Cut"]
 
 Now you can see as the control point follows the radius programmed the
 tool tip has left the part and is now cutting air.
 
 .Radius Cut
 
-image::images/radius_3.png[]
+image::images/radius-3_en.svg[align="center", alt="Radius Cut"]
 
 In the final figure we can see the tool tip will finish cutting the
 face but leave a square corner instead of a nice radius. Notice also
@@ -296,7 +309,7 @@ past center at least the nose radius of the tool.
 
 .Face Cut
 
-image::images/radius_4.png[]
+image::images/radius-4_en.svg[align="center", alt="Face Cut"]
 
 === Using Cutter Comp
 

@@ -31,7 +31,7 @@ PRECOMPILED_HEADER = stdafx.h
 
 INCLUDEPATH += ../../include ./generatedfiles
 
-LIBS += -L ../../lib ../../lib/libinterpbase.so -lGL -lGLU
+LIBS += -L ../../lib ../../lib/libinterpbaseclass.so -lGL -lGLU
 
 SOURCES += main.cpp\
         mainwindow.cpp \

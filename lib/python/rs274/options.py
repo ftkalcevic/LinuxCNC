@@ -14,7 +14,7 @@
 #
 #    You should have received a copy of the GNU General Public License
 #    along with this program; if not, write to the Free Software
-#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+#    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 import nf, os
 
@@ -115,8 +115,17 @@ option add *Togl.dwell #ff8080 startupFile
 option add *Togl.m1xx #8080ff startupFile
 
 option add *Togl.straight_feed #ffffff startupFile
+option add *Togl.straight_feed_xy #40ff40 startupFile
+option add *Togl.straight_feed_uv #4040ff startupFile
 option add *Togl.arc_feed #ffffff startupFile
+option add *Togl.arc_feed_xy #40ff40 startupFile
+option add *Togl.arc_feed_uv #4040ff startupFile
+option add *Togl.cone #ffffff startupFile
+option add *Togl.cone_xy #00ff00 startupFile
+option add *Togl.cone_uv #0000ff startupFile
 option add *Togl.traverse #4c8080 startupFile
+option add *Togl.traverse_xy #4c8080 startupFile
+option add *Togl.traverse_uv #4c8080 startupFile
 option add *Togl.backplotjog yellow startupFile
 option add *Togl.backplotfeed #c04040 startupFile
 option add *Togl.backplotarc #c04080 startupFile

@@ -18,7 +18,7 @@ static char *license = \
 \n\
     You should have received a copy of the GNU General Public\n\
     License along with this library; if not, write to the Free Software\n\
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111 USA\n\
+    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.\n\
 \n\
     THE AUTHORS OF THIS LIBRARY ACCEPT ABSOLUTELY NO LIABILITY FOR\n\
     ANY HARM OR LOSS RESULTING FROM ITS USE.  IT IS _EXTREMELY_ UNWISE\n\
@@ -160,7 +160,10 @@ int main(int argc, gchar * argv[])
     shm_id = rtapi_shmem_new(SCOPE_SHM_KEY, comp_id, sizeof(scope_shm_control_t));
     if (shm_id < 0) {
 	rtapi_print_msg(RTAPI_MSG_ERR,
-	    "SCOPE: ERROR: failed to get shared memory\n");
+	    "SCOPE: ERROR: failed to get shared memory (key=0x%x, size=%lu)\n",
+            SCOPE_SHM_KEY,
+            (unsigned long)sizeof(scope_shm_control_t)
+        );
 	hal_exit(comp_id);
 	return -1;
     }
@@ -176,7 +179,7 @@ int main(int argc, gchar * argv[])
     hal_ready(comp_id);
 
     /* register an exit function to cleanup and disconnect from the HAL */
-    g_atexit(exit_from_hal);
+    atexit(exit_from_hal);
 
     /* init control structure */
     ctrl_usr = &ctrl_struct;

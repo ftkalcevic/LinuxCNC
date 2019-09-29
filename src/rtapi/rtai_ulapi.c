@@ -39,7 +39,7 @@
 
    You should have received a copy of the GNU General Lesser Public
    License along with this library; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111 USA
+   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
 /** THE AUTHORS OF THIS LIBRARY ACCEPT ABSOLUTELY NO LIABILITY FOR
@@ -55,6 +55,8 @@
     information, go to www.linuxcnc.org.
 */
 
+#define _GNU_SOURCE
+
 #include <stdio.h>		/* sprintf() */
 #include <string.h>		/* strcpy, etc. */
 #include <stddef.h>		/* NULL, needed for rtai_shm.h */
@@ -69,6 +71,7 @@
 #include <errno.h>		/* errno */
 
 #include "rtapi.h"		/* public RTAPI decls */
+#include <rtapi_mutex.h>
 #include "rtapi_common.h"	/* shared realtime/nonrealtime stuff */
 
 /* the following are internal functions that do the real work associated
@@ -90,6 +93,7 @@ static int msg_level = RTAPI_MSG_ERR;	/* message printing level */
 
 static void check_memlock_limit(const char *where);
 
+static int nummods;
 /***********************************************************************
 *                      GENERAL PURPOSE FUNCTIONS                       *
 ************************************************************************/
@@ -103,16 +107,19 @@ int rtapi_init(const char *modname)
     rtapi_print_msg(RTAPI_MSG_DBG, "RTAPI: initing module %s\n", modname);
     /* get shared memory block from OS and save its address */
     errno = 0;
-    rtapi_data = rtai_malloc(RTAPI_KEY, sizeof(rtapi_data_t));
+    if(!rtapi_data)
+        rtapi_data = rtai_malloc(RTAPI_KEY, sizeof(rtapi_data_t));
     // the check for -1 here is because rtai_malloc (in at least
     // rtai 3.6.1, and probably others) has a bug where it
     // sometimes returns -1 on error
     if (rtapi_data == NULL || rtapi_data == (rtapi_data_t*)-1) {
 	rtapi_print_msg(RTAPI_MSG_ERR,
-	    "RTAPI: ERROR: could not open shared memory (errno=%d)\n", errno);
+	    "RTAPI: ERROR: could not open shared memory (%s)\n", strerror(errno));
 	check_memlock_limit("could not open shared memory");
+	rtapi_data = 0;
 	return -ENOMEM;
     }
+    nummods++;
     /* perform a global init if needed */
     init_rtapi_data(rtapi_data);
     /* check revision code */
@@ -218,6 +225,12 @@ int rtapi_exit(int module_id)
     module->name[0] = '\0';
     rtapi_data->ul_module_count--;
     rtapi_mutex_give(&(rtapi_data->mutex));
+    nummods--;
+    if(nummods == 0)
+    {
+	rtai_free(RTAPI_KEY, rtapi_data);
+	rtapi_data = 0;
+    }
     return 0;
 }
 
@@ -251,7 +264,7 @@ void rtapi_print(const char *fmt, ...)
     va_end(args);
 }
 
-void rtapi_print_msg(int level, const char *fmt, ...)
+void rtapi_print_msg(msg_level_t level, const char *fmt, ...)
 {
     va_list args;
 
@@ -433,7 +446,7 @@ int rtapi_shmem_new(int key, int module_id, unsigned long int size)
 	    /* is this module already using it? */
 	    if (test_bit(module_id, shmem->bitmap)) {
 		rtapi_mutex_give(&(rtapi_data->mutex));
-		rtapi_print_msg(RTAPI_MSG_WARN,
+		rtapi_print_msg(RTAPI_MSG_ERR,
 		    "RTAPI: Warning: shmem already mapped\n");
 		return -EINVAL;
 	    }
@@ -837,3 +850,14 @@ unsigned char rtapi_inb(unsigned int port)
 {
     return inb(port);
 }
+
+int rtapi_is_realtime() { return 1; }
+int rtapi_is_kernelspace() { return 1; }
+
+void rtapi_delay(long ns) {
+    if(ns > rtapi_delay_max()) ns = rtapi_delay_max();
+    struct timespec ts = {0, ns};
+    clock_nanosleep(CLOCK_MONOTONIC, 0, &ts, 0);
+}
+
+long int rtapi_delay_max() { return 999999999; }

@@ -46,11 +46,17 @@ class HAL_Bar(gtk.DrawingArea, _HalWidgetBase):
                     -MAX_INT, MAX_INT, 0, gobject.PARAM_READWRITE | gobject.PARAM_CONSTRUCT),
         'value' : ( gobject.TYPE_FLOAT, 'Value', 'Current bar value (for glade testing)',
                     -MAX_INT, MAX_INT, 0, gobject.PARAM_READWRITE | gobject.PARAM_CONSTRUCT),
+        'target_value' : ( gobject.TYPE_FLOAT, 'Target_Value', 'Target value (for glade testing)',
+                    -MAX_INT, MAX_INT, 0, gobject.PARAM_READWRITE | gobject.PARAM_CONSTRUCT),
+        'target_width' : ( gobject.TYPE_FLOAT, 'Target Width', 'Target pixel width',
+                    1, 5, 2, gobject.PARAM_READWRITE | gobject.PARAM_CONSTRUCT),
         'z0_color' : ( gtk.gdk.Color.__gtype__, 'Zone 0 color', "Set color for first zone",
                         gobject.PARAM_READWRITE),
         'z1_color' : ( gtk.gdk.Color.__gtype__, 'Zone 1 color', "Set color for second zone",
                         gobject.PARAM_READWRITE),
         'z2_color' : ( gtk.gdk.Color.__gtype__, 'Zone 2 color', "Set color for third zone",
+                        gobject.PARAM_READWRITE),
+        'target_color' : ( gtk.gdk.Color.__gtype__, 'Target color', "Set color for target indicator",
                         gobject.PARAM_READWRITE),
         'z0_border' : ( gobject.TYPE_FLOAT, 'Zone 0 up limit', 'Up limit (fraction) of zone 0',
                     0, 1, 1, gobject.PARAM_READWRITE | gobject.PARAM_CONSTRUCT),
@@ -65,6 +71,8 @@ class HAL_Bar(gtk.DrawingArea, _HalWidgetBase):
         'text_template' : ( gobject.TYPE_STRING, 'Text template',
                 'Text template to display. Python formatting may be used for one variable',
                 "%s", gobject.PARAM_READWRITE|gobject.PARAM_CONSTRUCT),
+        'shiny' : ( gobject.TYPE_BOOLEAN, 'Shiny', 'Makes the bar shiny',
+                    False, gobject.PARAM_READWRITE | gobject.PARAM_CONSTRUCT),
     }
     __gproperties = __gproperties__
     _size_request = (20, 20)
@@ -76,7 +84,8 @@ class HAL_Bar(gtk.DrawingArea, _HalWidgetBase):
         self.z0_color = gtk.gdk.Color('green')
         self.z1_color = gtk.gdk.Color('yellow')
         self.z2_color = gtk.gdk.Color('red')
-
+        self.target_color = gtk.gdk.Color('purple')
+        self.target_width = 2
         self.force_width = self._size_request[0]
         self.force_height = self._size_request[1]
         self.set_size_request(*self._size_request)
@@ -197,6 +206,10 @@ class HAL_Bar(gtk.DrawingArea, _HalWidgetBase):
         self.value = value
         self.queue_draw()
 
+    def set_target_value(self, value):
+        self.target_value = value
+        self.queue_draw()
+
     def get_value_diff(self, value):
         value = max(self.min, min(value, self.max))
         return (value - self.min) / (self.max - self.min)
@@ -214,6 +227,7 @@ class HAL_HBar(HAL_Bar):
     def expose(self, widget, event):
         cr, (w, h), set_color, alpha = self._expose_prepare(widget)
 
+        # make bar
         set_color(gtk.gdk.Color('black'))
         cr.save()
         zv = w * self.get_value_diff(self.zero)
@@ -224,8 +238,8 @@ class HAL_HBar(HAL_Bar):
             cr.rectangle(w - wv, 0, wv - zv, h)
         cr.clip_preserve()
         cr.stroke_preserve()
-
-        if self.invert:
+        bi_flag = bool((self.min == (- self.max)) and self.value < 0)
+        if self.invert or bi_flag:
             lg = cairo.LinearGradient(w, 0, 0, 0)
         else:
             lg = cairo.LinearGradient(0, 0, w, 0)
@@ -234,8 +248,37 @@ class HAL_HBar(HAL_Bar):
         cr.fill()
         cr.restore()
 
-        set_color(gtk.gdk.Color('black'))
+        # now make it shiny
+        if self.shiny:
+            cr.rectangle(0, 0, w, h)
+            lg = cairo.LinearGradient(0, 0, 0, h)
+            lg.add_color_stop_rgba(0, 0, 0, 0, .5)
+            lg.add_color_stop_rgba(.16, 1, 1, 1, .25)
+            lg.add_color_stop_rgba(.33, 1, 1, 1, .75)
+            lg.add_color_stop_rgba(.66, 1, 1, 1, .25)
+            lg.add_color_stop_rgba(1, 0, 0, 0, .5)
+            cr.set_source(lg)
+            cr.fill()
 
+        # make target line
+        if self.target_value > 0:
+            set_color(self.target_color)
+            if self.target_value > self.max:
+                tvalue = self.max
+            else:
+                tvalue = self.target_value
+            wv = w * self.get_value_diff(tvalue)
+            cr.set_line_width(self.target_width)
+            if not self.invert:
+                cr.move_to(wv,0)
+                cr.rel_line_to(0,h)
+            else:
+                cr.move_to(w-wv,0)
+                cr.rel_line_to(0,h)
+            cr.stroke()
+
+        # write text
+        set_color(gtk.gdk.Color('black'))
         tmpl = lambda s: self.text_template % s
         if self.show_limits:
             if not self.invert:
@@ -255,6 +298,7 @@ class HAL_VBar(HAL_Bar):
     def expose(self, widget, event):
         cr, (w, h), set_color, alpha = self._expose_prepare(widget)
 
+        # make bar
         cr.save()
         set_color(gtk.gdk.Color('black'))
         zv = h * self.get_value_diff(self.zero)
@@ -266,7 +310,8 @@ class HAL_VBar(HAL_Bar):
         cr.clip_preserve()
         cr.stroke_preserve()
 
-        if self.invert:
+        bi_flag = bool((self.min == (- self.max)) and self.value < 0)
+        if self.invert or bi_flag:
             lg = cairo.LinearGradient(0, 0, 0, h)
         else:
             lg = cairo.LinearGradient(0, h, 0, 0)
@@ -274,9 +319,39 @@ class HAL_VBar(HAL_Bar):
         cr.set_source(lg)
         cr.fill()
         cr.restore()
+        
+        # now make it shiny
+        if self.shiny:
+            cr.rectangle(0, 0, w, h)
+            lg = cairo.LinearGradient(0, 0, w, 0)
+            lg.add_color_stop_rgba(0, 0, 0, 0, .5)
+            lg.add_color_stop_rgba(.16, 1, 1, 1, .25)
+            lg.add_color_stop_rgba(.33, 1, 1, 1, .75)
+            lg.add_color_stop_rgba(.66, 1, 1, 1, .25)
+            lg.add_color_stop_rgba(1, 0, 0, 0, .5)
+            cr.set_source(lg)
+            cr.fill()
 
+        # make target line
+        if self.target_value > 0:
+            set_color(self.target_color)
+            if self.target_value > self.max:
+                tvalue = self.max
+            else:
+                tvalue = self.target_value
+            wv = h * self.get_value_diff(tvalue)
+            cr.set_line_width(self.target_width)
+            if not self.invert:
+                cr.move_to(0,h - wv)
+                cr.rel_line_to(w,0)
+            else:
+                #cr.rectangle(w - wv, 0, wv - zv, h)
+                cr.move_to(0,zv + wv)
+                cr.rel_line_to(w,0)
+            cr.stroke()
+
+        # make text
         set_color(gtk.gdk.Color('black'))
-
         tmpl = lambda s: self.text_template % s
         if self.show_limits:
             if not self.invert:

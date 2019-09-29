@@ -1,0 +1,28 @@
+component mux "Select from one of eight input values";
+pin in u32 sel "Determine which \\fBin\\fIN\\fR value is copied to \\fBout\\fR.";
+pin out float out "Follows the value of one of the \\fBin\\fIN\\fR values according to the \\fBsel\\fR value";
+pin in float in0;
+pin in float in1;
+pin in float in2;
+pin in float in3;
+pin in float in4;
+pin in float in5;
+pin in float in6;
+pin in float in7;
+function _;
+license "GPL";
+;;
+FUNCTION(_) {
+    switch (sel)
+    {
+	case 0: out = in0; break;
+	case 1: out = in1; break;
+	case 2: out = in2; break;
+	case 3: out = in3; break;
+	case 4: out = in4; break;
+	case 5: out = in5; break;
+	case 6: out = in6; break;
+	case 7: out = in7; break;
+	default: break;
+    }
+}

@@ -1,8 +1,7 @@
-Getting Started V2.5, {localdate}
-=================================
-
+:lversion: {sys: cat ../VERSION}
+Getting Started V{lversion}, {localdate}
+========================================
 :lang: en
-
 :masterdir: {indir}
 
 The LinuxCNC Team
@@ -13,32 +12,16 @@ image::common/images/emc2-intro.*[]
 
 include::common/overleaf.txt[]
 
-:leveloffset: 0
+include::getting-started/about-linuxcnc.txt[]
 
-= Getting Started
+include::getting-started/system-requirements.txt[]
 
-:leveloffset: 1
+include::getting-started/getting-linuxcnc.txt[]
 
-include::common/System_Requirements.txt[]
+include::getting-started/updating-linuxcnc.txt[]
 
-include::common/Getting_EMC.txt[]
+include::common/glossary.txt[]
 
-include::common/Updating_EMC.txt[]
-
-include::quickstart/stepper_quickstart.txt[]
-
-include::config/stepconf.txt[]
-
-include::config/pncconf.txt[]
-
-include::config/copy_and_run.txt[]
-
-include::common/Linux_FAQ.txt[]
-
-include::common/GPLD_Copyright.txt[]
-
-// = Index
+include::common/gpld-copyright.txt[]
 
 // vim: set syntax=asciidoc:
-
-

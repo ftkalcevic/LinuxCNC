@@ -28,26 +28,26 @@ extern "C" {
 #include "cms_cfg.hh"		/* CMS_CONFIG_LINELEN */
 
 class PHYSMEM_HANDLE;
-class PM_CARTESIAN;
-class PM_CYLINDRICAL;
-class PM_EULER_ZYX;
-class PM_EULER_ZYZ;
-class PM_HOMOGENEOUS;
-class PM_POSE;
-class PM_QUATERNION;
-class PM_ROTATION_MATRIX;
-class PM_ROTATION_VECTOR;
-class PM_RPY;
-class PM_SPHERICAL;
+struct PM_CARTESIAN;
+struct PM_CYLINDRICAL;
+struct PM_EULER_ZYX;
+struct PM_EULER_ZYZ;
+struct PM_HOMOGENEOUS;
+struct PM_POSE;
+struct PM_QUATERNION;
+struct PM_ROTATION_MATRIX;
+struct PM_ROTATION_VECTOR;
+struct PM_RPY;
+struct PM_SPHERICAL;
 class LinkedList;
 
 enum CMS_STATUS {
 /* ERROR conditions */
-    CMS_MISC_ERROR = -1,	/* A miscellaneous error occured. */
-    CMS_UPDATE_ERROR = -2,	/* An error occured during an update. */
-    CMS_INTERNAL_ACCESS_ERROR = -3,	/* An error occured during an
+    CMS_MISC_ERROR = -1,	/* A miscellaneous error occurred. */
+    CMS_UPDATE_ERROR = -2,	/* An error occurred during an update. */
+    CMS_INTERNAL_ACCESS_ERROR = -3,	/* An error occurred during an
 					   internal access function. */
-    CMS_NO_MASTER_ERROR = -4,	/* An error occured becouse the master was
+    CMS_NO_MASTER_ERROR = -4,	/* An error occurred becouse the master was
 				   not started */
     CMS_CONFIG_ERROR = -5,	/* There was an error in the configuration */
     CMS_TIMED_OUT = -6,		/* operation timed out. */
@@ -193,8 +193,8 @@ class CMS {
 							   wait for new data. 
 							 */
     virtual CMS_STATUS peek();	/* Read without setting flag. */
-    virtual CMS_STATUS write(void *user_data);	/* Write to buffer. */
-    virtual CMS_STATUS write_if_read(void *user_data);	/* Write to buffer. */
+    virtual CMS_STATUS write(void *user_data, int *serial_number = NULL);	/* Write to buffer. */
+    virtual CMS_STATUS write_if_read(void *user_data, int *serial_number = NULL);	/* Write to buffer. */
     virtual int login(const char *name, const char *passwd);
     virtual void reconnect();
     virtual void disconnect();
@@ -202,7 +202,7 @@ class CMS {
     virtual int get_space_available();
 
     /* Protocol Defined Virtual Function Stubs. */
-    virtual CMS_STATUS main_access(void *_local);
+    virtual CMS_STATUS main_access(void *_local, int *serial_number = NULL);
 
     /* Neutrally Encoded Buffer positioning functions. */
     void rewind();		/* positions at beginning */
@@ -221,8 +221,8 @@ class CMS {
   /*******************************************************/
     /* CMS INTERNAL ACCESS FUNCTIONS located in cms_in.cc */
   /*******************************************************/
-    CMS_STATUS internal_access(PHYSMEM_HANDLE * _global, void *_local);
-    CMS_STATUS internal_access(void *_global, long global_size, void *_local);
+    CMS_STATUS internal_access(PHYSMEM_HANDLE * _global, void *_local, int *serial_number);
+    CMS_STATUS internal_access(void *_global, long global_size, void *_local, int *serial_number);
     CMS_STATUS internal_clear();	/* Zero the global memory.  */
     int check_if_read_raw();
     int check_if_read_encoded();
@@ -232,9 +232,9 @@ class CMS {
     CMS_STATUS read_encoded();	/* Read from neutrally encoded buffers. */
     CMS_STATUS peek_raw();	/* Read without setting flags. */
     CMS_STATUS peek_encoded();	/* Read without setting flags. */
-    CMS_STATUS write_raw(void *user_data);	/* Write to raw buffers. */
+    CMS_STATUS write_raw(void *user_data, int *serial_number);	/* Write to raw buffers. */
     CMS_STATUS write_encoded();	/* Write to neutrally encoded buffers. */
-    CMS_STATUS write_if_read_raw(void *user_data);	/* Write if read. */
+    CMS_STATUS write_if_read_raw(void *user_data, int *serial_number);	/* Write if read. */
     CMS_STATUS write_if_read_encoded();	/* Write if read. */
     int queue_check_if_read_raw();
     int queue_check_if_read_encoded();
@@ -248,9 +248,9 @@ class CMS {
     CMS_STATUS queue_read_encoded();	/* Read from neutral buffers. */
     CMS_STATUS queue_peek_raw();	/* Read without setting flags. */
     CMS_STATUS queue_peek_encoded();	/* Read without setting flags. */
-    CMS_STATUS queue_write_raw(void *user_data);	/* Write to raw bufs */
+    CMS_STATUS queue_write_raw(void *user_data, int *serial_number);	/* Write to raw bufs */
     CMS_STATUS queue_write_encoded();	/* Write to neutral buffers. */
-    CMS_STATUS queue_write_if_read_raw(void *user_data);
+    CMS_STATUS queue_write_if_read_raw(void *user_data, int *serial_number);
     CMS_STATUS queue_write_if_read_encoded();	/* Write if read. */
     virtual void clean_buffers();
 
@@ -362,6 +362,7 @@ class CMS {
     char PermissionString[CMS_CONFIG_LINELEN];
     int is_local_master;
     int force_raw;
+    bool serial;
     int split_buffer;		/* Will the buffer be split into two areas so 
 				   that one area can be read while the other
 				   is written to ? */
@@ -434,7 +435,7 @@ class CMS {
   private:
     unsigned long encode_state;	/* Store position for save, restore. */
     unsigned long decode_state;	/* Store position for save, restore. */
-    void open(void);		/* Allocate memory and intialize XDR streams */
+    void open(void);		/* Allocate memory and initialize XDR streams */
     static int number_of_cms_objects;	/* Used to decide when to initialize
 					   and cleanup PC-NFS Toolkit DLLs */
 

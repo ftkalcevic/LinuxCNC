@@ -17,7 +17,7 @@
 
     You should have received a copy of the GNU General Public
     License along with this library; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111 USA
+    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
     THE AUTHORS OF THIS LIBRARY ACCEPT ABSOLUTELY NO LIABILITY FOR
     ANY HARM OR LOSS RESULTING FROM ITS USE.  IT IS _EXTREMELY_ UNWISE
@@ -45,6 +45,7 @@
 #include <string.h>
 
 #include "rtapi.h"		/* RTAPI realtime OS API */
+#include <rtapi_mutex.h>
 #include "hal.h"		/* HAL public API decls */
 #include "../hal_priv.h"	/* private HAL decls */
 
@@ -598,7 +599,7 @@ static void init_chan_info_window(void)
     gtk_misc_set_alignment(GTK_MISC(vert->readout_label), 0, 0);
     gtk_label_set_justify(GTK_LABEL(vert->readout_label), GTK_JUSTIFY_LEFT);
     gtk_label_size_to_fit(GTK_LABEL(vert->readout_label),
-		    "f(99999.9999) = 99999.9999");
+		    "f(99999.9999) = 99999.9999 (ddt 99999.9999)");
 }
 
 static void init_vert_info_window(void)
@@ -646,7 +647,7 @@ static void init_vert_info_window(void)
 	gtk_label_new_in_box(" ---- ", ctrl_usr->vert_info_win, FALSE, FALSE,
 	0);
     /* Offset control */
-    vert->offset_button = gtk_button_new_with_label("Offset\n----");
+    vert->offset_button = gtk_button_new_with_label(_("Offset\n----"));
     vert->offset_label = (GTK_BIN(vert->offset_button))->child;
     gtk_box_pack_start(GTK_BOX(ctrl_usr->vert_info_win),
 	vert->offset_button, FALSE, FALSE, 0);
@@ -970,7 +971,7 @@ static gboolean search_for_entry(GtkWidget *widget, GdkEventKey *event, dialog_g
 	search_row = search_row + 1;
 	if(!gtk_clist_get_text(clist, search_row, 0, &text))
 	    search_row = 0;
-	printf("next search: %d\n", search_row);
+	printf(_("next search: %d\n"), search_row);
     } else {
 	strcat(search_target, event->string);
     }
@@ -978,7 +979,7 @@ static gboolean search_for_entry(GtkWidget *widget, GdkEventKey *event, dialog_g
     for(z = search_row, wrapped=0; z != search_row || !wrapped; z ++) {
 	char *text;
 
-	printf("search: %d (wrapped=%d)\n", z, wrapped);
+	printf(_("search: %d (wrapped=%d)\n"), z, wrapped);
 	if(!gtk_clist_get_text(clist, z, 0, &text)) {
 	    if(wrapped) break; // wrapped second time (why?)
 	    z = 0;
@@ -1002,7 +1003,7 @@ static gboolean change_page(GtkNotebook *notebook, GtkNotebookPage *page, guint 
     scope_vert_t *vert;
 
     vert = &(ctrl_usr->vert);
-    if(page_num >= 0 && page_num  < 3)
+    if(page_num  < 3)
 	gtk_widget_grab_focus(GTK_WIDGET(vert->lists[page_num]));
     return 0;
 }
@@ -1112,7 +1113,6 @@ static gboolean dialog_select_source(int chan_num)
     gtk_clist_clear(GTK_CLIST(vert->lists[2]));
     rtapi_mutex_get(&(hal_data->mutex));
     next = hal_data->pin_list_ptr;
-    row = -1;
     initial_row = -1;
     max_row = -1;
     while (next != 0) {

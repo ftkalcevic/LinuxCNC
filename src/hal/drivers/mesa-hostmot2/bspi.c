@@ -16,9 +16,9 @@
 //    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
 //
 
-#include <linux/slab.h>
+#include <rtapi_slab.h>
+#include <rtapi_bool.h>
 #include "rtapi.h"
-#include "rtapi_app.h"
 #include "rtapi_string.h"
 #include "rtapi_math.h"
 #include "hal.h"
@@ -34,7 +34,7 @@ int hm2_bspi_parse_md(hostmot2_t *hm2, int md_index)
     // some standard sanity checks
     //
     
-    int i, j, r;
+    int i, j, r = -EINVAL;
     hm2_module_descriptor_t *md = &hm2->md[md_index];
     
     if (!hm2_md_is_consistent_or_complain(hm2, md_index, 0, 3, 0x40, 0x0007)) {
@@ -91,16 +91,16 @@ int hm2_bspi_parse_md(hostmot2_t *hm2, int md_index)
         chan->base_address = md->base_address + i * md->instance_stride;
         chan->register_stride = md->register_stride;
         chan->instance_stride = md->instance_stride;
-        chan->cd_addr = md->base_address + md->register_stride + i * sizeof(u32);
-        chan->count_addr = md->base_address + 2 * md->register_stride + i * sizeof(u32);
+        chan->cd_addr = md->base_address + md->register_stride + i * sizeof(rtapi_u32);
+        chan->count_addr = md->base_address + 2 * md->register_stride + i * sizeof(rtapi_u32);
         for (j = 0 ; j < 16 ; j++ ){
-            chan->addr[j] = chan->base_address + j * sizeof(u32);
+            chan->addr[j] = chan->base_address + j * sizeof(rtapi_u32);
         }
         
     }
     return hm2->bspi.num_instances;
 fail0:
-    return 0;
+    return r;
 }
 
 void hm2_bspi_force_write(hostmot2_t *hm2)
@@ -110,13 +110,13 @@ void hm2_bspi_force_write(hostmot2_t *hm2)
         hm2_bspi_instance_t chan = hm2->bspi.instance[i];
         // write the channel descriptors
         for (j = 15 ; j >=0 ; j--){
-            hm2->llio->write(hm2->llio, chan.cd_addr, &(chan.cd[j]), sizeof(u32));
+            hm2->llio->write(hm2->llio, chan.cd_addr, &(chan.cd[j]), sizeof(rtapi_u32));
         }
     }
 }
 
 EXPORT_SYMBOL_GPL(hm2_tram_add_bspi_frame);
-int hm2_tram_add_bspi_frame(char *name, int chan, u32 **wbuff, u32 **rbuff) 
+int hm2_tram_add_bspi_frame(char *name, int chan, rtapi_u32 **wbuff, rtapi_u32 **rbuff)
 {
     hostmot2_t *hm2;
     int i, r;
@@ -131,7 +131,7 @@ int hm2_tram_add_bspi_frame(char *name, int chan, u32 **wbuff, u32 **rbuff)
         return -1;
     }
     if (wbuff != NULL) {
-        r = hm2_register_tram_write_region(hm2,hm2->bspi.instance[i].addr[chan], sizeof(u32),wbuff);
+        r = hm2_register_tram_write_region(hm2,hm2->bspi.instance[i].addr[chan], sizeof(rtapi_u32),wbuff);
         if (r < 0) {
             HM2_ERR("Failed to add TRAM write entry for %s.\n", name);
             return -1;
@@ -143,7 +143,7 @@ int hm2_tram_add_bspi_frame(char *name, int chan, u32 **wbuff, u32 **rbuff)
     if (rbuff != NULL){
         // Don't add a read entry for a no-echo channel
         if(!(hm2->bspi.instance[i].cd[chan] & 0x80000000)) {
-            r = hm2_register_tram_read_region(hm2,hm2->bspi.instance[i].addr[0], sizeof(u32),rbuff);
+            r = hm2_register_tram_read_region(hm2,hm2->bspi.instance[i].addr[0], sizeof(rtapi_u32),rbuff);
             if (r < 0) {
                 HM2_ERR( "Failed to add TRAM read entry for %s\n", name);
                 return -1;
@@ -174,10 +174,10 @@ int hm2_allocate_bspi_tram(char* name)
 }
 
 EXPORT_SYMBOL_GPL(hm2_bspi_write_chan);
-int hm2_bspi_write_chan(char* name, int chan, u32 val)
+int hm2_bspi_write_chan(char* name, int chan, rtapi_u32 val)
 {
     hostmot2_t *hm2;
-    u32 buff;
+    rtapi_u32 buff = val;
     int i, r;
     i = hm2_get_bspi(&hm2, name);
     if (i < 0){
@@ -189,7 +189,7 @@ int hm2_bspi_write_chan(char* name, int chan, u32 val)
                 "Has not been configured.\n", chan, name);
         return -1;
     }
-    r = hm2->llio->write(hm2->llio, hm2->bspi.instance[i].addr[chan], &buff, sizeof(u32));
+    r = hm2->llio->write(hm2->llio, hm2->bspi.instance[i].addr[chan], &buff, sizeof(rtapi_u32));
     if (r < 0) {
         HM2_ERR("BSPI: hm2->llio->write failure %s\n", name);
     }
@@ -199,10 +199,11 @@ int hm2_bspi_write_chan(char* name, int chan, u32 val)
 
 EXPORT_SYMBOL_GPL(hm2_bspi_setup_chan);
 int hm2_bspi_setup_chan(char *name, int chan, int cs, int bits, float mhz,
-                        int delay, int cpol, int cpha, int clear, int echo)
+                        int delay, int cpol, int cpha, int noclear, int noecho,
+                        int samplelate)
 {
     hostmot2_t *hm2;
-    u32 buff;
+    rtapi_u32 buff = 0;
     int i;
     float board_mhz;
     i = hm2_get_bspi(&hm2, name);
@@ -237,14 +238,15 @@ int hm2_bspi_setup_chan(char *name, int chan, int cs, int bits, float mhz,
         mhz=board_mhz/2;
     }
 
-    buff = (echo != 0) << 31
-        |  (clear != 0) << 30
-        | ((delay <= 0)? 0x10 : (u32)((delay*board_mhz/1000.0)-1) & 0x1f) << 24
+    buff = (noecho != 0) << 31
+        |  (noclear != 0) << 30
+        |  (samplelate != 0) << 29
+        | ((delay <= 0)? 0x10 : (rtapi_u32)((delay*board_mhz/1000.0)-1) & 0x1f) << 24
         | (cs & 0xF) << 16
-        | (((u16)(board_mhz / (mhz * 2) - 1) & 0xF)) << 8
+        | (((rtapi_u16)(board_mhz / (mhz * 2) - 1) & 0xFF)) << 8
         | (cpha != 0) << 7
         | (cpol != 0) << 6
-        | (((u16)(bits - 1)) & 0x1F);
+        | (((rtapi_u16)(bits - 1)) & 0x3F);
     HM2_DBG("BSPI %s Channel %i setup %x\n", name, chan, buff);
     hm2->bspi.instance[i].cd[chan] = buff;
     hm2->bspi.instance[i].conf_flag[chan] = true;
@@ -274,7 +276,7 @@ void hm2_bspi_print_module(hostmot2_t *hm2){
 }
 
 EXPORT_SYMBOL_GPL(hm2_bspi_set_read_function);
-int hm2_bspi_set_read_function(char *name, void *func, void *subdata){
+int hm2_bspi_set_read_function(char *name, int (*func)(void *subdata), void *subdata){
     hostmot2_t *hm2;
     int i;
     i = hm2_get_bspi(&hm2, name);
@@ -298,7 +300,7 @@ int hm2_bspi_set_read_function(char *name, void *func, void *subdata){
 }
 
 EXPORT_SYMBOL_GPL(hm2_bspi_set_write_function);
-int hm2_bspi_set_write_function(char *name, void *func, void *subdata){
+int hm2_bspi_set_write_function(char *name, int (*func)(void *subdata), void *subdata){
     hostmot2_t *hm2;
     int i;
     i = hm2_get_bspi(&hm2, name);
@@ -330,6 +332,9 @@ void hm2_bspi_process_tram_read(hostmot2_t *hm2, long period)
         func = hm2->bspi.instance[i].read_function;
         if (func != NULL){
             r = func(hm2->bspi.instance[i].subdata);
+            if(r < 0)
+                HM2_ERR("BSPI read function @%p failed (returned %d)\n",
+                        func, r);
         }
     }
 }
@@ -342,6 +347,9 @@ void hm2_bspi_prepare_tram_write(hostmot2_t *hm2, long period)
         func = hm2->bspi.instance[i].write_function;
         if (func != NULL){
             r = func(hm2->bspi.instance[i].subdata);
+            if(r < 0)
+                HM2_ERR("BSPI read function @%p failed (returned %d)\n",
+                        func, r);
         }
     }
 }

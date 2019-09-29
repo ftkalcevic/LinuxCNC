@@ -13,6 +13,8 @@
 * Last change: 
 ********************************************************************/
 
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
 #include "rcsversion.h"
 
 #ifdef __cplusplus
@@ -110,7 +112,7 @@ void *NML::operator new(size_t size)
 	    sizeof(NML), 0);
 	cptr = ((char *) nml_space) + sizeof(NML);
 	// guarantee alignment
-	cptr += sizeof(size_t) - (((size_t) cptr) % sizeof(size_t));
+	cptr += sizeof(int) - (((size_t) cptr) % sizeof(int));
 	*((int *) cptr) = dynamic_list_id;
     }
     rcs_print_debug(PRINT_NML_CONSTRUCTORS, "%p = NML::operater new(%zd)\n",
@@ -132,7 +134,7 @@ void NML::operator delete(void *nml_space)
 
     if (NULL != Dynamically_Allocated_NML_Objects) {
 	cptr = ((char *) nml_space) + sizeof(NML);
-	cptr += sizeof(size_t) - (((size_t) cptr) % sizeof(size_t));
+	cptr += sizeof(int) - (((size_t) cptr) % sizeof(int));
 	dynamic_list_id = *((int *) cptr);
 	Dynamically_Allocated_NML_Objects->delete_node(dynamic_list_id);
 	if (Dynamically_Allocated_NML_Objects->list_size == 0) {
@@ -223,8 +225,8 @@ void NML::reconstruct(NML_FORMAT_PTR f_ptr, const char *buf, const char *proc,
     format_chain = (LinkedList *) NULL;
     phantom_read = (NMLTYPE(*)())NULL;
     phantom_peek = (NMLTYPE(*)())NULL;
-    phantom_write = (int (*)(NMLmsg *)) NULL;
-    phantom_write_if_read = (int (*)(NMLmsg *)) NULL;
+    phantom_write = (int (*)(NMLmsg *, int *)) NULL;
+    phantom_write_if_read = (int (*)(NMLmsg *, int *)) NULL;
     phantom_check_if_read = (int (*)()) NULL;
     phantom_clear = (int (*)()) NULL;
     channel_list_id = 0;
@@ -352,8 +354,8 @@ NML::NML(const char *buf, const char *proc, const char *file, int set_to_server,
     format_chain = (LinkedList *) NULL;
     phantom_read = (NMLTYPE(*)())NULL;
     phantom_peek = (NMLTYPE(*)())NULL;
-    phantom_write = (int (*)(NMLmsg *)) NULL;
-    phantom_write_if_read = (int (*)(NMLmsg *)) NULL;
+    phantom_write = (int (*)(NMLmsg *, int *)) NULL;
+    phantom_write_if_read = (int (*)(NMLmsg *, int *)) NULL;
     phantom_check_if_read = (int (*)()) NULL;
     phantom_clear = (int (*)()) NULL;
     channel_list_id = 0;
@@ -464,8 +466,8 @@ NML::NML(const char *buffer_line, const char *proc_line)
     format_chain = (LinkedList *) NULL;
     phantom_read = (NMLTYPE(*)())NULL;
     phantom_peek = (NMLTYPE(*)())NULL;
-    phantom_write = (int (*)(NMLmsg *)) NULL;
-    phantom_write_if_read = (int (*)(NMLmsg *)) NULL;
+    phantom_write = (int (*)(NMLmsg *, int *)) NULL;
+    phantom_write_if_read = (int (*)(NMLmsg *, int *)) NULL;
     phantom_check_if_read = (int (*)()) NULL;
     phantom_clear = (int (*)()) NULL;
     channel_list_id = 0;
@@ -745,7 +747,7 @@ int NML::reset()
 * Notes:
 *  1. Use if(NULL != ???) to avoid deleting objects that were
 * never constructed.
-*  2. The delete channel function was added because an error occured in
+*  2. The delete channel function was added because an error occurred in
 * running a server unded WIN32. An exception would occur as
 * the last NML channel was being deleted from within nml_cleanup.
 * After two days of being unable to debug this problem I
@@ -848,7 +850,7 @@ int NML::get_total_subdivisions()
 *  Clears the CMS buffer associated with this NML channel.
 *
 *  Returns:
-* 0 if no error occured or -1 if error occured.
+* 0 if no error occurred or -1 if error occurred.
 *
 * Notes:
 *  1. Some buffers can be identified as PHANTOM in the config file.
@@ -937,7 +939,7 @@ int NML::check_if_read()
 /***********************************************************
 * NML Member Function: get_queue_length()
 * Purpose:
-*  Returns the number of messages queued in the buffer if queing
+*  Returns the number of messages queued in the buffer if queueing
 * was enabled for this buffer. 0 otherwise.
 ************************************************************/
 int NML::get_queue_length()
@@ -1047,7 +1049,7 @@ NMLTYPE NML::read()
 	case CMS_READ_OK:
 	    if (((NMLmsg *) cms->subdiv_data)->type <= 0 && !cms->isserver) {
 		rcs_print_error
-		    ("NML: New data recieved but type of %d is invalid.\n",
+		    ("NML: New data received but type of %d is invalid.\n",
 		    (int)((NMLmsg *) cms->subdiv_data)->type);
 		return -1;
 	    }
@@ -1100,7 +1102,7 @@ NMLTYPE NML::read()
 	error_type = NML_NO_ERROR;
 	if (((NMLmsg *) cms->subdiv_data)->type <= 0 && !cms->isserver) {
 	    rcs_print_error
-		("NML: New data recieved but type of %d is invalid.\n",
+		("NML: New data received but type of %d is invalid.\n",
 		(int)((NMLmsg *) cms->subdiv_data)->type);
 	    return -1;
 	}
@@ -1140,7 +1142,7 @@ NMLTYPE NML::blocking_read(double blocking_timeout)
 	case CMS_READ_OK:
 	    if (((NMLmsg *) cms->subdiv_data)->type <= 0 && !cms->isserver) {
 		rcs_print_error
-		    ("NML: New data recieved but type of %d is invalid.\n",
+		    ("NML: New data received but type of %d is invalid.\n",
 		    (int)((NMLmsg *) cms->subdiv_data)->type);
 		return -1;
 	    }
@@ -1222,7 +1224,7 @@ NMLTYPE NML::blocking_read(double blocking_timeout)
     case CMS_READ_OK:
 	if (((NMLmsg *) cms->subdiv_data)->type <= 0 && !cms->isserver) {
 	    rcs_print_error
-		("NML: New data recieved but type of %d is invalid.\n",
+		("NML: New data received but type of %d is invalid.\n",
 		(int)((NMLmsg *) cms->subdiv_data)->type);
 	    return -1;
 	}
@@ -1324,7 +1326,7 @@ NMLTYPE NML::peek()
 	case CMS_READ_OK:
 	    if (((NMLmsg *) cms->subdiv_data)->type <= 0 && !cms->isserver) {
 		rcs_print_error
-		    ("NML: New data recieved but type of %d is invalid.\n",
+		    ("NML: New data received but type of %d is invalid.\n",
 		    (int)((NMLmsg *) cms->subdiv_data)->type);
 		return -1;
 	    }
@@ -1370,7 +1372,7 @@ NMLTYPE NML::peek()
     case CMS_READ_OK:
 	if (((NMLmsg *) cms->subdiv_data)->type <= 0 && !cms->isserver) {
 	    rcs_print_error
-		("NML: New data recieved but type of %d is invalid.\n",
+		("NML: New data received but type of %d is invalid.\n",
 		(int)((NMLmsg *) cms->subdiv_data)->type);
 	    return -1;
 	}
@@ -1391,7 +1393,7 @@ NMLTYPE NML::peek()
 * specific format or vice versa. (Performing byte-swapping etc.)
 * Returns:
 *  0  The format was successful.
-*  -1 An error occured.
+*  -1 An error occurred.
 * Notes:
 *  1. There are 3 conditions under which format_output may be
 * called.
@@ -1452,7 +1454,7 @@ int NML::format_output()
 								   message. */
 
 	    if (new_size > cms->max_message_size) {
-		rcs_print_error("NML: Message %ld of size  %ld \n", new_type,
+		rcs_print_error("NML: Message %" PRId32 " of size  %ld \n", new_type,
 		    new_size);
 		rcs_print_error
 		    ("     too large for local buffer of %s of size %ld.\n",
@@ -1505,7 +1507,7 @@ int NML::format_output()
 	    cms->update(new_size);
 
 	    if (new_size > cms->max_message_size) {
-		rcs_print_error("NML: Message %ld of size  %ld\n", new_type,
+		rcs_print_error("NML: Message %" PRId32 " of size  %ld\n", new_type,
 		    new_size);
 		rcs_print_error
 		    ("     too large for local buffer of %s of size %ld.\n",
@@ -1563,11 +1565,11 @@ int NML::format_output()
 * NMLmsg &nml_msg - Reference to the message to be written.
 * Returns:
 *  0 - The message was successfully written.
-*  -1 - An error occured. (Timeouts are considered errors.)
+*  -1 - An error occurred. (Timeouts are considered errors.)
 *************************************************************/
-int NML::write(NMLmsg & nml_msg)
+int NML::write(NMLmsg & nml_msg, int *serial_number)
 {
-    return (write(&nml_msg));	/* Call the other NML::write() */
+    return (write(&nml_msg, serial_number));	/* Call the other NML::write() */
 }
 
 /*************************************************************
@@ -1577,14 +1579,14 @@ int NML::write(NMLmsg & nml_msg)
 * NMLmsg *nml_msg - Address of the message to be written.
 * Returns:
 *  0 - The message was successfully written.
-*  -1 - An error occured. (Timeouts are considered errors.)
+*  -1 - An error occurred. (Timeouts are considered errors.)
 *************************************************************/
-int NML::write(NMLmsg * nml_msg)
+int NML::write(NMLmsg * nml_msg, int *serial_number)
 {
     error_type = NML_NO_ERROR;
     if (fast_mode) {
 	*cms_inbuffer_header_size = nml_msg->size;
-	cms->write(nml_msg);
+	cms->write(nml_msg, serial_number);
 	if (*cms_status == CMS_WRITE_OK) {
 	    return (0);
 	}
@@ -1616,7 +1618,7 @@ int NML::write(NMLmsg * nml_msg)
     /* Handle Phantom Buffers. */
     if (cms->is_phantom) {
 	if (NULL != phantom_write) {
-	    return ((*phantom_write) (nml_msg));
+	    return ((*phantom_write) (nml_msg, serial_number));
 	} else {
 	    return (0);
 	}
@@ -1632,9 +1634,9 @@ int NML::write(NMLmsg * nml_msg)
     }
 
     if (CMS_RAW_IN == cms->mode) {
-	cms->write(nml_msg);	/* Write the unformatted message.  */
+	cms->write(nml_msg, serial_number);	/* Write the unformatted message.  */
     } else {
-	cms->write(cms->subdiv_data);	/* Write the formatted message.  */
+	cms->write(cms->subdiv_data, serial_number);	/* Write the formatted message.  */
     }
 
     if (CMS_WRITE_OK == cms->status) {
@@ -1653,7 +1655,7 @@ int NML::write(NMLmsg * nml_msg)
 * NMLmsg &nml_msg - Reference to the message to be written.
 * Returns:
 *  0 - The message was successfully written.
-*  -1 - An error occured. (Timeouts are considered errors.)
+*  -1 - An error occurred. (Timeouts are considered errors.)
 * Check error_type for more info.
 *************************************************************/
 int NML::set_error()
@@ -1724,12 +1726,12 @@ int NML::set_error()
 * NMLmsg &nml_msg - Reference to the message to be written.
 * Returns:
 *  0 - The message was successfully written.
-*  -1 - An error occured. (Timeouts are considered errors.)
+*  -1 - An error occurred. (Timeouts are considered errors.)
 * Check error_type for more info.
 *************************************************************/
-int NML::write_if_read(NMLmsg & nml_msg)
+int NML::write_if_read(NMLmsg & nml_msg, int *serial_number)
 {
-    return (write_if_read(&nml_msg));
+    return (write_if_read(&nml_msg, serial_number));
 }
 
 /***********************************************************
@@ -1740,16 +1742,16 @@ int NML::write_if_read(NMLmsg & nml_msg)
 *  NMLmsg *nml_msg - Address of the message to be written.
 * Returns:
 *  0 - The message was successfully written.
-*  -1 - An error occured.
+*  -1 - An error occurred.
 * (Timeouts, and unread buffers  are considered errors.)
 * Check error_type for more info.
 ************************************************************/
-int NML::write_if_read(NMLmsg * nml_msg)
+int NML::write_if_read(NMLmsg * nml_msg, int *serial_number)
 {
     error_type = NML_NO_ERROR;
     if (fast_mode) {
 	cms->header.in_buffer_size = nml_msg->size;
-	cms->write(nml_msg);
+	cms->write(nml_msg, serial_number);
 	if (cms->status == CMS_WRITE_OK) {
 	    return (0);
 	}
@@ -1782,7 +1784,7 @@ int NML::write_if_read(NMLmsg * nml_msg)
 
     if (cms->is_phantom) {
 	if (NULL != phantom_write_if_read) {
-	    return ((*phantom_write_if_read) (nml_msg));
+	    return ((*phantom_write_if_read) (nml_msg, serial_number));
 	} else {
 	    return (0);
 	}
@@ -1795,9 +1797,9 @@ int NML::write_if_read(NMLmsg * nml_msg)
     }
 
     if (CMS_RAW_IN == cms->mode) {
-	cms->write_if_read(nml_msg);
+	cms->write_if_read(nml_msg, serial_number);
     } else {
-	cms->write_if_read(cms->subdiv_data);
+	cms->write_if_read(cms->subdiv_data, serial_number);
     }
 
     return (set_error());
@@ -1822,7 +1824,7 @@ int NML::write_if_read(NMLmsg * nml_msg)
 *  in a neutral format before being sent over the network or into a
 *  neutral buffer.
 *        (cms->mode == CMS_ENCODE)
-*   iii. The process calling this is a server which recieved a neutrally
+*   iii. The process calling this is a server which received a neutrally
 * encoded buffer over the network which must be converted to native
 * format before being written into a raw buffer.
 *        (cms->mode == CMS_DECODE)
@@ -2278,12 +2280,12 @@ int NML::print_queue_info()
 	return (-1);
     }
     if (!cms->queuing_enabled) {
-	rcs_print_error("NML::print_queue_info() - Queing Not Enabled.\n");
+	rcs_print_error("NML::print_queue_info() - Queueing Not Enabled.\n");
 	return (-1);
     }
     if (cms->ProcessType != CMS_LOCAL_TYPE) {
 	rcs_print_error
-	    ("NML::print_queue_info() - REMOTE Connection: Queing Data Not Available.\n");
+	    ("NML::print_queue_info() - REMOTE Connection: Queueing Data Not Available.\n");
 	return (-1);
     }
     rcs_print

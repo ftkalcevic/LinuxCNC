@@ -71,7 +71,7 @@
   
   ==> HELLO <==
   
-  Hello <password> <cleint> <version>
+  Hello <password> <client> <version>
   If a valid password was entered the server will respond with
   
   HELLO ACK <Server Name> <Server Version>
@@ -291,14 +291,9 @@ static void thisQuit()
 
     if (emcStatusBuffer != 0) {
 	// wait until current message has been received
-	emcCommandWaitReceived(emcCommandSerialNumber);
+	emcCommandWaitReceived();
     }
 
-    if (emcCommandBuffer != 0) {
-	// send null message to reset serial number to original
-	emc_null_msg.serial_number = saveEmcCommandSerialNumber;
-	emcCommandBuffer->write(emc_null_msg);
-    }
     // clean up NML buffers
 
     if (emcErrorBuffer != 0) {
@@ -317,7 +312,6 @@ static void thisQuit()
 	emcCommandBuffer = 0;
     }
 
-//    Tcl_Exit(0);
     exit(0);
 }
 
@@ -976,7 +970,7 @@ static int helpHello(connectionRecType *context)
   strcat(context->outBuf, "  Hello Ack <Server Name> <Protocol Version>\n\rWhere:\n\r");
   strcat(context->outBuf, "  Ack is acknowledging the connection has been made.\n\r");
   strcat(context->outBuf, "  Server Name is the name of the EMC Server to which the client has connected.\n\r");
-  strcat(context->outBuf, "  Protocol Version is the cleint requested version or latest version support by server if");
+  strcat(context->outBuf, "  Protocol Version is the client requested version or latest version support by server if");
   strcat(context->outBuf, "  the client requests a version later than that supported by the server.\n\r\n\r");
   strcat(context->outBuf, "  With invalid password, the server responds with:\n\r");
   strcat(context->outBuf, "  Hello Nak\n\r");
@@ -1187,18 +1181,17 @@ void *readClient(void *arg)
       if ((buf[i] != '\n') && (buf[i] != '\r')) {
         context->inBuf[j] = buf[i];
 	j++;
-	}
-      else
-        if (j > 0)
-          {
-  	    context->inBuf[j] = 0;
-            if (parseCommand(context) == -1) goto finished;
-	    j = 0;
-	}
-        i++;	
       }
-    buf[0] = 0;
-    } 
+      else if (j > 0)
+      {
+        context->inBuf[j] = 0;
+        if (parseCommand(context) == -1) goto finished;
+        j = 0;
+      }
+      i++;
+    }
+  buf[0] = 0;
+  }
 
 finished:
   close(context->cliSock);
@@ -1234,7 +1227,6 @@ static void initMain()
 {
     emcWaitType = EMC_WAIT_RECEIVED;
     emcCommandSerialNumber = 0;
-    saveEmcCommandSerialNumber = 0;
     emcTimeout = 0.0;
     emcUpdateType = EMC_UPDATE_AUTO;
     linearUnitConversion = LINEAR_UNITS_AUTO;
@@ -1288,13 +1280,13 @@ int main(int argc, char *argv[])
     // so as not to interfere with real operator interface
     updateStatus();
     emcCommandSerialNumber = emcStatus->echo_serial_number;
-    saveEmcCommandSerialNumber = emcStatus->echo_serial_number;
 
     // attach our quit function to SIGINT
     signal(SIGINT, sigQuit);
 
     schedInit();
     res = pthread_create(&updateThread, NULL, checkQueue, (void *)NULL);
+    if(res != 0) { perror("pthread_create"); return 1; }
     if (useSockets) sockMain();
 
     return 0;

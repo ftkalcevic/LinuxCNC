@@ -1,10 +1,32 @@
+/*    This is a component of LinuxCNC
+ *    Copyright 2011, 2012, 2014 Jeff Epler <jepler@unpythonic.net>,
+ *    Michael Haberler <git@mah.priv.at>
+ *
+ *    This program is free software; you can redistribute it and/or modify
+ *    it under the terms of the GNU General Public License as published by
+ *    the Free Software Foundation; either version 2 of the License, or
+ *    (at your option) any later version.
+ *
+ *    This program is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *    GNU General Public License for more details.
+ *
+ *    You should have received a copy of the GNU General Public License
+ *    along with this program; if not, write to the Free Software
+ *    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
 // TODO: reuse interp converters
 
-#include <boost/python.hpp>
-#include <boost/python/module.hpp>
+#define BOOST_PYTHON_MAX_ARITY 7
 #include <boost/python/class.hpp>
-#include <boost/ref.hpp>
-
+#include <boost/python/def.hpp>
+#include <boost/python/implicit.hpp>
+#include <boost/python/module.hpp>
+#include <boost/python/overloads.hpp>
+#include <boost_pyenum_macros.hh>
+#include <boost/python/scope.hpp>
+#include "python_plugin.hh"
 #include "rs274ngc.hh"
 #include "interp_internal.hh"
 #include "taskclass.hh"
@@ -147,9 +169,10 @@ struct TaskWrap : public Task, public bp::wrapper<Task> {
 
 };
 
-typedef pp::array_1_t< EMC_AXIS_STAT, EMC_AXIS_MAX> axis_array, (*axis_w)( EMC_MOTION_STAT &m );
-typedef pp::array_1_t< int, EMC_MAX_DIO> synch_dio_array, (*synch_dio_w)( EMC_MOTION_STAT &m );
-typedef pp::array_1_t< double, EMC_MAX_AIO> analog_io_array, (*analog_io_w)( EMC_MOTION_STAT &m );
+typedef pp::array_1_t< EMC_AXIS_STAT, EMCMOT_MAX_AXIS> axis_array, (*axis_w)( EMC_MOTION_STAT &m );
+typedef pp::array_1_t< EMC_SPINDLE_STAT, EMCMOT_MAX_SPINDLES> spindle_array, (*spindle_w)( EMC_MOTION_STAT &m );
+typedef pp::array_1_t< int, EMCMOT_MAX_DIO> synch_dio_array, (*synch_dio_w)( EMC_MOTION_STAT &m );
+typedef pp::array_1_t< double, EMCMOT_MAX_AIO> analog_io_array, (*analog_io_w)( EMC_MOTION_STAT &m );
 
 typedef pp::array_1_t< int, ACTIVE_G_CODES> active_g_codes_array, (*active_g_codes_tw)( EMC_TASK_STAT &t );
 typedef pp::array_1_t< int, ACTIVE_M_CODES> active_m_codes_array, (*active_m_codes_tw)( EMC_TASK_STAT &t );
@@ -163,6 +186,10 @@ static  tool_array tool_wrapper ( EMC_TOOL_STAT & t) {
 
 static  axis_array axis_wrapper ( EMC_MOTION_STAT & m) {
     return axis_array(m.axis);
+}
+
+static  spindle_array spindle_wrapper ( EMC_MOTION_STAT & m) {
+    return spindle_array(m.spindle);
 }
 
 static  synch_dio_array synch_di_wrapper ( EMC_MOTION_STAT & m) {
@@ -196,22 +223,25 @@ static  active_settings_array activeSettings_wrapper ( EMC_TASK_STAT & m) {
 static const char *get_file( EMC_TASK_STAT &t) { return t.file; }
 static const char *get_command( EMC_TASK_STAT &t) { return t.command; }
 
-#pragma GCC diagnostic ignored "-Wformat-security"
 static void operator_error(const char *message, int id = 0) {
-    emcOperatorError(id,message);
+    emcOperatorError(id,"%s",message);
 }
 static void operator_text(const char *message, int id = 0) {
-    emcOperatorText(id,message);
+    emcOperatorText(id,"%s",message);
 }
 static void operator_display(const char *message, int id = 0) {
-    emcOperatorDisplay(id,message);
+    emcOperatorDisplay(id,"%s",message);
 }
-#pragma GCC diagnostic warning "-Wformat-security"
 
 
+#pragma GCC diagnostic push
+#if defined(__GNUC__) && ((__GNUC__ > 4) || ((__GNUC__ == 4) && (__GNUC_MINOR__ >= 7)))
+#pragma GCC diagnostic ignored "-Wunused-local-typedefs"
+#endif
 BOOST_PYTHON_FUNCTION_OVERLOADS(operator_error_overloads, operator_error, 1,2)
 BOOST_PYTHON_FUNCTION_OVERLOADS(operator_text_overloads, operator_text, 1,2)
 BOOST_PYTHON_FUNCTION_OVERLOADS(operator_display_overloads, operator_display, 1,2)
+#pragma GCC diagnostic pop
 
 
 static const char *ini_filename() { return emc_inifile; }
@@ -231,69 +261,65 @@ BOOST_PYTHON_MODULE(emctask) {
     def("operator_error",
 	operator_error,
 	operator_error_overloads ( args("id"),
-				   "send an error messsage to the operator screen with an optional message id"  ));
+				   "send an error message to the operator screen with an optional message id"  ));
     def("operator_text",
 	operator_text,
 	operator_text_overloads ( args("id"),
-				   "send a informational messsage to the operator screen"  ));
+				   "send a informational message to the operator screen"  ));
     def("operator_display",
 	operator_display,
 	operator_display_overloads ( args("id"),
-				   "send a messsage to the operator display"  ));
+				   "send a message to the operator display"  ));
+
+    BOOST_PYENUM_(RCS_STATUS)
+            .BOOST_PYENUM_VAL(RCS_EXEC)
+            .BOOST_PYENUM_VAL(RCS_DONE)
+            .BOOST_PYENUM_VAL(RCS_ERROR)
+            ;
+
+    BOOST_PYENUM_(EMC_TASK_MODE_ENUM)
+            .BOOST_PYENUM_VAL(EMC_TASK_MODE_MANUAL)
+            .BOOST_PYENUM_VAL(EMC_TASK_MODE_AUTO)
+            .BOOST_PYENUM_VAL(EMC_TASK_MODE_MDI)
+            ;
+
+    BOOST_PYENUM_(EMC_TASK_STATE_ENUM)
+            .BOOST_PYENUM_VAL(EMC_TASK_STATE_ESTOP)
+            .BOOST_PYENUM_VAL(EMC_TASK_STATE_ESTOP_RESET)
+            .BOOST_PYENUM_VAL(EMC_TASK_STATE_OFF)
+            .BOOST_PYENUM_VAL(EMC_TASK_STATE_ON)
+            ;
+
+    BOOST_PYENUM_(EMC_TASK_EXEC_ENUM)
+            .BOOST_PYENUM_VAL(EMC_TASK_EXEC_ERROR)
+            .BOOST_PYENUM_VAL(EMC_TASK_EXEC_DONE)
+            .BOOST_PYENUM_VAL(EMC_TASK_EXEC_WAITING_FOR_MOTION)
+            .BOOST_PYENUM_VAL(EMC_TASK_EXEC_WAITING_FOR_MOTION_QUEUE)
+            .BOOST_PYENUM_VAL(EMC_TASK_EXEC_WAITING_FOR_IO)
+            .BOOST_PYENUM_VAL(EMC_TASK_EXEC_WAITING_FOR_MOTION_AND_IO)
+            .BOOST_PYENUM_VAL(EMC_TASK_EXEC_WAITING_FOR_DELAY)
+            .BOOST_PYENUM_VAL(EMC_TASK_EXEC_WAITING_FOR_SYSTEM_CMD)
+            ;
+
+    BOOST_PYENUM_(EMC_TASK_INTERP_ENUM)
+            .BOOST_PYENUM_VAL(EMC_TASK_INTERP_IDLE)
+            .BOOST_PYENUM_VAL(EMC_TASK_INTERP_READING)
+            .BOOST_PYENUM_VAL(EMC_TASK_INTERP_PAUSED)
+            .BOOST_PYENUM_VAL(EMC_TASK_INTERP_WAITING)
+            ;
 
 
-#define VAL(X)  .value(#X, X)
-
-    enum_<RCS_STATUS>("RCS_STATUS")
-	VAL(RCS_EXEC)
-	VAL(RCS_DONE)
-	VAL(RCS_ERROR)
-	;
-
-    enum_<EMC_TASK_MODE_ENUM>("EMC_TASK_MODE")
-	VAL(EMC_TASK_MODE_MANUAL)
-	VAL(EMC_TASK_MODE_AUTO)
-	VAL(EMC_TASK_MODE_MDI)
-	;
-
-    enum_<EMC_TASK_STATE_ENUM>("EMC_TASK_STATE")
-	VAL(EMC_TASK_STATE_ESTOP)
-	VAL(EMC_TASK_STATE_ESTOP_RESET)
-	VAL(EMC_TASK_STATE_OFF)
-	VAL(EMC_TASK_STATE_ON)
-	;
-
-    enum_<EMC_TASK_EXEC_ENUM>("EMC_TASK_EXEC")
-	VAL(EMC_TASK_EXEC_ERROR)
-	VAL(EMC_TASK_EXEC_DONE)
-	VAL(EMC_TASK_EXEC_WAITING_FOR_MOTION)
-	VAL(EMC_TASK_EXEC_WAITING_FOR_MOTION_QUEUE)
-	VAL(EMC_TASK_EXEC_WAITING_FOR_IO)
-	VAL(EMC_TASK_EXEC_WAITING_FOR_PAUSE)
-	VAL(EMC_TASK_EXEC_WAITING_FOR_MOTION_AND_IO)
-	VAL(EMC_TASK_EXEC_WAITING_FOR_DELAY)
-	VAL(EMC_TASK_EXEC_WAITING_FOR_SYSTEM_CMD)
-	;
-
-    enum_<EMC_TASK_INTERP_ENUM>("EMC_TASK_INTERP")
-	VAL(EMC_TASK_INTERP_IDLE)
-	VAL(EMC_TASK_INTERP_READING)
-	VAL(EMC_TASK_INTERP_PAUSED)
-	VAL(EMC_TASK_INTERP_WAITING)
-	;
-
-
-    enum_<EMC_IO_ABORT_REASON_ENUM>("EMC_IO_ABORT_REASON")
-	VAL(EMC_ABORT_TASK_EXEC_ERROR)
-	VAL(EMC_ABORT_AUX_ESTOP)
-	VAL(EMC_ABORT_MOTION_OR_IO_RCS_ERROR)
-	VAL(EMC_ABORT_TASK_STATE_OFF)
-	VAL(EMC_ABORT_TASK_STATE_ESTOP_RESET)
-	VAL(EMC_ABORT_TASK_STATE_ESTOP)
-	VAL(EMC_ABORT_TASK_STATE_NOT_ON)
-	VAL(EMC_ABORT_TASK_ABORT)
-	VAL(EMC_ABORT_USER)
-	;
+    BOOST_PYENUM_(EMC_IO_ABORT_REASON_ENUM)
+            .BOOST_PYENUM_VAL(EMC_ABORT_TASK_EXEC_ERROR)
+            .BOOST_PYENUM_VAL(EMC_ABORT_AUX_ESTOP)
+            .BOOST_PYENUM_VAL(EMC_ABORT_MOTION_OR_IO_RCS_ERROR)
+            .BOOST_PYENUM_VAL(EMC_ABORT_TASK_STATE_OFF)
+            .BOOST_PYENUM_VAL(EMC_ABORT_TASK_STATE_ESTOP_RESET)
+            .BOOST_PYENUM_VAL(EMC_ABORT_TASK_STATE_ESTOP)
+            .BOOST_PYENUM_VAL(EMC_ABORT_TASK_STATE_NOT_ON)
+            .BOOST_PYENUM_VAL(EMC_ABORT_TASK_ABORT)
+            .BOOST_PYENUM_VAL(EMC_ABORT_USER)
+            ;
 
     class_<TaskWrap, shared_ptr<TaskWrap>, noncopyable >("Task")
 
@@ -302,6 +328,8 @@ BOOST_PYTHON_MODULE(emctask) {
 	.def_readonly("tooltable_filename", &Task::tooltable_filename)
 	;
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
     class_ <EMC_TRAJ_STAT, noncopyable>("EMC_TRAJ_STAT",no_init)
 	.def_readwrite("linearUnits", &EMC_TRAJ_STAT::linearUnits )
 	.def_readwrite("angularUnits", &EMC_TRAJ_STAT::angularUnits )
@@ -317,7 +345,6 @@ BOOST_PYTHON_MODULE(emctask) {
 	.def_readwrite("id", &EMC_TRAJ_STAT::id )
 	.def_readwrite("paused", &EMC_TRAJ_STAT::paused )
 	.def_readwrite("scale", &EMC_TRAJ_STAT::scale )
-	.def_readwrite("spindle_scale", &EMC_TRAJ_STAT::spindle_scale )
 	.def_readwrite("position", &EMC_TRAJ_STAT::position )
 	.def_readwrite("actualPosition", &EMC_TRAJ_STAT::actualPosition )
 	.def_readwrite("velocity", &EMC_TRAJ_STAT::velocity )
@@ -334,33 +361,32 @@ BOOST_PYTHON_MODULE(emctask) {
 	.def_readwrite("dtg", &EMC_TRAJ_STAT::dtg )
 	.def_readwrite("current_vel", &EMC_TRAJ_STAT::current_vel )
 	.def_readwrite("feed_override_enabled", &EMC_TRAJ_STAT::feed_override_enabled )
-	.def_readwrite("spindle_override_enabled", &EMC_TRAJ_STAT::spindle_override_enabled )
 	.def_readwrite("adaptive_feed_enabled", &EMC_TRAJ_STAT::adaptive_feed_enabled )
 	.def_readwrite("feed_hold_enabled", &EMC_TRAJ_STAT::feed_hold_enabled )
 	;
-
-    class_ <EMC_AXIS_STAT, noncopyable>("EMC_AXIS_STAT",no_init)
-	.def_readwrite("units", &EMC_AXIS_STAT::units)
-	.def_readwrite("backlash", &EMC_AXIS_STAT::backlash)
-	.def_readwrite("minPositionLimit", &EMC_AXIS_STAT::minPositionLimit)
-	.def_readwrite("maxPositionLimit" ,&EMC_AXIS_STAT::maxPositionLimit)
-	.def_readwrite("maxFerror", &EMC_AXIS_STAT::maxFerror)
-	.def_readwrite("minFerror", &EMC_AXIS_STAT::minFerror)
-	.def_readwrite("ferrorCurrent", &EMC_AXIS_STAT::ferrorCurrent)
-	.def_readwrite("ferrorHighMark", &EMC_AXIS_STAT::ferrorHighMark)
-	.def_readwrite("output", &EMC_AXIS_STAT::output)
-	.def_readwrite("input", &EMC_AXIS_STAT::input)
-	.def_readwrite("velocity", &EMC_AXIS_STAT::velocity)
-	.def_readwrite("inpos",  &EMC_AXIS_STAT::inpos)
-	.def_readwrite("homing",  &EMC_AXIS_STAT::homing)
-	.def_readwrite("homed",  &EMC_AXIS_STAT::homed)
-	.def_readwrite("fault",  &EMC_AXIS_STAT::fault)
-	.def_readwrite("enabled",  &EMC_AXIS_STAT::enabled)
-	.def_readwrite("minSoftLimit",  &EMC_AXIS_STAT::minSoftLimit)
-	.def_readwrite("maxSoftLimit",  &EMC_AXIS_STAT::maxSoftLimit)
-	.def_readwrite("minHardLimit",  &EMC_AXIS_STAT::minHardLimit)
-	.def_readwrite("maxHardLimit",  &EMC_AXIS_STAT::maxHardLimit)
-	.def_readwrite("overrideLimits",  &EMC_AXIS_STAT::overrideLimits)
+#pragma GCC diagnostic pop
+    class_ <EMC_JOINT_STAT, noncopyable>("EMC_JOINT_STAT",no_init)
+	.def_readwrite("units", &EMC_JOINT_STAT::units)
+	.def_readwrite("backlash", &EMC_JOINT_STAT::backlash)
+	.def_readwrite("minPositionLimit", &EMC_JOINT_STAT::minPositionLimit)
+	.def_readwrite("maxPositionLimit" ,&EMC_JOINT_STAT::maxPositionLimit)
+	.def_readwrite("maxFerror", &EMC_JOINT_STAT::maxFerror)
+	.def_readwrite("minFerror", &EMC_JOINT_STAT::minFerror)
+	.def_readwrite("ferrorCurrent", &EMC_JOINT_STAT::ferrorCurrent)
+	.def_readwrite("ferrorHighMark", &EMC_JOINT_STAT::ferrorHighMark)
+	.def_readwrite("output", &EMC_JOINT_STAT::output)
+	.def_readwrite("input", &EMC_JOINT_STAT::input)
+	.def_readwrite("velocity", &EMC_JOINT_STAT::velocity)
+	.def_readwrite("inpos",  &EMC_JOINT_STAT::inpos)
+	.def_readwrite("homing",  &EMC_JOINT_STAT::homing)
+	.def_readwrite("homed",  &EMC_JOINT_STAT::homed)
+	.def_readwrite("fault",  &EMC_JOINT_STAT::fault)
+	.def_readwrite("enabled",  &EMC_JOINT_STAT::enabled)
+	.def_readwrite("minSoftLimit",  &EMC_JOINT_STAT::minSoftLimit)
+	.def_readwrite("maxSoftLimit",  &EMC_JOINT_STAT::maxSoftLimit)
+	.def_readwrite("minHardLimit",  &EMC_JOINT_STAT::minHardLimit)
+	.def_readwrite("maxHardLimit",  &EMC_JOINT_STAT::maxHardLimit)
+	.def_readwrite("overrideLimits",  &EMC_JOINT_STAT::overrideLimits)
 	;
 
     class_ <EMC_SPINDLE_STAT, noncopyable>("EMC_SPINDLE_STAT",no_init)
@@ -369,6 +395,10 @@ BOOST_PYTHON_MODULE(emctask) {
 	.def_readwrite("brake", &EMC_SPINDLE_STAT::brake )
 	.def_readwrite("increasing", &EMC_SPINDLE_STAT::increasing )
 	.def_readwrite("enabled", &EMC_SPINDLE_STAT::enabled )
+	.def_readwrite("spindle_override_enabled", &EMC_SPINDLE_STAT::spindle_override_enabled )
+	.def_readwrite("spindle_scale", &EMC_SPINDLE_STAT::spindle_scale )
+	.def_readwrite("spindle_orient_state", &EMC_SPINDLE_STAT::orient_state )
+	.def_readwrite("spindle_orient_fault", &EMC_SPINDLE_STAT::orient_fault )
 	;
 
     class_ <EMC_COOLANT_STAT , noncopyable>("EMC_COOLANT_STAT ",no_init)
@@ -386,9 +416,9 @@ BOOST_PYTHON_MODULE(emctask) {
 	.add_property( "axis",
 		       bp::make_function( axis_w(&axis_wrapper),
 					  bp::with_custodian_and_ward_postcall< 0, 1 >()))
-
-
-	.def_readwrite("spindle", &emcStatus->motion.spindle)
+	.add_property( "spindle",
+			   bp::make_function( spindle_w(&spindle_wrapper),
+					  bp::with_custodian_and_ward_postcall< 0, 1 >()))
 	.add_property( "synch_di",
 		       bp::make_function( synch_dio_w(&synch_di_wrapper),
 					  bp::with_custodian_and_ward_postcall< 0, 1 >()))
@@ -480,9 +510,9 @@ BOOST_PYTHON_MODULE(emctask) {
 
     implicitly_convertible<EMC_TASK_STATE_ENUM, int>();
 
-    pp::register_array_1< double, EMC_MAX_AIO> ("AnalogIoArray");
-    pp::register_array_1< int, EMC_MAX_DIO> ("DigitalIoArray");
-    pp::register_array_1< EMC_AXIS_STAT,EMC_AXIS_MAX,
+    pp::register_array_1< double, EMCMOT_MAX_AIO> ("AnalogIoArray");
+    pp::register_array_1< int, EMCMOT_MAX_DIO> ("DigitalIoArray");
+    pp::register_array_1< EMC_AXIS_STAT,EMCMOT_MAX_AXIS,
 	bp::return_internal_reference< 1, bp::default_call_policies > > ("AxisArray");
 }
 

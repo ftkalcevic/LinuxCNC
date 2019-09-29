@@ -31,7 +31,7 @@ values (or floating point).
 
    You should have received a copy of the GNU General Public License
    along with this library; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111 USA
+   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
 #include <stdarg.h>
@@ -159,7 +159,7 @@ static char *number(char *buf, char *end, long long numll, int base,
     return buf;
 }
 
-#if defined(__i386__) || defined(__amd64__)
+#if defined(__i386__) || defined(__amd64__) || defined(__arm__)
 #define IS_IEEE754 /// XXX this should ultimately be replaced by a configure test
 #endif
 
@@ -234,9 +234,10 @@ static char *fnumber(char *buf, char *end, double num)
 
     buf = st(buf, end, "0x");
 
-    /* want one digit to the left of the radix point.  ldexp should return in
-     * the range [0.5,1) but guard with an 'if' just in case */
-    if(mantissa != 0 && mantissa < 1) { mantissa *= 16; exp -= 4; }
+    /* want one digit to the left of the radix point-- in the range [1,2).
+     * frexp should return in the range [0.5,1), so this loop is expected
+     * to execute once */
+    while(mantissa != 0 && mantissa < 1) { mantissa *= 2; exp -= 1; }
 
     /* first digit */
     i = (int)floor(mantissa);
@@ -280,9 +281,6 @@ int rtapi_vsnprintf(char *buf, unsigned long size, const char *fmt, va_list args
 				   of chars for from string */
     int qualifier;		/* 'h', 'l', or 'L' for integer fields */
 
-    if (size < 0) {
-	size = 0;
-    }
     str = buf;
     end = buf + size - 1;
     if (end <= buf) {

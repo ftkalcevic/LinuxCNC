@@ -5,4 +5,5 @@ haltcl
 realtime
 rtapi.conf
 linuxcncmkdesktop
-latencyplot
+linuxcnc_var
+halcmd_twopass

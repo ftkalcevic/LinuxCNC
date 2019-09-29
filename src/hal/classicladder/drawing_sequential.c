@@ -18,7 +18,7 @@
 
 /* You should have received a copy of the GNU Lesser General Public */
 /* License along with this library; if not, write to the Free Software */
-/* Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
+/* Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA. */
 
 #include <gtk/gtk.h>
 #include <stdio.h>
@@ -36,7 +36,6 @@
 void DrawSeqStep(GdkPixmap * DrawPixmap,int x,int y,int Size,StrStep * pStep,char DrawingOption)
 {
 	char BufTxt[50];
-	GdkGC * DynaGcOff;
 	GdkGC * TheGc;
 	GdkColor DynaGdkColor;
 	GdkGC * DynaGcOn;
@@ -51,7 +50,6 @@ void DrawSeqStep(GdkPixmap * DrawPixmap,int x,int y,int Size,StrStep * pStep,cha
 	gdk_gc_set_line_attributes(DynaGcOn, THICK_LINE_ELE_ACTIVATED,
 	GDK_LINE_SOLID, GDK_CAP_BUTT, GDK_JOIN_MITER);
 	#endif
-	DynaGcOff = drawing_area->style->black_gc;
 	/* State with color */
 	TheGc = drawing_area->style->black_gc;
 	if ( (DrawingOption==DRAW_NORMAL) && (!EditDatas.ModeEdit) && (pStep->Activated) )

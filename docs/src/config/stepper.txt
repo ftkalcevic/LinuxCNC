@@ -1,30 +1,26 @@
+[[cha:stepper-config]]
+
 = Stepper Configuration
 
-[[stepper-config]] (((Stepper Configuration)))
-
-== Introduction[[sec:Introduction]]
+== Introduction
 
 The preferred way to set up a standard stepper machine is with the
-Step Configuration Wizard. See the Getting Started Guide.
+Step Configuration Wizard. See the 
+<<cha:stepconf-wizard,Stepper Configuration Wizard>> Chapter.
 
 This chapter describes some of the more common settings for manually
-setting up a stepper based system. Because of the various possibilities
-of configuring LinuxCNC, it is very hard to document them all, and keep
-this document relatively short.
-
-The most common LinuxCNC usage is for stepper based systems. These systems
-are using stepper motors with drives that accept step & direction
-signals.
+setting up a stepper based system. These systems are using stepper motors
+with drives that accept step & direction signals.
 
 It is one of the simpler setups, because the motors run open-loop (no
 feedback comes back from the motors), yet the system needs to be
 configured properly so the motors don't stall or lose steps.
 
-Most of this chapter is based on the sample config released along with
-LinuxCNC. The config is called stepper(((stepper))), and usually it is
-found in '/etc/emc2/sample-configs/stepper'.
+Most of this chapter is based on a sample config released along with
+LinuxCNC. The config is called stepper_inch, and can be found by running the
+<<cha:running-emc,Configuration Picker>>.
 
-== Maximum step rate[[sec:Maximum-step-rate]](((step rate)))
+== Maximum step rate
 
 With software step generation, the maximum step rate is one step per
 two BASE_PERIODs for step-and-direction output. The maximum requested
@@ -47,13 +43,13 @@ is acceptable, then consider using hardware step generation (such as
 with the LinuxCNC-supported Universal Stepper Controller, Mesa cards, and
 others.)
 
-== Pinout[[sec:Pinout]](((pinout)))
+== Pinout
 
 One of the major flaws in LinuxCNC was that you couldn't specify the pinout
 without recompiling the source code. LinuxCNC is far more flexible, and now
 (thanks to the Hardware Abstraction Layer) you can easily specify which
-signal goes where. See the HAL manual for more detailed information on
-HAL.
+signal goes where. See the <<cha:basic-hal-reference,Basic HAL Tutorial>>
+for more information on HAL.
 
 As it is described in the HAL Introduction and tutorial, we have
 signals, pins and parameters inside the HAL.
@@ -72,7 +68,7 @@ either standard_pinout.hal or xylotex_pinout.hal. These are two files
 that instruct the HAL how to link the various signals & pins. Further
 on we'll investigate the standard_pinout.hal.
 
-=== standard_pinout.hal[[sub:standard_pinout.hal]](((standard pinout))) 
+=== Standard Pinout HAL
 
 This file contains several HAL commands, and usually looks like this:
 
@@ -105,7 +101,7 @@ net tool-prep-loop iocontrol.0.tool-prepare iocontrol.0.tool-prepared
 net tool-change-loop iocontrol.0.tool-change iocontrol.0.tool-changed
 
 # connect "spindle on" motion controller pin to a physical pin
-net spindle-on motion.spindle-on => parport.0.pin-09-out
+net spindle-on spindle.0.on => parport.0.pin-09-out
 
 ###
 ### You might use something like this to enable chopper drives when machine ON
@@ -126,26 +122,25 @@ net spindle-on motion.spindle-on => parport.0.pin-09-out
 ### to LinuxCNC's axis 0 home switch input pin
 ###
 
-# net Xhome parport.0.pin-10-in => axis.0.home-sw-in
+# net Xhome parport.0.pin-10-in => joint.0.home-sw-in
 
 ###
 ### Shared home switches all on one parallel port pin?
 ### that's ok, hook the same signal to all the axes, but be sure to 
-### set HOME_IS_SHARED and HOME_SEQUENCE in the ini file.  See the
-### user manual!
+### set HOME_IS_SHARED and HOME_SEQUENCE in the ini file.
 ###
 
 # net homeswitches <= parport.0.pin-10-in
-# net homeswitches => axis.0.home-sw-in
-# net homeswitches => axis.1.home-sw-in
-# net homeswitches => axis.2.home-sw-in
+# net homeswitches => joint.0.home-sw-in
+# net homeswitches => joint.1.home-sw-in
+# net homeswitches => joint.2.home-sw-in
 
 ###
 ### Sample separate limit switches on the X axis (axis 0)
 ###
 
-# net X-neg-limit parport.0.pin-11-in => axis.0.neg-lim-sw-in
-# net X-pos-limit parport.0.pin-12-in => axis.0.pos-lim-sw-in
+# net X-neg-limit parport.0.pin-11-in => joint.0.neg-lim-sw-in
+# net X-pos-limit parport.0.pin-12-in => joint.0.pos-lim-sw-in
 
 ###
 ### Just like the shared home switches example, you can wire together
@@ -153,20 +148,20 @@ net spindle-on motion.spindle-on => parport.0.pin-09-out
 ### you which switch/axis has faulted.  Use caution when recovering from this.
 ###
 
-# net Xlimits parport.0.pin-13-in => axis.0.neg-lim-sw-in axis.0.pos-lim-sw-in
+# net Xlimits parport.0.pin-13-in => joint.0.neg-lim-sw-in joint.0.pos-lim-sw-in
 
 ----
 
 The lines starting with '#' are comments, and their only purpose is to
 guide the reader through the file.
 
-=== Overview[[sub:Overview-standard_pinout.hal]]
+=== Overview
 
 There are a couple of operations that get executed when the
 standard_pinout.hal gets executed/interpreted:
 
-* The Parport driver gets loaded (see the Parport section of 
-   the HAL Manual for details)
+* The Parport driver gets loaded (see the <<cha:parport,Parport Chapter>>
+   for details)
 * The read & write functions of the parport driver get assigned to the
    base thread footnote:[the fastest thread in the LinuxCNC setup, usually the
    code gets executed every few tens of microseconds]
@@ -175,7 +170,7 @@ standard_pinout.hal gets executed/interpreted:
 * Further I/O signals get connected (estop loopback, toolchanger loopback)
 * A spindle-on signal gets defined and linked to a parport pin
 
-=== Changing the standard_pinout.hal[[sub:Changing-standard_pinout.hal]]
+=== Changing the standard_pinout.hal
 
 If you want to change the standard_pinout.hal file, all you need is a
 text editor. Open the file and locate the parts you want to change.
@@ -201,7 +196,7 @@ or basically any other 'out' pin you like.
 Hint: make sure you don't have more than one signal connected to the
 same pin.
 
-=== Changing polarity of a signal[[sub:Changing-the-polarity]](((signal polarity)))
+=== Changing polarity of a signal
 
 If external hardware expects an “active low” signal, set the
 corresponding '-invert' parameter. For instance, to invert the spindle
@@ -211,7 +206,7 @@ control signal:
 setp parport.0.pin-09-invert TRUE
 ----
 
-=== Adding PWM Spindle Speed Control[[sub:PWM-Spindle-Speed]](((spindle speed control)))
+=== Adding PWM Spindle Speed Control
 
 If your spindle can be controlled by a PWM signal, use the 'pwmgen'
 component to create the signal:
@@ -220,8 +215,8 @@ component to create the signal:
 loadrt pwmgen output_type=0
 addf pwmgen.update servo-thread
 addf pwmgen.make-pulses base-thread
-net spindle-speed-cmd motion.spindle-speed-out => pwmgen.0.value
-net spindle-on motion.spindle-on => pwmgen.0.enable
+net spindle-speed-cmd spindle.0.speed-out => pwmgen.0.value
+net spindle-on spindle.0.on => pwmgen.0.enable
 net spindle-pwm pwmgen.0.pwm => parport.0.pin-09-out
 setp pwmgen.0.scale 1800 # Change to your spindle’s top speed in RPM
 ----
@@ -231,7 +226,7 @@ This assumes that the spindle controller's response to PWM is simple:
 PWM required to get the spindle to turn, follow the example in the
 'nist-lathe' sample configuration to use a 'scale' component.
 
-=== Adding an enable signal[[sub:Adding-enable-signal]](((enable signal)))
+=== Adding an enable signal
 
 Some amplifiers (drives) require an enable signal before they accept
 and command movement of the motors. For this reason there are already
@@ -249,31 +244,7 @@ when one axis faults, all the other drives will be disabled as well, so
 having only one enable signal / pin for all drives is a common
 practice.
 
-=== External ESTOP button(((ESTOP)))
+=== External ESTOP button
 
-As you can see in the <<sub:standard_pinout.hal,standard_pinout.hal>> file 
-by default the stepper configuration assumes no external ESTOP button.
-footnote:[An extensive explanation of hooking up ESTOP circuitry is explained
-in the wiki.linuxcnc.org and elsewhere in the Integrator Manual]
-
-To add a simple external button you need to replace the line:
-
-----
-net estop-loop iocontrol.0.user-enable-out iocontrol.0.emc-enable-in
-----
-
-with
-
-----
-net estop-loop parport.0.pin-01-in iocontrol.0.emc-enable-in
-----
-
-This assumes an ESTOP switch connected to pin 01 on the parport. As
-long as the switch will stay pushedfootnote:[make sure you use a
-maintained switch for ESTOP.], LinuxCNC will be in the ESTOP state. 
-When the external button gets 
-released LinuxCNC will immediately switch to the ESTOP-RESET state, and all
-you need to do is switch to Machine On(((machine on))) and you'll be
-able to continue your work with LinuxCNC. 
-
-
+The standard_pinout.hal file assumes no external ESTOP button. For more 
+information on an external E-Stop see the estop_latch man page.

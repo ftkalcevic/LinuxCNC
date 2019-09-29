@@ -23,6 +23,8 @@
 #include "config.h"
 #include "inifile.hh"
 
+#define MAX_EXTEND_LINES 20
+
 /// Return TRUE if the line has a line-ending problem
 static bool check_line_endings(const char *s) {
     if(!s) return false;
@@ -98,92 +100,6 @@ IniFile::Close()
     }
 
     return(rVal == 0);
-}
-
-
-IniFile::ErrorCode                   
-IniFile::Find(int *result, int min, int max,
-              const char *tag, const char *section, int num)
-{
-    ErrorCode                   errCode;
-    int                         tmp;
-
-    if((errCode = Find(&tmp, tag, section, num)) != ERR_NONE)
-        return(errCode);
-
-    if((tmp > max) || (tmp < min))
-        return(ERR_LIMITS);
-
-    *result = tmp;
-
-    return(ERR_NONE);
-}
-
-
-IniFile::ErrorCode                   
-IniFile::Find(int *result, const char *tag, const char *section, int num)
-{
-    const char                  *pStr;
-    int                         tmp;
-
-    if((pStr = Find(tag, section, num)) == NULL){
-        // We really need an ErrorCode return from Find() and should be passing
-        // in a buffer. Just pick a suitable ErrorCode for now.
-        return(ERR_TAG_NOT_FOUND);
-    }
-
-    if(sscanf(pStr, "%i", &tmp) != 1){
-        ThrowException(ERR_CONVERSION);
-        return(ERR_CONVERSION);
-    }
-
-    *result = tmp;
-
-    return(ERR_NONE);
-}
-
-
-IniFile::ErrorCode                   
-IniFile::Find(double *result, double min, double max,
-              const char *tag, const char *section, int num)
-{
-    ErrorCode                   errCode;
-    double                      tmp;
-
-    if((errCode = Find(&tmp, tag, section, num)) != ERR_NONE)
-        return(errCode);
-
-    if((tmp > max) || (tmp < min))
-        return(ERR_LIMITS);
-
-    *result = tmp;
-
-    return(ERR_NONE);
-}
-
-
-IniFile::ErrorCode                   
-IniFile::Find(double *result, const char *tag, const char *section,
-	      int num, int *lineno)
-{
-    const char                  *pStr;
-    double                      tmp;
-
-    if((pStr = Find(tag, section, num)) == NULL){
-        // We really need an ErrorCode return from Find() and should be passing
-        // in a buffer. Just pick a suitable ErrorCode for now.
-        return(ERR_TAG_NOT_FOUND);
-    }
-
-    if(sscanf(pStr, "%lf", &tmp) != 1){
-        ThrowException(ERR_CONVERSION);
-        return(ERR_CONVERSION);
-    }
-
-    *result = tmp;
-    if (lineno)
-	*lineno = lineNo;
-    return(ERR_NONE);
 }
 
 
@@ -286,6 +202,11 @@ IniFile::Find(const char *_tag, const char *_section, int _num, int *lineno)
     char                        *valueString;
     char                        *endValueString;
 
+    char  eline [(LINELEN + 2) * (MAX_EXTEND_LINES + 1)];
+    char* elineptr;
+    char* elinenext;
+    int   extend_ct = 0;
+
     // For exceptions.
     lineNo = 0;
     tag = _tag;
@@ -370,9 +291,42 @@ IniFile::Find(const char *_tag, const char *_section, int _num, int *lineno)
         if (line[newLinePos] == '\n') {
             line[newLinePos] = 0;        /* make the newline 0 */
         }
+        // honor backslash (\) as line-end escape
+        if (newLinePos > 0 && line[newLinePos-1] == '\\') {
+           newLinePos = newLinePos-1;
+           line[newLinePos] = 0;
+           if (!extend_ct) {
+               elineptr = (char*)eline; //first time
+               strncpy(elineptr,line,newLinePos);
+               elinenext = elineptr + newLinePos;
+           } else {
+               strncpy(elinenext,line,newLinePos);
+               elinenext = elinenext + newLinePos;
+           }
+           *elinenext = 0;
+           extend_ct++;
+           if (extend_ct > MAX_EXTEND_LINES) {
+              fprintf(stderr,
+                 "INIFILE lineno=%d:Too many backslash line extends (limit=%d)\n",
+                 lineNo, MAX_EXTEND_LINES);
+              ThrowException(ERR_OVER_EXTENDED);
+              return(NULL);
+           }
+           continue; // get next line to extend
+        } else {
+            if (extend_ct) {
+               strncpy(elinenext,line,newLinePos);
+               elinenext = elinenext + newLinePos;
+               *elinenext = 0;
+            }
+        }
+        if (!extend_ct) {
+           elineptr = (char*)line;
+        }
+        extend_ct = 0;
 
         /* skip leading whitespace */
-        if (NULL == (nonWhite = SkipWhite(line))) {
+        if (NULL == (nonWhite = SkipWhite(elineptr))) {
             /* blank line-- skip */
             continue;
         }
@@ -642,6 +596,10 @@ IniFile::Exception::Print(FILE *fp)
         msg = "ERR_LIMITS";
         break;
 
+    case ERR_OVER_EXTENDED:
+        msg = "ERR_OVER_EXTENDED";
+        break;
+
     default:
         msg = "UNKNOWN";
     }
@@ -657,4 +615,18 @@ iniFind(FILE *fp, const char *tag, const char *section)
     IniFile                     f(false, fp);
 
     return(f.Find(tag, section));
+}
+
+extern "C" const int
+iniFindInt(FILE *fp, const char *tag, const char *section, int *result)
+{
+    IniFile f(false, fp);
+    return(f.Find(result, tag, section));
+}
+
+extern "C" const int
+iniFindDouble(FILE *fp, const char *tag, const char *section, double *result)
+{
+    IniFile f(false, fp);
+    return(f.Find(result, tag, section));
 }

@@ -821,7 +821,7 @@ void CMS_SERVER::run(int setup_CC_signal_local_port)
 void CMS_SERVER::initialize_write_request_space()
 {
     max_total_subdivisions = 1;
-    maximum_cms_size = 0;
+    maximum_cms_size = 1;
     CMS_SERVER_LOCAL_PORT *local_port;
     if (NULL == cms_local_ports) {
 	rcs_print_error
@@ -1010,8 +1010,6 @@ int CMS_SERVER::get_access_type()
 
 int CMS_SERVER::security_check(CMS_USER_INFO * user_info, int buffer_number)
 {
-    CMS_SERVER_LOCAL_PORT *local_port;
-    local_port = find_local_port(buffer_number);
     if (!using_passwd_file) {
 	return 1;
     }

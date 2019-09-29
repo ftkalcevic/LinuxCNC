@@ -1,8 +1,10 @@
 :lang: fr
 :toc:
 :localdate: {sys: date +%d/%m/%Y}
-Manuel de l'intégrateur V2.5  {localdate}
-=========================================
+:ascii-ids:
+:lversion: {sys: cat ../VERSION}
+Manuel de l'intégrateur V{lversion}, {localdate}
+================================================
 :masterdir: {indir}
 :leveloffset: 1
 
@@ -27,13 +29,14 @@ include::config/stepper_fr.txt[]
 :leveloffset: 0
 = Interfaces graphiques utilisateur
 :leveloffset: 1
-include::hal/pyvcp_fr.txt[]
-include::hal/pyvcp_examples_fr.txt[]
+include::gui/pyvcp_fr.txt[]
+include::gui/pyvcp_examples_fr.txt[]
 include::gui/gladevcp_fr.txt[]
 :leveloffset: 0
 
 = Notions avancées
 :leveloffset: 1
+include::config/python-interface.txt[]
 include::motion/kinematics_fr.txt[]
 include::motion/tweaking_steppers_fr.txt[]
 include::motion/pid_theory_fr.txt[]
@@ -51,12 +54,11 @@ include::examples/spindle_fr.txt[]
 include::examples/mpg_fr.txt[]
 include::examples/gs2_example_fr.txt[]
 :leveloffset: 0
-= Diagnostics & FAQ
+= Diagnostics
 :leveloffset: 1
 include::common/Stepper_Diagnostics_fr.txt[]
-include::common/Linux_FAQ_fr.txt[]
 include::common/Glossary_fr.txt[]
-include::common/GPLD_Copyright.txt[]
+include::common/gpld-copyright.txt[]
 
 // = Index
 

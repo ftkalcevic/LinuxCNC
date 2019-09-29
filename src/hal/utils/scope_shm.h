@@ -22,7 +22,7 @@
 
     You should have received a copy of the GNU General Public
     License along with this library; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111 USA
+    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
     THE AUTHORS OF THIS LIBRARY ACCEPT ABSOLUTELY NO LIABILITY FOR
     ANY HARM OR LOSS RESULTING FROM ITS USE.  IT IS _EXTREMELY_ UNWISE
@@ -58,8 +58,8 @@ typedef enum {
 
 typedef union {
     unsigned char d_u8;		/* variable for bit */
-    __u32 d_u32;		/* variable for u32 */
-    __s32 d_s32;		/* variable for s32 */
+    rtapi_u32 d_u32;		/* variable for u32 */
+    rtapi_s32 d_s32;		/* variable for s32 */
     real_t d_real;		/* variable for float */
     ireal_t d_ireal;		/* intlike variable for float */
 } scope_data_t;

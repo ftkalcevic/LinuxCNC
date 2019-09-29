@@ -1,12 +1,12 @@
 [Desktop Entry]
-Encoding=UTF-8
-Version=
+Version=1.0
 Type=Application
 Exec=/usr/bin/latency-test
 Icon=linuxcncicon
 X-GNOME-DocPath=
 Terminal=false
 Name=Latency Test
-Comment=Determine your machine's latency
+Comment=Test your computers's latency
 StartupNotify=false
 Categories=X-CNC;
+Keywords=cnc;linuxcnc;

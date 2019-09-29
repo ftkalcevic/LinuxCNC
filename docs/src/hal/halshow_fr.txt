@@ -3,7 +3,7 @@
 
 = Les fonctionnalités de Halshow
 
-[[cha:halshow]] (((Halshow)))
+[[cha:halshow]]
 
 == Le script Halshow
 
@@ -31,7 +31,7 @@ MONTRER et WATCH.
 [[cap:Fenetre-Halshow]]
 .La fenêtre de Halshow
 
-image::images/halshow-1_fr.png[]
+image::images/halshow-1_fr.png[alt="La fenêtre de Halshow"]
 
 L'arborescence montre toutes les parties principales de HAL. En face
 de chacune d'entre elles, se trouve un petit signe + ou - dans une
@@ -45,13 +45,13 @@ complète depuis le menu _Arborescence_.
 [[cap:onglet-Montrer]]
 .L'onglet Montrer
 
-image::images/halshow-3.png[]
+image::images/halshow-3.png[alt="L'onglet Montrer"]
 
 === Zone de l'onglet MONTRER
 
 En cliquant sur un nom dans l'arborescence plutôt que sur son signe
 plus ou moins, par exemple le mot _Components_, HAL affichera tout ce
-qu'il connait du contenu de celui-ci. La figure 
+qu'il connait du contenu de celui-ci. La figure 
 <<cap:Fenetre-Halshow, halshow>> montre une liste comme celle que vous verrez si
 vous cliquez sur _Components_ avec une carte servo standard m5i20 en
 fonctionnement. L'affichage des informations est exactement le même que
@@ -160,14 +160,14 @@ addf ddt.0 servo-thread
 ----
 
 Comme c'est juste pour visualiser, nous laissons la position en blanc
-pour obtenir la dernière position dans le thread. La figure 
+pour obtenir la dernière position dans le thread. La figure 
 <<cap:Commande-addf, sur la commande addf>> affiche l'état de halshow après
 que cette commande a été exécutée.
 
 [[cap:Commande-addf]]
 .Commande Addf
 
-image::images/halshow-2_fr.png[]
+image::images/halshow-2_fr.png[alt="Commande Addf"]
 
 Ensuite, nous devons connecter ce bloc à quelque chose. Mais comment
 savoir quelles pins sont disponibles? La réponse se trouve dans
@@ -238,7 +238,7 @@ machine ne sera pas mise en marche.
 .L'onglet WATCH
 (((L'onglet watch)))
 
-image::images/halshow-4.png[]
+image::images/halshow-4.png[alt="L'onglet WATCH"]
 
 Les cercles de deux couleurs, simili Leds, sont toujours bruns foncé
 quand un signal est faux. Elle sont jaunes quand le signal est vrai.

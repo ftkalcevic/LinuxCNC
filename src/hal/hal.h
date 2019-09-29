@@ -43,7 +43,7 @@
 
     You should have received a copy of the GNU Lesser General Public
     License along with this library; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111 USA
+    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
     THE AUTHORS OF THIS LIBRARY ACCEPT ABSOLUTELY NO LIABILITY FOR
     ANY HARM OR LOSS RESULTING FROM ITS USE.  IT IS _EXTREMELY_ UNWISE
@@ -130,9 +130,13 @@ RTAPI_BEGIN_DECLS
 #error HAL needs RTAPI/ULAPI, check makefile and flags
 #endif
 
+#ifdef ULAPI
+#include <signal.h>
+#endif
+
 #include <rtapi_errno.h>
 
-#define HAL_NAME_LEN     41	/* length for pin, signal, etc, names */
+#define HAL_NAME_LEN     47	/* length for pin, signal, etc, names */
 
 /** These locking codes define the state of HAL locking, are used by most functions */
 /** The functions locked will return a -EPERM error message **/
@@ -144,7 +148,6 @@ RTAPI_BEGIN_DECLS
 #define HAL_LOCK_RUN      8     /* locking of start/stop of HAL threads */
 
 #define HAL_LOCK_ALL      255   /* locks every action */
-
 
 /***********************************************************************
 *                   GENERAL PURPOSE FUNCTIONS                          *
@@ -233,6 +236,14 @@ extern char* hal_comp_name(int comp_id);
 *                     DATA RELATED TYPEDEFS                            *
 ************************************************************************/
 
+/* The hal enums are arranged as distinct powers-of-two, so
+   that accidental confusion of one type with another (which ought
+   to be diagnosed by the type system) can be diagnosed as unexpected
+   values.  Note how HAL_RW is an exception to the powers-of-two rule,
+   as it is the bitwise OR of HAL_RO and the (nonexistent and nonsensical)
+   HAL_WO param direction.
+ */
+
 /** HAL pins and signals are typed, and the HAL only allows pins
     to be attached to signals of the same type.
     All HAL types can be read or written atomically.  (Read-modify-
@@ -244,10 +255,12 @@ extern char* hal_comp_name(int comp_id);
     or parameter.
 */
 typedef enum {
+    HAL_TYPE_UNSPECIFIED = -1,
     HAL_BIT = 1,
     HAL_FLOAT = 2,
     HAL_S32 = 3,
-    HAL_U32 = 4
+    HAL_U32 = 4,
+    HAL_PORT = 5
 } hal_type_t;
 
 /** HAL pins have a direction attribute.  A pin may be an input to 
@@ -259,6 +272,7 @@ typedef enum {
 */
 
 typedef enum {
+    HAL_DIR_UNSPECIFIED = -1,
     HAL_IN = 16,
     HAL_OUT = 32,
     HAL_IO = (HAL_IN | HAL_OUT),
@@ -272,24 +286,22 @@ typedef enum {
 
 typedef enum {
     HAL_RO = 64,
-    HAL_RW = 192,
+    HAL_RW = HAL_RO | 128 /* HAL_WO */,
 } hal_param_dir_t;
 
 /* Use these for x86 machines, and anything else that can write to
    individual bytes in a machine word. */
-#include <linux/types.h>
-#ifdef __cplusplus
-typedef bool hal_bool;
-#else
-typedef _Bool hal_bool;
-#endif
-typedef volatile hal_bool hal_bit_t;
-typedef volatile __u32 hal_u32_t;
-typedef volatile __s32 hal_s32_t;
+#include <rtapi_bool.h>
+#include <rtapi_stdint.h>
+typedef volatile bool hal_bit_t;
+typedef volatile rtapi_u32 hal_u32_t;
+typedef volatile rtapi_s32 hal_s32_t;
+typedef volatile int hal_port_t;
 typedef double real_t __attribute__((aligned(8)));
-typedef __u64 ireal_t __attribute__((aligned(8))); // integral type as wide as real_t / hal_float_t
-#define hal_float_t volatile real_t
+typedef rtapi_u64 ireal_t __attribute__((aligned(8))); // integral type as wide as real_t / hal_float_t
 
+#define hal_float_t volatile real_t
+       
 /***********************************************************************
 *                      "LOCKING" FUNCTIONS                             *
 ************************************************************************/
@@ -350,6 +362,9 @@ extern int hal_pin_u32_new(const char *name, hal_pin_dir_t dir,
     hal_u32_t ** data_ptr_addr, int comp_id);
 extern int hal_pin_s32_new(const char *name, hal_pin_dir_t dir,
     hal_s32_t ** data_ptr_addr, int comp_id);
+extern int hal_pin_port_new(const char *name, hal_pin_dir_t dir,
+    hal_port_t ** data_ptr_addr, int comp_id);
+
 
 /** The hal_pin_XXX_newf family of functions are similar to
     hal_pin_XXX_new except that they also do printf-style formatting to compute
@@ -368,6 +383,9 @@ extern int hal_pin_u32_newf(hal_pin_dir_t dir,
 	__attribute__((format(printf,4,5)));
 extern int hal_pin_s32_newf(hal_pin_dir_t dir,
     hal_s32_t ** data_ptr_addr, int comp_id, const char *fmt, ...)
+	__attribute__((format(printf,4,5)));
+extern int hal_pin_port_newf(hal_pin_dir_t dir,
+    hal_port_t** data_ptr_addr, int comp_id, const char *fmt, ...)
 	__attribute__((format(printf,4,5)));
 
 
@@ -470,7 +488,7 @@ extern int hal_unlink(const char *pin_name);
     'name' is the name of the new parameter.  It must be no longer than
     .HAL_NAME_LEN.  If there is already a parameter with the same
     name the call will fail.
-    'dir' is the parameter direction.  HAL_RO paramters are read only from
+    'dir' is the parameter direction.  HAL_RO parameters are read only from
     outside, and are written to by the component itself, typically to provide a
     view "into" the component for testing or troubleshooting.  HAL_RW
     parameters are writable from outside and also sometimes modified by the
@@ -525,7 +543,7 @@ extern int hal_param_s32_newf(hal_param_dir_t dir,
     functions above.
     'type' is the hal type of the new parameter - the type of data
     that will be stored in the parameter.
-    'dir' is the parameter direction.  HAL_RO paramters are read only from
+    'dir' is the parameter direction.  HAL_RO parameters are read only from
     outside, and are written to by the component itself, typically to provide a
     view "into" the component for testing or troubleshooting.  HAL_RW
     parameters are writable from outside and also sometimes modified by the
@@ -715,6 +733,151 @@ typedef int(*constructor)(char *prefix, char *arg);
 /** hal_set_constructor() sets the constructor function for this component
 */
 extern int hal_set_constructor(int comp_id, constructor make);
+
+
+
+/******************************************************************************
+  A HAL port pin is an asyncronous one way byte stream
+  
+  A hal port should have only one reader and one writer. Both sides can
+  read or write respectivly at any time without interfering with the other
+ 
+  A component that exports a PORT pin does not own the port buffer.
+  The signal linking an input port to an output port owns the port buffer.
+  The buffer is allocated by issuing a 'halcmd sets port-sig size'
+  command.
+*/
+
+
+/** hal_port_read reads count bytes from the port into dest.
+    This function should only be called by the component that owns 
+    the IN PORT pin.
+    returns
+        true: count bytes were read into dest
+        false: no bytes were read into dest
+ */
+extern bool hal_port_read(hal_port_t port, char* dest, unsigned count);
+
+
+/** hal_port_peek operates the same as hal_port_read but no bytes are consumed
+    from the input port. Repeated calls to hal_port_peek will return the same data.
+    This function should only be called by the component that owns the IN PORT pin.
+    returns 
+        true: count bytes were read into dest
+        false: no bytes were read into dest
+*/
+extern bool hal_port_peek(hal_port_t port, char* dest, unsigned count);
+
+/** hal_port_peek_commit advances the read position in the port buffer
+    by count bytes. A hal_port_peek followed by a hal_port_peek_commit
+    with the same count value would function equivalently to 
+    hal_port_read given the same count value. This function should only
+    be called by the component that owns the IN PORT pin.
+    returns:
+       true: count readable bytes were skipped and are no longer accessible
+       false: no bytes wer skipped
+*/ 
+extern bool hal_port_peek_commit(hal_port_t port, unsigned count);
+
+/** hal_port_write writes count bytes from src into the port. 
+    This function should only be called by the component that owns
+    the OUT PORT pin.
+    returns:
+        true: count bytes were written
+        false: no bytes were written into dest
+    
+*/
+extern bool hal_port_write(hal_port_t port, const char* src, unsigned count);
+
+/** hal_port_readable returns the number of bytes available
+    for reading from the port.
+*/
+extern unsigned hal_port_readable(hal_port_t port);
+
+/** hal_port_writable returns the number of bytes that
+    can be written into the port
+*/
+extern unsigned hal_port_writable(hal_port_t port);
+
+/** hal_port_buffer_size returns the total number of bytes
+    that a port can buffer
+*/
+extern unsigned hal_port_buffer_size(hal_port_t port);
+
+/** hal_port_clear emptys a given port of all data
+    without consuming any of it.
+    hal_port_clear should only be called by a reader
+*/
+extern void hal_port_clear(hal_port_t port);
+
+
+#ifdef ULAPI
+/** hal_port_wait_readable spin waits on a port until it has at least 
+    count bytes available for reading, or *stop > 0
+ */
+extern void hal_port_wait_readable(hal_port_t** port, unsigned count, sig_atomic_t* stop);
+
+/** hal_port_wait_writable spin waits on a port until it has at least
+    count bytes available for writing or *stop > 0
+ */
+extern void hal_port_wait_writable(hal_port_t** port, unsigned count, sig_atomic_t* stop);
+#endif
+
+
+
+
+
+
+union hal_stream_data {
+    real_t f;
+    bool b;
+    int32_t s;
+    uint32_t u;
+};
+
+typedef struct {
+    int comp_id, shmem_id;
+    struct hal_stream_shm *fifo;
+} hal_stream_t;
+
+/**
+ * HAL streams are modeled after sampler/stream and will hopefully replace
+ * the independent implementations there.
+ *
+ * There may only be one reader and one writer but this is not enforced
+ */
+
+#define HAL_STREAM_MAX_PINS (21)
+/** create and attach a stream */
+extern int hal_stream_create(hal_stream_t *stream, int comp, int key, int depth, const char *typestring);
+/** detach and destroy an open stream */
+extern void hal_stream_destroy(hal_stream_t *stream);
+
+/** attach to an existing stream */
+extern int hal_stream_attach(hal_stream_t *stream, int comp, int key, const char *typestring);
+/** detach from an open stream */
+extern int hal_stream_detach(hal_stream_t *stream);
+
+/** stream introspection */
+extern int hal_stream_element_count(hal_stream_t *stream);
+extern hal_type_t hal_stream_element_type(hal_stream_t *stream, int idx);
+
+// only one reader and one writer is allowed.
+extern int hal_stream_read(hal_stream_t *stream, union hal_stream_data *buf, unsigned *sampleno);
+extern bool hal_stream_readable(hal_stream_t *stream);
+extern int hal_stream_depth(hal_stream_t *stream);
+extern int hal_stream_maxdepth(hal_stream_t *stream);
+extern int hal_stream_num_underruns(hal_stream_t *stream);
+extern int hal_stream_num_overruns(hal_stream_t *stream);
+#ifdef ULAPI
+extern void hal_stream_wait_readable(hal_stream_t *stream, sig_atomic_t *stop);
+#endif
+
+extern int hal_stream_write(hal_stream_t *stream, union hal_stream_data *buf);
+extern bool hal_stream_writable(hal_stream_t *stream);
+#ifdef ULAPI
+extern void hal_stream_wait_writable(hal_stream_t *stream, sig_atomic_t *stop);
+#endif
 
 RTAPI_END_DECLS
 

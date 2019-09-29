@@ -4,15 +4,21 @@ include $(patsubst %.comp, $(BASEPWD)/objects/%.mak, $(COMPS))
 else
 CONVERTERS :=  \
     conv_float_s32.comp conv_float_u32.comp \
-    conv_bit_s32.comp conv_bit_u32.comp \
+    conv_bit_s32.comp conv_bit_u32.comp conv_bit_float.comp \
     conv_s32_float.comp conv_s32_bit.comp conv_s32_u32.comp \
     conv_u32_float.comp conv_u32_bit.comp conv_u32_s32.comp
 COMPS := $(sort $(wildcard hal/components/*.comp) $(addprefix hal/components/, $(CONVERTERS)))
 COMP_MANPAGES := $(patsubst hal/components/%.comp, ../docs/man/man9/%.9, $(COMPS))
+ifeq ($(BUILD_SYS),uspace)
+COMP_DRIVERS += hal/drivers/serport.comp
+COMP_DRIVERS += hal/drivers/mesa_7i65.comp
+else
 COMP_DRIVERS := $(wildcard hal/drivers/*.comp)
+endif
 COMP_DRIVER_MANPAGES := $(patsubst hal/drivers/%.comp, ../docs/man/man9/%.9, $(COMP_DRIVERS))
-manpages: $(COMP_MANPAGES) $(COMP_DRIVER_MANPAGES)
 TARGETS += manpages
+GENERATED_MANPAGES += $(COMP_MANPAGES)
+GENERATED_MANPAGES += $(COMP_DRIVER_MANPAGES)
 .PHONY: manpages
 ifeq ($(TRIVIAL_BUILD),no)
 -include $(patsubst %.comp, objects/%.mak, $(COMPS) $(COMP_DRIVERS))
@@ -20,17 +26,17 @@ Makefile: $(patsubst %.comp, objects/%.mak, $(COMPS) $(COMP_DRIVERS))
 endif
 endif
 
-obj-m += $(patsubst hal/drivers/%.comp, %.o, $(patsubst hal/components/%.comp, %.o, $(COMPS)))
+obj-m += $(patsubst hal/drivers/%.comp, %.o, $(patsubst hal/components/%.comp, %.o, $(COMPS) $(COMP_DRIVERS)))
 
-$(COMP_MANPAGES): ../docs/man/man9/%.9: hal/components/%.comp ../bin/comp
-	$(ECHO) Making comp manpage $(notdir $@)
+$(COMP_MANPAGES): ../docs/man/man9/%.9: hal/components/%.comp ../bin/halcompile
+	$(ECHO) Making halcompile manpage $(notdir $@)
 	@mkdir -p $(dir $@)
-	$(Q)../bin/comp --document -o $@ $<
+	$(Q)../bin/halcompile -U --document -o $@ $<
 
-$(COMP_DRIVER_MANPAGES): ../docs/man/man9/%.9: hal/drivers/%.comp ../bin/comp
-	$(ECHO) Making comp manpage $(notdir $@)
+$(COMP_DRIVER_MANPAGES): ../docs/man/man9/%.9: hal/drivers/%.comp ../bin/halcompile
+	$(ECHO) Making halcompile manpage $(notdir $@)
 	@mkdir -p $(dir $@)
-	$(Q)../bin/comp --document -o $@ $<
+	$(Q)../bin/halcompile -U --document -o $@ $<
 
 objects/%.mak: %.comp hal/components/Submakefile
 	$(ECHO) "Creating $(notdir $@)"
@@ -39,16 +45,15 @@ objects/%.mak: %.comp hal/components/Submakefile
 	$(Q)echo ../rtlib/$(notdir $*)$(MODULE_EXT): objects/rtobjects/$*.o >> $@.tmp
 	$(Q)mv -f $@.tmp $@
 
-objects/%.c: %.comp ../bin/comp
+objects/%.c: %.comp ../bin/halcompile
 	$(ECHO) "Preprocessing $(notdir $<)"
 	@mkdir -p $(dir $@)
-	$(Q)../bin/comp --require-license -o $@ $<
+	$(Q)../bin/halcompile -U -o $@ $<
 
 modules: $(patsubst %.comp, objects/%.c, $(COMPS) $(COMP_DRIVERS))
 
-clean: clean-comp-manpages
-clean-comp-manpages:
-	-rm -f $(COMP_MANPAGES) $(COMP_DRIVER_MANPAGES)
+# keep this make target in 2.6, remove in 2.7 (just use 'clean-manpages' in 2.7+)
+clean-comp-manpages: clean-manpages
 
 HALSTREAMERSRCS := hal/components/streamer_usr.c
 USERSRCS += $(HALSTREAMERSRCS)
@@ -66,6 +71,15 @@ USERSRCS += $(HALSAMPLERSRCS)
 	$(Q)$(CC) $(LDFLAGS) -o $@ $^
 TARGETS += ../bin/halsampler
 
+PYSAMPLERSRCS := hal/components/panelui.c
+USERSRCS += $(PYSAMPLERSRCS)
+PYFLAGS := -L$(SITEPY) -lpthread $(LIBDL) -lutil -lm -l$(LIBPYTHON) -Xlinker -export-dynamic -Wl,-O1 -Wl,-Bsymbolic-functions -lrt
+
+../bin/panelui: $(call TOOBJS, $(PYSAMPLERSRCS)) ../lib/liblinuxcnchal.so.0
+	$(ECHO) Linking $(notdir $@)
+	$(Q)$(CC) -o $@ $^ $(PYFLAGS)
+TARGETS += ../bin/panelui
+
 hal/components/conv_float_s32.comp: hal/components/conv.comp.in hal/components/mkconv.sh hal/components/Submakefile
 	$(ECHO) converting conv for $(notdir $@)
 	$(Q)sh hal/components/mkconv.sh float s32 "" -2147483647-1 2147483647 < $< > $@
@@ -81,6 +95,10 @@ hal/components/conv_bit_s32.comp: hal/components/conv.comp.in hal/components/mkc
 hal/components/conv_bit_u32.comp: hal/components/conv.comp.in hal/components/mkconv.sh hal/components/Submakefile
 	$(ECHO) converting conv for $(notdir $@)
 	$(Q)sh hal/components/mkconv.sh bit u32 // < $< > $@
+
+hal/components/conv_bit_float.comp: hal/components/conv.comp.in hal/components/mkconv.sh hal/components/Submakefile
+	$(ECHO) converting conv for $(notdir $@)
+	$(Q)sh hal/components/mkconv.sh bit float // < $< > $@
 
 hal/components/conv_s32_float.comp: hal/components/conv.comp.in hal/components/mkconv.sh hal/components/Submakefile
 	$(ECHO) converting conv for $(notdir $@)

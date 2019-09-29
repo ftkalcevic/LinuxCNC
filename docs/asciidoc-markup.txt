@@ -4,7 +4,8 @@ This document is a guide for using asciidoc markup
 Master Document file Headers, first line replace en with two letter language code
 ---------------------------------------------------------------------------------
 
-Getting Started V2.5, {localdate}
+:lversion: {sys: cat ../VERSION}
+Getting Started V{lversion}, {localdate}
 =================================
 :lang: en
 :masterdir: {indir}
@@ -25,18 +26,29 @@ Titles
 = Document Title (level 0) =  Note: level 0 can only be once per file!
 == Section title (level 1) ==  Note: trailing delimiter is optional.
 === Section title (level 2) ===
+.Third level Title
 
 Links
 =====
 [[anchor]]
 <<anchor,caption>>
 
-Example
+Example document link
 [[sub:torpodeos]]
 
 <<sub:torpodeos,bombs>>
 
-only bombs will show in the text with an underline so always provide a caption for a link
+only bombs will show in the text with an underline so always provide a caption
+for a link.
+
+External link
+http://linuxnc.org/someplace[description of link]
+
+Comment Block
+=============
+////
+Use: hide comments
+////
 
 
 Listing Block for G Code and terminal output
@@ -111,6 +123,27 @@ following figure..."
 
 image::images/parport-block-diag.png[align="center"]
 
+Notes and Warnings
+==================
+Inline example
+NOTE: This is an example note.
+
+Paragraph example
+[NOTE]
+This is an example note of the
+paragraph style.
+
+Styles include
+NOTE TIP IMPORTANT WARNING CAUTION
+
+Tables
+======
+[options="header, width="80%"]
+|=======
+|1 |2 |A
+|3 |4 |B
+|5 |6 |C
+|=======
 
 Escaping a character
 ====================

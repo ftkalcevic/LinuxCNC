@@ -135,7 +135,12 @@ struct PM_CARTESIAN {
 
     /* operators */
     double &operator[] (int n);	/* this[n] */
-    PM_CARTESIAN operator = (PM_CARTESIAN v);	/* this = v */
+    PM_CARTESIAN & operator += (const PM_CARTESIAN &o);
+    PM_CARTESIAN & operator -= (const PM_CARTESIAN &o);
+
+    // Scalar operations
+    PM_CARTESIAN & operator *= (double o);
+    PM_CARTESIAN & operator /= (double o);
 
     /* data */
     double x, y, z;		/* this.x, etc. */
@@ -156,7 +161,6 @@ struct PM_SPHERICAL {
 
     /* operators */
     double &operator[] (int n);	/* this[n] */
-    PM_SPHERICAL operator = (PM_SPHERICAL s);	/* this = s */
 
     /* data */
     double theta, phi, r;
@@ -177,7 +181,6 @@ struct PM_CYLINDRICAL {
 
     /* operators */
     double &operator[] (int n);	/* this[n] */
-    PM_CYLINDRICAL operator = (PM_CYLINDRICAL c);	/* this = c */
 
     /* data */
     double theta, r, z;
@@ -198,7 +201,6 @@ struct PM_ROTATION_VECTOR {
 
     /* operators */
     double &operator[] (int n);	/* this[n] */
-    PM_ROTATION_VECTOR operator = (PM_ROTATION_VECTOR r);	/* this = r */
 
     /* data */
     double s, x, y, z;
@@ -230,7 +232,6 @@ struct PM_ROTATION_MATRIX {
 
     /* operators */
     PM_CARTESIAN & operator[](int n);	/* this[n] */
-    PM_ROTATION_MATRIX operator = (PM_ROTATION_MATRIX m);	/* this = m */
 
     /* data */
     PM_CARTESIAN x, y, z;
@@ -260,7 +261,6 @@ struct PM_QUATERNION {
 
     /* operators */
     double &operator[] (int n);	/* this[n] */
-    PM_QUATERNION operator = (PM_QUATERNION q);	/* this = q */
 
     /* functions */
     void axisAngleMult(PM_AXIS axis, double angle);
@@ -284,7 +284,6 @@ struct PM_EULER_ZYZ {
 
     /* operators */
     double &operator[] (int n);
-    PM_EULER_ZYZ operator = (PM_EULER_ZYZ zyz);
 
     /* data */
     double z, y, zp;
@@ -305,7 +304,6 @@ struct PM_EULER_ZYX {
 
     /* operators */
     double &operator[] (int n);
-    PM_EULER_ZYX operator = (PM_EULER_ZYX zyx);
 
     /* data */
     double z, y, x;
@@ -318,7 +316,7 @@ struct PM_RPY {
     PM_RPY() {
     };
 #ifdef INCLUDE_POSEMATH_COPY_CONSTRUCTORS
-    PM_RPY(PM_CCONST PM_RPY & rpy);	/* added 7-May-1997 by WPS */
+    PM_RPY(PM_CCONST PM_RPY PM_REF rpy);	/* added 7-May-1997 by WPS */
 #endif
     PM_RPY(double _r, double _p, double _y);
     PM_RPY(PM_CONST PM_QUATERNION PM_REF q);	/* conversion */
@@ -326,7 +324,6 @@ struct PM_RPY {
 
     /* operators */
     double &operator[] (int n);
-    PM_RPY operator = (PM_RPY rpy);
 
     /* data */
     double r, p, y;
@@ -348,7 +345,6 @@ struct PM_POSE {
 
     /* operators */
     double &operator[] (int n);	/* this[n] */
-    PM_POSE operator = (PM_POSE p);	/* this = p */
 
     /* data */
     PM_CARTESIAN tran;
@@ -369,7 +365,6 @@ struct PM_HOMOGENEOUS {
 
     /* operators */
     PM_CARTESIAN & operator[](int n);	/* column vector */
-    PM_HOMOGENEOUS operator = (PM_HOMOGENEOUS h);
 
     /* data ( [ 0 0 0 1 ] element is manually returned by [] if needed ) */
     PM_CARTESIAN tran;
@@ -425,10 +420,10 @@ struct PM_CIRCLE {
 /* overloaded external functions */
 
 /* dot */
-extern double dot(PM_CARTESIAN v1, PM_CARTESIAN v2);
+extern double dot(const PM_CARTESIAN &v1, const PM_CARTESIAN &v2);
 
 /* cross */
-extern PM_CARTESIAN cross(PM_CARTESIAN v1, PM_CARTESIAN v2);
+extern PM_CARTESIAN cross(const PM_CARTESIAN &v1, const PM_CARTESIAN &v2);
 
 #if 0
 /* norm */
@@ -439,88 +434,88 @@ extern PM_ROTATION_MATRIX norm(PM_ROTATION_MATRIX m);
 #endif
 
 /* unit */
-extern PM_CARTESIAN unit(PM_CARTESIAN v);
-extern PM_QUATERNION unit(PM_QUATERNION q);
-extern PM_ROTATION_VECTOR unit(PM_ROTATION_VECTOR r);
-extern PM_ROTATION_MATRIX unit(PM_ROTATION_MATRIX m);
+extern PM_CARTESIAN unit(const PM_CARTESIAN &v);
+extern PM_QUATERNION unit(const PM_QUATERNION &q);
+extern PM_ROTATION_VECTOR unit(const PM_ROTATION_VECTOR &r);
+extern PM_ROTATION_MATRIX unit(const PM_ROTATION_MATRIX &m);
 
 /* isNorm */
-extern int isNorm(PM_CARTESIAN v);
-extern int isNorm(PM_QUATERNION q);
-extern int isNorm(PM_ROTATION_VECTOR r);
-extern int isNorm(PM_ROTATION_MATRIX m);
+extern int isNorm(const PM_CARTESIAN &v);
+extern int isNorm(const PM_QUATERNION &q);
+extern int isNorm(const PM_ROTATION_VECTOR &r);
+extern int isNorm(const PM_ROTATION_MATRIX &m);
 
 /* mag */
-extern double mag(PM_CARTESIAN v);
+extern double mag(const PM_CARTESIAN &v);
 
 /* disp */
-extern double disp(PM_CARTESIAN v1, PM_CARTESIAN v2);
+extern double disp(const PM_CARTESIAN &v1, const PM_CARTESIAN &v2);
 
 /* inv */
-extern PM_CARTESIAN inv(PM_CARTESIAN v);
-extern PM_ROTATION_MATRIX inv(PM_ROTATION_MATRIX m);
-extern PM_QUATERNION inv(PM_QUATERNION q);
-extern PM_POSE inv(PM_POSE p);
-extern PM_HOMOGENEOUS inv(PM_HOMOGENEOUS h);
+extern PM_CARTESIAN inv(const PM_CARTESIAN &v);
+extern PM_ROTATION_MATRIX inv(const PM_ROTATION_MATRIX &m);
+extern PM_QUATERNION inv(const PM_QUATERNION &q);
+extern PM_POSE inv(const PM_POSE &p);
+extern PM_HOMOGENEOUS inv(const PM_HOMOGENEOUS &h);
 
 /* project */
-extern PM_CARTESIAN proj(PM_CARTESIAN v1, PM_CARTESIAN v2);
+extern PM_CARTESIAN proj(const PM_CARTESIAN &v1, const PM_CARTESIAN &v2);
 
 /* overloaded arithmetic functions */
 
 /* unary +, - for translation, rotation, pose */
-extern PM_CARTESIAN operator + (PM_CARTESIAN v);
-extern PM_CARTESIAN operator - (PM_CARTESIAN v);
-extern PM_QUATERNION operator + (PM_QUATERNION q);
-extern PM_QUATERNION operator - (PM_QUATERNION q);
-extern PM_POSE operator + (PM_POSE p);
-extern PM_POSE operator - (PM_POSE p);
+extern PM_CARTESIAN operator + (const PM_CARTESIAN &v);
+extern PM_CARTESIAN operator - (const PM_CARTESIAN &v);
+extern PM_QUATERNION operator + (const PM_QUATERNION &q);
+extern PM_QUATERNION operator - (const PM_QUATERNION &q);
+extern PM_POSE operator + (const PM_POSE &p);
+extern PM_POSE operator - (const PM_POSE &p);
 
 /* compare operators */
-extern int operator == (PM_CARTESIAN v1, PM_CARTESIAN v2);
-extern int operator == (PM_QUATERNION q1, PM_QUATERNION q2);
-extern int operator == (PM_POSE p1, PM_POSE p2);
-extern int operator != (PM_CARTESIAN v1, PM_CARTESIAN v2);
-extern int operator != (PM_QUATERNION q1, PM_QUATERNION q2);
-extern int operator != (PM_POSE p1, PM_POSE p2);
+extern int operator == (const PM_CARTESIAN &v1, const PM_CARTESIAN &v2);
+extern int operator == (const PM_QUATERNION &q1, const PM_QUATERNION &q2);
+extern int operator == (const PM_POSE &p1, const PM_POSE &p2);
+extern int operator != (const PM_CARTESIAN &v1, const PM_CARTESIAN &v2);
+extern int operator != (const PM_QUATERNION &q1, const PM_QUATERNION &q2);
+extern int operator != (const PM_POSE &p1, const PM_POSE &p2);
 
 /* translation +, -, scalar *, - */
 
 /* v + v */
-extern PM_CARTESIAN operator + (PM_CARTESIAN v1, PM_CARTESIAN v2);
+extern PM_CARTESIAN operator + (PM_CARTESIAN v1, const PM_CARTESIAN &v2);
 /* v - v */
-extern PM_CARTESIAN operator - (PM_CARTESIAN v1, PM_CARTESIAN v2);
+extern PM_CARTESIAN operator - (PM_CARTESIAN v1, const PM_CARTESIAN &v2);
 /* v * s */
 extern PM_CARTESIAN operator *(PM_CARTESIAN v, double s);
 /* s * v */
 extern PM_CARTESIAN operator *(double s, PM_CARTESIAN v);
 /* v / s */
-extern PM_CARTESIAN operator / (PM_CARTESIAN v, double s);
+extern PM_CARTESIAN operator / (const PM_CARTESIAN &v, double s);
 
 /* rotation * by scalar, translation, and rotation */
 
 /* s * q */
-extern PM_QUATERNION operator *(double s, PM_QUATERNION q);
+extern PM_QUATERNION operator *(double s, const PM_QUATERNION &q);
 /* q * s */
-extern PM_QUATERNION operator *(PM_QUATERNION q, double s);
+extern PM_QUATERNION operator *(const PM_QUATERNION &q, double s);
 /* q / s */
-extern PM_QUATERNION operator / (PM_QUATERNION q, double s);
+extern PM_QUATERNION operator / (const PM_QUATERNION &q, double s);
 /* q * v */
-extern PM_CARTESIAN operator *(PM_QUATERNION q, PM_CARTESIAN v);
+extern PM_CARTESIAN operator *(const PM_QUATERNION &q, const PM_CARTESIAN &v);
 /* q * q */
-extern PM_QUATERNION operator *(PM_QUATERNION q1, PM_QUATERNION q2);
+extern PM_QUATERNION operator *(const PM_QUATERNION &q1, const PM_QUATERNION &q2);
 /* m * m */
-extern PM_ROTATION_MATRIX operator *(PM_ROTATION_MATRIX m1,
-    PM_ROTATION_MATRIX m2);
+extern PM_ROTATION_MATRIX operator *(const PM_ROTATION_MATRIX &m1,
+    const PM_ROTATION_MATRIX &m2);
 
 /* pose operators */
 
 /* q * p */
-extern PM_POSE operator *(PM_QUATERNION q, PM_POSE p);
+extern PM_POSE operator *(const PM_QUATERNION &q, const PM_POSE &p);
 /* p * p */
-extern PM_POSE operator *(PM_POSE p1, PM_POSE p2);
+extern PM_POSE operator *(const PM_POSE &p1, const PM_POSE &p2);
 /* p * v */
-extern PM_CARTESIAN operator *(PM_POSE p, PM_CARTESIAN v);
+extern PM_CARTESIAN operator *(const PM_POSE &p, const PM_CARTESIAN &v);
 
 #endif /* __cplusplus */
 
@@ -607,6 +602,15 @@ extern "C" {
 	PmQuaternion rot;
 
     } PmPose;
+
+/* PmCartLine */
+    typedef struct {
+        PmCartesian start;
+        PmCartesian end;
+        PmCartesian uVec;
+        double tmag;
+        int tmag_zero;
+    } PmCartLine;
 
 /* Homogeneous transform PmHomogeneous */
 
@@ -701,53 +705,63 @@ extern "C" {
 #define DOUBLE_FUZZ 2.2204460492503131e-16
 #define DOUBLECP_FUZZ 1.0842021724855044e-19
 
-#define CART_FUZZ (0.000001)
+
+/**
+ * FIXME sloppily defined constants here.
+ * These constants are quite large compared to the DOUBLE_FUZZ limitation. They
+ * seem like an ugly band-aid for floating point problems.
+ */
+
+// FIXME setting this to be an order of magnitude smaller than canon's shortest
+// allowed segment. This is still larger than TP's smallest position, so it may
+// be silently causing trouble.
+#define CART_FUZZ (1.0e-8)
 /* how close a cartesian vector's magnitude must be for it to be considered
    a zero vector */
 
-#define Q_FUZZ (.000001)
+#define Q_FUZZ (1.0e-06)
 /* how close elements of a Q must be to be equal */
 
-#define QS_FUZZ (.000001)
+#define QS_FUZZ (1.0e-6)
 /* how close q.s is to 0 to be 180 deg rotation */
 
-#define RS_FUZZ (.000001)
+#define RS_FUZZ (1.0e-6)
 /* how close r.s is for a rotation vector to be considered 0 */
 
-#define QSIN_FUZZ (.000001)
+#define QSIN_FUZZ (1.0e-6)
 /* how close sin(a/2) is to 0 to be zero rotat */
 
-#define V_FUZZ (.000001)
+#define V_FUZZ (1.0e-8)
 /* how close elements of a V must be to be equal */
 
-#define SQRT_FUZZ (-.000001)
+#define SQRT_FUZZ (-1.0e-6)
 /* how close to 0 before math_sqrt() is error */
 
-#define UNIT_VEC_FUZZ (.000001)
+#define UNIT_VEC_FUZZ (1.0e-6)
 /* how close mag of vec must be to 1.00 */
 
-#define UNIT_QUAT_FUZZ (.000001)
+#define UNIT_QUAT_FUZZ (1.0e-6)
 /* how close mag of quat must be to 1.00 */
 
-#define UNIT_SC_FUZZ (.000001)
+#define UNIT_SC_FUZZ (1.0e-6)
 /* how close mag of sin, cos must be to 1.00 */
 
-#define E_EPSILON (.000001)
+#define E_EPSILON (1.0e-6)
 /* how close second ZYZ euler angle must be to 0/PI for degeneration */
 
-#define SINGULAR_EPSILON (.000001)
+#define SINGULAR_EPSILON (1.0e-6)
 /* how close to zero the determinate of a matrix must be for singularity */
 
-#define RPY_P_FUZZ (0.000001)
+#define RPY_P_FUZZ (1.0e-6)
 /* how close pitch is to zero for RPY to degenerate */
 
-#define ZYZ_Y_FUZZ (0.000001)
+#define ZYZ_Y_FUZZ (1.0e-6)
 /* how close Y is to zero for ZYZ Euler to degenerate */
 
-#define ZYX_Y_FUZZ (0.000001)
+#define ZYX_Y_FUZZ (1.0e-6)
 /* how close Y is to zero for ZYX Euler to degenerate */
 
-#define CIRCLE_FUZZ (0.000001)
+#define CIRCLE_FUZZ (1.0e-6)
 /* Bug fix for the missing circles problem */
 
 /* debug output printing */
@@ -767,58 +781,58 @@ extern "C" {
 
 /* Translation rep conversion functions */
 
-    extern int pmCartSphConvert(PmCartesian, PmSpherical *);
-    extern int pmCartCylConvert(PmCartesian, PmCylindrical *);
-    extern int pmSphCartConvert(PmSpherical, PmCartesian *);
-    extern int pmSphCylConvert(PmSpherical, PmCylindrical *);
-    extern int pmCylCartConvert(PmCylindrical, PmCartesian *);
-    extern int pmCylSphConvert(PmCylindrical, PmSpherical *);
+    extern int pmCartSphConvert(PmCartesian const * const, PmSpherical * const);
+    extern int pmCartCylConvert(PmCartesian const * const, PmCylindrical * const);
+    extern int pmSphCartConvert(PmSpherical const * const, PmCartesian * const);
+    extern int pmSphCylConvert(PmSpherical const * const, PmCylindrical * const);
+    extern int pmCylCartConvert(PmCylindrical const * const, PmCartesian * const);
+    extern int pmCylSphConvert(PmCylindrical const * const, PmSpherical * const);
 
 /* Rotation rep conversion functions */
 
-    extern int pmAxisAngleQuatConvert(PmAxis, double, PmQuaternion *);
+    extern int pmAxisAngleQuatConvert(PmAxis, double, PmQuaternion * const);
 
-    extern int pmRotQuatConvert(PmRotationVector, PmQuaternion *);
-    extern int pmRotMatConvert(PmRotationVector, PmRotationMatrix *);
-    extern int pmRotZyzConvert(PmRotationVector, PmEulerZyz *);
-    extern int pmRotZyxConvert(PmRotationVector, PmEulerZyx *);
-    extern int pmRotRpyConvert(PmRotationVector, PmRpy *);
+    extern int pmRotQuatConvert(PmRotationVector const * const, PmQuaternion * const);
+    extern int pmRotMatConvert(PmRotationVector const * const, PmRotationMatrix * const);
+    extern int pmRotZyzConvert(PmRotationVector const * const, PmEulerZyz * const);
+    extern int pmRotZyxConvert(PmRotationVector const * const, PmEulerZyx * const);
+    extern int pmRotRpyConvert(PmRotationVector const * const, PmRpy * const);
 
-    extern int pmQuatRotConvert(PmQuaternion, PmRotationVector *);
-    extern int pmQuatMatConvert(PmQuaternion, PmRotationMatrix *);
-    extern int pmQuatZyzConvert(PmQuaternion, PmEulerZyz *);
-    extern int pmQuatZyxConvert(PmQuaternion, PmEulerZyx *);
-    extern int pmQuatRpyConvert(PmQuaternion, PmRpy *);
+    extern int pmQuatRotConvert(PmQuaternion const * const, PmRotationVector * const);
+    extern int pmQuatMatConvert(PmQuaternion const * const, PmRotationMatrix * const);
+    extern int pmQuatZyzConvert(PmQuaternion const * const, PmEulerZyz * const);
+    extern int pmQuatZyxConvert(PmQuaternion const * const, PmEulerZyx * const);
+    extern int pmQuatRpyConvert(PmQuaternion const * const, PmRpy * const);
 
-    extern int pmMatRotConvert(PmRotationMatrix, PmRotationVector *);
-    extern int pmMatQuatConvert(PmRotationMatrix, PmQuaternion *);
-    extern int pmMatZyzConvert(PmRotationMatrix, PmEulerZyz *);
-    extern int pmMatZyxConvert(PmRotationMatrix, PmEulerZyx *);
-    extern int pmMatRpyConvert(PmRotationMatrix, PmRpy *);
+    extern int pmMatRotConvert(PmRotationMatrix const * const, PmRotationVector * const);
+    extern int pmMatQuatConvert(PmRotationMatrix const * const, PmQuaternion * const);
+    extern int pmMatZyzConvert(PmRotationMatrix const * const, PmEulerZyz * const);
+    extern int pmMatZyxConvert(PmRotationMatrix const * const, PmEulerZyx * const);
+    extern int pmMatRpyConvert(PmRotationMatrix const * const, PmRpy * const);
 
-    extern int pmZyzRotConvert(PmEulerZyz, PmRotationVector *);
-    extern int pmZyzQuatConvert(PmEulerZyz, PmQuaternion *);
-    extern int pmZyzMatConvert(PmEulerZyz, PmRotationMatrix *);
-    extern int pmZyzZyxConvert(PmEulerZyz, PmEulerZyx *);
-    extern int pmZyzRpyConvert(PmEulerZyz, PmRpy *);
+    extern int pmZyzRotConvert(PmEulerZyz const * const, PmRotationVector * const);
+    extern int pmZyzQuatConvert(PmEulerZyz const * const, PmQuaternion * const);
+    extern int pmZyzMatConvert(PmEulerZyz const * const, PmRotationMatrix * const);
+    extern int pmZyzZyxConvert(PmEulerZyz const * const, PmEulerZyx * const);
+    extern int pmZyzRpyConvert(PmEulerZyz const * const, PmRpy * const);
 
-    extern int pmZyxRotConvert(PmEulerZyx, PmRotationVector *);
-    extern int pmZyxQuatConvert(PmEulerZyx, PmQuaternion *);
-    extern int pmZyxMatConvert(PmEulerZyx, PmRotationMatrix *);
-    extern int pmZyxZyzConvert(PmEulerZyx, PmEulerZyz *);
-    extern int pmZyxRpyConvert(PmEulerZyx, PmRpy *);
+    extern int pmZyxRotConvert(PmEulerZyx const * const, PmRotationVector * const);
+    extern int pmZyxQuatConvert(PmEulerZyx const * const, PmQuaternion * const);
+    extern int pmZyxMatConvert(PmEulerZyx const * const, PmRotationMatrix * const);
+    extern int pmZyxZyzConvert(PmEulerZyx const * const, PmEulerZyz * const);
+    extern int pmZyxRpyConvert(PmEulerZyx const * const, PmRpy * const);
 
-    extern int pmRpyRotConvert(PmRpy, PmRotationVector *);
-    extern int pmRpyQuatConvert(PmRpy, PmQuaternion *);
-    extern int pmRpyMatConvert(PmRpy, PmRotationMatrix *);
-    extern int pmRpyZyzConvert(PmRpy, PmEulerZyz *);
-    extern int pmRpyZyxConvert(PmRpy, PmEulerZyx *);
+    extern int pmRpyRotConvert(PmRpy const * const, PmRotationVector * const);
+    extern int pmRpyQuatConvert(PmRpy const * const, PmQuaternion * const);
+    extern int pmRpyMatConvert(PmRpy const * const, PmRotationMatrix * const);
+    extern int pmRpyZyzConvert(PmRpy const * const, PmEulerZyz * const);
+    extern int pmRpyZyxConvert(PmRpy const * const, PmEulerZyx * const);
 
 /* Combined rep conversion functions */
 
-    extern int pmPoseHomConvert(PmPose p, PmHomogeneous * h);
+    extern int pmPoseHomConvert(PmPose const * const, PmHomogeneous* const);
 
-    extern int pmHomPoseConvert(PmHomogeneous h, PmPose * p);
+    extern int pmHomPoseConvert(PmHomogeneous const * const, PmPose * const);
 
 /* Arithmetic functions
 
@@ -833,53 +847,66 @@ extern "C" {
 
 /* NOTE:  only Cartesian type supported in C now */
 
-    extern int pmCartCartCompare(PmCartesian, PmCartesian);
-    extern int pmCartCartDot(PmCartesian, PmCartesian, double *);
-    extern int pmCartCartCross(PmCartesian, PmCartesian, PmCartesian *);
-    extern int pmCartMag(PmCartesian, double *);
-    extern int pmCartCartDisp(PmCartesian v1, PmCartesian v2, double *d);
-    extern int pmCartCartAdd(PmCartesian, PmCartesian, PmCartesian *);
-    extern int pmCartCartSub(PmCartesian, PmCartesian, PmCartesian *);
-    extern int pmCartScalMult(PmCartesian, double, PmCartesian *);
-    extern int pmCartScalDiv(PmCartesian, double, PmCartesian *);
-    extern int pmCartNeg(PmCartesian, PmCartesian *);
-    extern int pmCartUnit(PmCartesian v, PmCartesian * vout);
+    extern int pmCartCartCompare(PmCartesian const * const, PmCartesian const * const);
+    extern int pmCartCartDot(PmCartesian const * const, PmCartesian const * const, double * const);
+    extern int pmCartCartCross(PmCartesian const * const, PmCartesian const * const, PmCartesian * const);
+    extern int pmCartCartMult(PmCartesian const * const, PmCartesian const * const, PmCartesian * const);
+    extern int pmCartCartDiv(PmCartesian const * const, PmCartesian const * const, PmCartesian * const);
+    extern int pmCartInfNorm(PmCartesian const * v, double * out);
+    extern int pmCartMag(PmCartesian const * const, double * const);
+    extern int pmCartMagSq(PmCartesian const * const, double * const);
+    extern int pmCartCartDisp(PmCartesian const * const v1, PmCartesian const * const v2, double *d);
+    extern int pmCartCartAdd(PmCartesian const * const, PmCartesian const * const, PmCartesian * const);
+    extern int pmCartCartSub(PmCartesian const * const, PmCartesian const * const, PmCartesian * const);
+    extern int pmCartScalMult(PmCartesian const * const, double, PmCartesian * const);
+    extern int pmCartScalDiv(PmCartesian const * const, double, PmCartesian * const);
+    extern int pmCartNeg(PmCartesian const * const, PmCartesian * const);
+    extern int pmCartUnit(PmCartesian const * const, PmCartesian * const);
+    extern int pmCartAbs(PmCartesian const * const, PmCartesian * const);
+    // Equivalent of compound operators like +=, -=, etc. Basically, these functions work directly on the first PmCartesian
+    extern int pmCartCartAddEq(PmCartesian * const, PmCartesian const * const);
+    extern int pmCartCartSubEq(PmCartesian * const, PmCartesian const * const);
+    extern int pmCartScalMultEq(PmCartesian * const, double);
+    extern int pmCartScalDivEq(PmCartesian * const, double);
+    extern int pmCartUnitEq(PmCartesian * const);
+    extern int pmCartNegEq(PmCartesian * const);
 /*! \todo Another #if 0 */
 #if 0
-    extern int pmCartNorm(PmCartesian v, PmCartesian * vout);
+    extern int pmCartNorm(PmCartesian const * const v, PmCartesian * const vout);
 #else
 // Hopefully guaranteed to cause a compile error when used.
 #define pmCartNorm(a,b,c,d,e)  bad{a.b.c.d.e}
 #endif
 
-    extern int pmCartIsNorm(PmCartesian v);
-    extern int pmCartInv(PmCartesian, PmCartesian *);
-    extern int pmCartCartProj(PmCartesian, PmCartesian, PmCartesian *);
-    extern int pmCartPlaneProj(PmCartesian v, PmCartesian normal,
+    extern int pmCartIsNorm(PmCartesian const * const v);
+    extern int pmCartInv(PmCartesian const * const, PmCartesian * const);
+    extern int pmCartInvEq(PmCartesian * const);
+    extern int pmCartCartProj(PmCartesian const * const, PmCartesian const * const, PmCartesian * const);
+    extern int pmCartPlaneProj(PmCartesian const * const v, PmCartesian const * const normal,
 	PmCartesian * vout);
 
 /* rotation functions */
 
 /* quaternion functions */
 
-    extern int pmQuatQuatCompare(PmQuaternion, PmQuaternion);
-    extern int pmQuatMag(PmQuaternion q, double *d);
-    extern int pmQuatNorm(PmQuaternion, PmQuaternion *);
-    extern int pmQuatInv(PmQuaternion, PmQuaternion *);
-    extern int pmQuatIsNorm(PmQuaternion);
-    extern int pmQuatScalMult(PmQuaternion q, double s, PmQuaternion * qout);
-    extern int pmQuatScalDiv(PmQuaternion q, double s, PmQuaternion * qout);
-    extern int pmQuatQuatMult(PmQuaternion, PmQuaternion, PmQuaternion *);
-    extern int pmQuatCartMult(PmQuaternion, PmCartesian, PmCartesian *);
-    extern int pmQuatAxisAngleMult(PmQuaternion, PmAxis, double,
+    extern int pmQuatQuatCompare(PmQuaternion const * const, PmQuaternion const * const);
+    extern int pmQuatMag(PmQuaternion const * const q, double *d);
+    extern int pmQuatNorm(PmQuaternion const * const, PmQuaternion * const);
+    extern int pmQuatInv(PmQuaternion const * const, PmQuaternion * const);
+    extern int pmQuatIsNorm(PmQuaternion const * const);
+    extern int pmQuatScalMult(PmQuaternion const * const q, double s, PmQuaternion * const qout);
+    extern int pmQuatScalDiv(PmQuaternion const * const q, double s, PmQuaternion * const qout);
+    extern int pmQuatQuatMult(PmQuaternion const * const, PmQuaternion const * const, PmQuaternion * const);
+    extern int pmQuatCartMult(PmQuaternion const * const, PmCartesian const * const, PmCartesian * const);
+    extern int pmQuatAxisAngleMult(PmQuaternion const * const, PmAxis, double,
 	PmQuaternion *);
 
 /* rotation vector functions */
 
-    extern int pmRotScalMult(PmRotationVector, double, PmRotationVector *);
-    extern int pmRotScalDiv(PmRotationVector, double, PmRotationVector *);
-    extern int pmRotIsNorm(PmRotationVector);
-    extern int pmRotNorm(PmRotationVector, PmRotationVector *);
+    extern int pmRotScalMult(PmRotationVector const * const, double, PmRotationVector * const);
+    extern int pmRotScalDiv(PmRotationVector const * const, double, PmRotationVector * const);
+    extern int pmRotIsNorm(PmRotationVector const * const);
+    extern int pmRotNorm(PmRotationVector const * const, PmRotationVector * const);
 
 /* rotation matrix functions */
 
@@ -887,35 +914,42 @@ extern "C" {
 /*   M =  |  m.x.y   m.y.y   m.z.y  |   */
 /*        |  m.x.z   m.y.z   m.z.z  |   */
 
-    extern int pmMatNorm(PmRotationMatrix m, PmRotationMatrix * mout);
-    extern int pmMatIsNorm(PmRotationMatrix m);
-    extern int pmMatInv(PmRotationMatrix m, PmRotationMatrix * mout);
-    extern int pmMatCartMult(PmRotationMatrix m, PmCartesian v,
-	PmCartesian * vout);
-    extern int pmMatMatMult(PmRotationMatrix m1, PmRotationMatrix m2,
-	PmRotationMatrix * mout);
+    extern int pmMatNorm(PmRotationMatrix const * const m, PmRotationMatrix * const mout);
+    extern int pmMatIsNorm(PmRotationMatrix const * const  m);
+    extern int pmMatInv(PmRotationMatrix const * const  m, PmRotationMatrix * const mout);
+    extern int pmMatCartMult(PmRotationMatrix const * const  m, PmCartesian const * const  v,
+	PmCartesian * const vout);
+    extern int pmMatMatMult(PmRotationMatrix const * const  m1, PmRotationMatrix const * const  m2,
+	PmRotationMatrix * const mout);
 
 /* pose functions*/
 
-    extern int pmPosePoseCompare(PmPose, PmPose);
-    extern int pmPoseInv(PmPose p, PmPose *);
-    extern int pmPoseCartMult(PmPose, PmCartesian, PmCartesian *);
-    extern int pmPosePoseMult(PmPose, PmPose, PmPose *);
+    extern int pmPosePoseCompare(PmPose const * const, PmPose const * const);
+    extern int pmPoseInv(PmPose const * const p, PmPose * const);
+    extern int pmPoseCartMult(PmPose const * const, PmCartesian const * const, PmCartesian * const);
+    extern int pmPosePoseMult(PmPose const * const, PmPose const * const, PmPose * const);
 
 /* homogeneous functions */
-    extern int pmHomInv(PmHomogeneous, PmHomogeneous *);
+    extern int pmHomInv(PmHomogeneous const * const, PmHomogeneous * const);
 
 /* line functions */
 
-    extern int pmLineInit(PmLine * line, PmPose start, PmPose end);
-    extern int pmLinePoint(PmLine * line, double len, PmPose * point);
+    extern int pmLineInit(PmLine * const line, PmPose const * const start, PmPose const * const end);
+    extern int pmLinePoint(PmLine const * const line, double len, PmPose * const point);
+
+/* pure cartesian line functions */
+    extern int pmCartLineInit(PmCartLine * const line, PmCartesian const * const start, PmCartesian const * const end);
+    extern int pmCartLinePoint(PmCartLine const * const line, double len, PmCartesian * const point);
+    extern int pmCartLineStretch(PmCartLine * const line, double new_len, int from_end);
 
 /* circle functions */
 
-    extern int pmCircleInit(PmCircle * circle,
-	PmPose start, PmPose end,
-	PmCartesian center, PmCartesian normal, int turn);
-    extern int pmCirclePoint(PmCircle * circle, double angle, PmPose * point);
+    extern int pmCircleInit(PmCircle * const circle,
+            PmCartesian const * const start, PmCartesian const * const end,
+            PmCartesian const * const center, PmCartesian const * const normal, int turn);
+
+    extern int pmCirclePoint(PmCircle const * const circle, double angle, PmCartesian * const point);
+    extern int pmCircleStretch(PmCircle * const circ, double new_angle, int from_end);
 
 /* slicky macros for item-by-item copying between C and C++ structs */
 

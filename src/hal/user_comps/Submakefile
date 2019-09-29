@@ -1,4 +1,11 @@
-USER_COMP_PY = pyvcp hal_input gladevcp
+USER_COMP_PY = pyvcp hal_input gladevcp scorbot-er-3 mitsub_vfd
+
+USER_COMPS := $(sort $(wildcard hal/user_comps/*.comp))
+USER_COMP_BINS := $(patsubst hal/user_comps/%.comp, ../bin/%, $(USER_COMPS))
+USER_COMP_MANPAGES := $(patsubst hal/user_comps/%.comp, ../docs/man/man1/%.1, $(USER_COMPS))
+USER_COMP_SRCS := $(patsubst %.comp, objects/%.c, $(USER_COMPS))
+GENERATED_MANPAGES += $(USER_COMP_MANPAGES)
+USERSRCS += $(USER_COMP_SRCS)
 
 $(patsubst %, ../bin/%, $(USER_COMP_PY)) : ../bin/%: hal/user_comps/%.py
 	@$(ECHO) Syntax checking python script $(notdir $@)
@@ -8,29 +15,89 @@ $(patsubst %, ../bin/%, $(USER_COMP_PY)) : ../bin/%: hal/user_comps/%.py
 
 PYTARGETS += $(patsubst %, ../bin/%, $(USER_COMP_PY))
 
-MODBUSSRCS := hal/user_comps/gs2_vfd.c\
-	hal/user_comps/modbus.c
-MODBUSLDFLAGS := $(GLIB_LIBS)
-MODBUSCCFLAGS := $(GLIB_CFLAGS)
-USERSRCS += $(MODBUSSRCS)
 
- $(call TOOBJSDEPS, $(MODBUSSRCS)) : EXTRAFLAGS += $(MODBUSCCFLAGS)
+ifdef HAVE_LIBMODBUS3
 
-../bin/gs2_vfd: $(call TOOBJS, $(MODBUSSRCS)) ../lib/liblinuxcnchal.so.0
+GS2_SRCS := hal/user_comps/gs2_vfd.c
+GS2_LDFLAGS := $(GLIB_LIBS) $(LIBMODBUS_LIBS)
+GS2_CCFLAGS := $(GLIB_CFLAGS) $(LIBMODBUS_CFLAGS)
+
+$(call TOOBJSDEPS, $(GS2_SRCS)) : EXTRAFLAGS += $(GS2_CCFLAGS)
+
+../bin/gs2_vfd: $(call TOOBJS, $(GS2_SRCS)) ../lib/liblinuxcnchal.so.0
 	$(ECHO) Linking $(notdir $@)
-	$(Q)$(CC) -o $@ $^ $(LDFLAGS) $(MODBUSLDFLAGS)
-TARGETS += ../bin/gs2_vfd
+	$(Q)$(CC) -o $@ $^ $(LDFLAGS) $(GS2_LDFLAGS)
+
+SJ200_SRCS := hal/user_comps/sj200_vfd.c hal/user_comps/modbus.c
+SJ200_LDFLAGS := $(GLIB_LIBS) $(LIBMODBUS_LIBS)
+SJ200_CCFLAGS := $(GLIB_CFLAGS) $(LIBMODBUS_CFLAGS)
+
+$(call TOOBJSDEPS, $(SJ200_SRCS)) : EXTRAFLAGS += $(SJ200_CCFLAGS)
+
+../bin/sj200_vfd: $(call TOOBJS, $(SJ200_SRCS)) ../lib/liblinuxcnchal.so.0
+	$(ECHO) Linking $(notdir $@)
+	$(Q)$(CC) -o $@ $^ $(LDFLAGS) $(SJ200_LDFLAGS)
+
+
+USERSRCS += $(GS2_SRCS) $(SJ200_SRCS)
+TARGETS += ../bin/gs2_vfd ../bin/sj200_vfd
+
+HY_GT_SRCS := hal/user_comps/hy_gt_vfd.c
+HY_GT_LDFLAGS := $(LIBMODBUS_LIBS)
+HY_GT_CCFLAGS := $(LIBMODBUS_CFLAGS)
+
+$(call TOOBJSDEPS, $(HY_GT_SRCS)) : EXTRAFLAGS += $(HY_GT_CCFLAGS)
+
+../bin/hy_gt_vfd: $(call TOOBJS, $(HY_GT_SRCS)) ../lib/liblinuxcnchal.so.0
+	$(ECHO) Linking $(notdir $@)
+	$(Q)$(CC) -o $@ $^ $(LDFLAGS) $(HY_GT_LDFLAGS)
+
+USERSRCS += $(HY_GT_SRCS)
+TARGETS += ../bin/hy_gt_vfd
+
+endif # HAVE_LIBMODBUS
+
 
 ifeq ($(HIDRAW_H_USABLE),yes)
-SHUTTLEXPRESS_SRC = hal/user_comps/shuttlexpress.c
-USERSRCS += $(SHUTTLEXPRESS_SRC)
-../bin/shuttlexpress: $(call TOOBJS, $(SHUTTLEXPRESS_SRC)) ../lib/liblinuxcnchal.so.0
+SHUTTLE_SRC = hal/user_comps/shuttle.c
+USERSRCS += $(SHUTTLE_SRC)
+../bin/shuttle: $(call TOOBJS, $(SHUTTLE_SRC)) ../lib/liblinuxcnchal.so.0
 	$(ECHO) Linking $(notdir $@)
 	$(Q)$(CC) $(LDFLAGS) -o $@ $^
-TARGETS += ../bin/shuttlexpress
+TARGETS += ../bin/shuttle
 endif
 
-../include/%.h: ./hal/user_comps/%.h
+ifdef HAVE_LIBUSB10
+XHC_HB04_SRC = hal/user_comps/xhc-hb04.cc
+USERSRCS += $(XHC_HB04_SRC)
+$(call TOOBJSDEPS, $(XHC_HB04_SRC)) : EXTRAFLAGS += $(LIBUSB10_CFLAGS)
+../bin/xhc-hb04: $(call TOOBJS, $(XHC_HB04_SRC)) ../lib/liblinuxcnchal.so.0 ../lib/liblinuxcncini.so.0
+	$(ECHO) Linking $(notdir $@)
+	$(Q)$(CC) $(LDFLAGS) -o $@ $^ -lm -lstdc++ $(LIBUSB10_LIBS)
+TARGETS += ../bin/xhc-hb04
+endif # HAVE_LIBUSB10
+
+$(patsubst ./hal/user_comps/%,../include/%,$(wildcard ./hal/user_comps/*.h)): ../include/%.h: ./hal/user_comps/%.h
 	cp $^ $@
-../include/%.hh: ./hal/user_comps/%.hh
+$(patsubst ./hal/user_comps/%,../include/%,$(wildcard ./hal/user_comps/*.hh)): ../include/%.hh: ./hal/user_comps/%.hh
 	cp $^ $@
+
+$(USER_COMP_MANPAGES): ../docs/man/man1/%.1: hal/user_comps/%.comp ../bin/halcompile
+	$(ECHO) Making halcompile manpage $(notdir $@)
+	@mkdir -p $(dir $@)
+	$(Q)../bin/halcompile -U --userspace --document -o $@ $<
+
+$(USER_COMP_SRCS): objects/%.c: %.comp ../bin/halcompile
+	$(ECHO) "Preprocessing $(notdir $<)"
+	@mkdir -p $(dir $@)
+	$(Q)../bin/halcompile -U --userspace --require-license -o $@ $<
+
+$(USER_COMP_BINS): ../bin/%: objects/objects/hal/user_comps/%.o ../lib/liblinuxcnchal.so
+	$(ECHO) Linking $(notdir $@)
+	$(Q)$(CC) $(LDFLAGS) -o $@ $^ -lm -lstdc++
+
+.PHONY: user-comps
+user-comps: $(USER_COMP_BINS)
+
+TARGETS += $(patsubst %.comp, ../bin/%, $(notdir $(USER_COMPS)))
+#modules: $(patsubst %.comp, objects/%.c, $(COMPS) $(COMP_DRIVERS))

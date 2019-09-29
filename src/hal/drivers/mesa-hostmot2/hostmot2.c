@@ -17,8 +17,9 @@
 //    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
 //
 
-#include <linux/slab.h>
-#include <linux/ctype.h>
+#include <rtapi_slab.h>
+#include <rtapi_ctype.h>
+#include <rtapi_list.h>
 
 #include "rtapi.h"
 #include "rtapi_app.h"
@@ -35,8 +36,7 @@
 
 MODULE_INFO(linuxcnc, "component:hostmot2:RTAI driver for the HostMot2 firmware from Mesa Electronics.");
 MODULE_INFO(linuxcnc, "funct:read:1:Read all registers.");
-MODULE_INFO(linuxcnc, "funct:write:1:Write all registers.");
-MODULE_INFO(linuxcnc, "funct:pet_watchdog:0:Pet the watchdog to keep it from biting us for a while.");
+MODULE_INFO(linuxcnc, "funct:write:1:Write all registers, and pet the watchdog to keep it from biting.");
 MODULE_INFO(linuxcnc, "license:GPL");
 
 MODULE_LICENSE("GPL");
@@ -53,12 +53,16 @@ RTAPI_MP_INT(debug_module_descriptors, "Developer/debug use only!  Enable debug 
 int debug_modules = 0;
 RTAPI_MP_INT(debug_modules, "Developer/debug use only!  Enable debug logging of the HostMot2\nModules used.");
 
+int use_serial_numbers = 0;
+RTAPI_MP_INT(use_serial_numbers, "Name cards by serial number, not enumeration order (smart-serial only)");
 
+int sserial_baudrate = -1;
+RTAPI_MP_INT(sserial_baudrate, "Over-ride the standard smart-serial baud rate. For flashing remote firmware only.");
 
 
 // this keeps track of all the hm2 instances that have been registered by
 // the low-level drivers
-struct list_head hm2_list;
+struct rtapi_list_head hm2_list;
 
 
 static int comp_id;
@@ -70,32 +74,47 @@ static int comp_id;
 // functions exported to LinuxCNC
 //
 
-static void hm2_read(void *void_hm2, long period) {
+static void hm2_read_request(void *void_hm2, long period) {
     hostmot2_t *hm2 = void_hm2;
+    hm2->llio->period = period;
 
     // if there are comm problems, wait for the user to fix it
     if ((*hm2->llio->io_error) != 0) return;
 
-    // is there a watchdog?
-    if (hm2->watchdog.num_instances > 0) {
-        // we're reading from the hm2 board now, so turn on the watchdog
-        hm2->watchdog.instance[0].enable = 1;
-
-        hm2_watchdog_read(hm2);  // look for bite
-    }
-
     hm2_tram_read(hm2);
     if ((*hm2->llio->io_error) != 0) return;
+    hm2_raw_queue_read(hm2);
+    hm2_tp_pwmgen_queue_read(hm2);
+    if ((*hm2->llio->io_error) != 0) return;
+    hm2_queue_read(hm2);
+    hm2->llio->read_requested = true;
+    hm2->llio->read_time = rtapi_get_time();
+}
 
+static void hm2_read(void *void_hm2, long period) {
+    hostmot2_t *hm2 = void_hm2;
+
+    if(!hm2->llio->read_requested) hm2_read_request(void_hm2, period);
+    hm2->llio->read_requested = false;
+
+    // if there are comm problems, wait for the user to fix it
+    if ((*hm2->llio->io_error) != 0) return;
+    // if there's a temporary read failure, don't sweat it
+    if(hm2_finish_read(hm2) == -EAGAIN) return;
+    if ((*hm2->llio->io_error) != 0) return;
+
+    hm2_watchdog_process_tram_read(hm2);
     hm2_ioport_gpio_process_tram_read(hm2);
     hm2_encoder_process_tram_read(hm2, period);
     hm2_resolver_process_tram_read(hm2, period);
     hm2_stepgen_process_tram_read(hm2, period);
     hm2_sserial_process_tram_read(hm2, period);
     hm2_bspi_process_tram_read(hm2, period);
+    hm2_absenc_process_tram_read(hm2, period);
+    //UARTS PktUARTS need to be explicity handled by an external component
 
-    hm2_tp_pwmgen_read(hm2); // check the status of the fault bit
-    hm2_raw_read(hm2);
+    hm2_tp_pwmgen_process_read(hm2); // check the status of the fault bit
+    hm2_dpll_process_tram_read(hm2, period);
 }
 
 
@@ -105,32 +124,33 @@ static void hm2_write(void *void_hm2, long period) {
     // if there are comm problems, wait for the user to fix it
     if ((*hm2->llio->io_error) != 0) return;
 
-    // is there a watchdog?
-    if (hm2->watchdog.num_instances > 0) {
-        // we're writing to the hm2 board now, so turn on the watchdog
-        hm2->watchdog.instance[0].enable = 1;
-    }
-
     hm2_ioport_gpio_prepare_tram_write(hm2);
     hm2_pwmgen_prepare_tram_write(hm2);
     hm2_tp_pwmgen_prepare_tram_write(hm2);
     hm2_stepgen_prepare_tram_write(hm2, period);
     hm2_sserial_prepare_tram_write(hm2, period);
     hm2_bspi_prepare_tram_write(hm2, period);
+    hm2_ssr_prepare_tram_write(hm2);
+    hm2_watchdog_prepare_tram_write(hm2);
+    //UARTS need to be explicity handled by an external component
     hm2_tram_write(hm2);
 
     // these usually do nothing
     // they only write to the FPGA if certain pins & params have changed
     hm2_ioport_write(hm2);    // handles gpio.is_output but not gpio.out (that's done in tram_write() above)
-    hm2_watchdog_write(hm2);  // in case the user has written to the watchdog.timeout_ns param
+    hm2_watchdog_write(hm2, period);  // in case the user has written to the watchdog.timeout_ns param
     hm2_pwmgen_write(hm2);    // update pwmgen registers if needed
     hm2_tp_pwmgen_write(hm2); // update Three Phase PWM registers if needed
     hm2_stepgen_write(hm2);   // update stepgen registers if needed
     hm2_encoder_write(hm2);   // update ctrl register if needed
+    hm2_absenc_write(hm2);    // set bit-lengths and frequency
     hm2_resolver_write(hm2, period); // Update the excitation frequency
+    hm2_dpll_write(hm2, period); // Update the timer phases
     hm2_led_write(hm2);	      // Update on-board LEDs
+    hm2_ssr_write(hm2);
 
     hm2_raw_write(hm2);
+    hm2_finish_write(hm2);
 }
 
 
@@ -139,12 +159,6 @@ static void hm2_read_gpio(void *void_hm2, long period) {
 
     // if there are comm problems, wait for the user to fix it
     if ((*hm2->llio->io_error) != 0) return;
-
-    // is there a watchdog?
-    if (hm2->watchdog.num_instances > 0) {
-        // we're reading from the hm2 board now, so turn on the watchdog
-        hm2->watchdog.instance[0].enable = 1;
-    }
 
     hm2_ioport_gpio_read(hm2);
 }
@@ -156,13 +170,8 @@ static void hm2_write_gpio(void *void_hm2, long period) {
     // if there are comm problems, wait for the user to fix it
     if ((*hm2->llio->io_error) != 0) return;
 
-    // is there a watchdog?
-    if (hm2->watchdog.num_instances > 0) {
-        // we're writing to the hm2 board now, so turn on the watchdog
-        hm2->watchdog.instance[0].enable = 1;
-    }
-
     hm2_ioport_gpio_write(hm2);
+    hm2_watchdog_write(hm2, period);
 }
 
 
@@ -174,13 +183,18 @@ static void hm2_write_gpio(void *void_hm2, long period) {
 
 
 // FIXME: the static automatic string makes this function non-reentrant
-const char *hm2_hz_to_mhz(u32 freq_hz) {
+const char *hm2_hz_to_mhz(rtapi_u32 freq_hz) {
     static char mhz_str[20];
+    int r;
     int freq_mhz, freq_mhz_fractional;
 
     freq_mhz = freq_hz / (1000*1000);
     freq_mhz_fractional = (freq_hz / 1000) % 1000;
-    sprintf(mhz_str, "%d.%03d", freq_mhz, freq_mhz_fractional);
+    r = snprintf(mhz_str, sizeof(mhz_str), "%d.%03d", freq_mhz, freq_mhz_fractional);
+    if (r >= sizeof(mhz_str)) {
+        HM2_ERR_NO_LL("too many MHz!\n");
+        return "(unpresentable)";
+    }
 
     return mhz_str;
 }
@@ -188,18 +202,71 @@ const char *hm2_hz_to_mhz(u32 freq_hz) {
 // FIXME: It would be nice if this was more generic
 EXPORT_SYMBOL_GPL(hm2_get_bspi);
 int hm2_get_bspi(hostmot2_t** hm2, char *name){
-    struct list_head *ptr;
+    struct rtapi_list_head *ptr;
     int i;
-    list_for_each(ptr, &hm2_list) {
-        *hm2 = list_entry(ptr, hostmot2_t, list);
+    rtapi_list_for_each(ptr, &hm2_list) {
+        *hm2 = rtapi_list_entry(ptr, hostmot2_t, list);
         if ((*hm2)->bspi.num_instances > 0) {
-            for (i = 0; i <= (*hm2)->bspi.num_instances ; i++) {
+            for (i = 0; i < (*hm2)->bspi.num_instances ; i++) {
                 if (!strcmp((*hm2)->bspi.instance[i].name, name)) {return i;}
             }
         }
     }
     return -1;
 }
+
+EXPORT_SYMBOL_GPL(hm2_get_uart);
+int hm2_get_uart(hostmot2_t** hm2, char *name){
+    struct rtapi_list_head *ptr;
+    int i;
+    rtapi_list_for_each(ptr, &hm2_list) {
+        *hm2 = rtapi_list_entry(ptr, hostmot2_t, list);
+        if ((*hm2)->uart.num_instances > 0) {
+            for (i = 0; i < (*hm2)->uart.num_instances ; i++) {
+                if (!strcmp((*hm2)->uart.instance[i].name, name)) {return i;}
+            }
+        }
+    }
+    return -1;
+}
+EXPORT_SYMBOL_GPL(hm2_get_pktuart);
+int hm2_get_pktuart(hostmot2_t** hm2, char *name){
+    struct rtapi_list_head *ptr;
+    int i;
+    rtapi_list_for_each(ptr, &hm2_list) {
+        *hm2 = rtapi_list_entry(ptr, hostmot2_t, list);
+        if ((*hm2)->pktuart.num_instances > 0) {
+            for (i = 0; i < (*hm2)->pktuart.num_instances ; i++) {
+                if (!strcmp((*hm2)->pktuart.instance[i].name, name)) {return i;}
+            }
+        }
+    }
+    return -1;
+}
+EXPORT_SYMBOL_GPL(hm2_get_sserial);
+// returns a pointer to a remote struct
+hm2_sserial_remote_t *hm2_get_sserial(hostmot2_t** hm2, char *name){
+   // returns inst * 64 + remote index
+    struct rtapi_list_head *ptr;
+    int i, j;
+    rtapi_list_for_each(ptr, &hm2_list) {
+        *hm2 = rtapi_list_entry(ptr, hostmot2_t, list);
+        if ((*hm2)->sserial.num_instances > 0) {
+            for (i = 0; i < (*hm2)->sserial.num_instances ; i++) {
+                for (j = 0; j < (*hm2)->sserial.instance[i].num_remotes; j++){
+                    if (strstr(name, (*hm2)->sserial.instance[i].remotes[j].name)) {
+                        return &((*hm2)->sserial.instance[i].remotes[j]);
+                    }
+                }
+            }
+        }
+    }
+    return NULL;
+}
+
+
+
+
 
 
 // FIXME: the static automatic string makes this function non-reentrant
@@ -208,6 +275,9 @@ const char *hm2_get_general_function_name(int gtag) {
         case HM2_GTAG_WATCHDOG:        return "Watchdog";
         case HM2_GTAG_IOPORT:          return "IOPort";
         case HM2_GTAG_ENCODER:         return "Encoder";
+        case HM2_GTAG_SSI:             return "SSI Encoder";
+        case HM2_GTAG_BISS:            return "BiSS Encoder";
+        case HM2_GTAG_FABS:            return "Fanuc Abs Encoder";
         case HM2_GTAG_RESOLVER:        return "Resolver";    
         case HM2_GTAG_STEPGEN:         return "StepGen";
         case HM2_GTAG_PWMGEN:          return "PWMGen";
@@ -218,15 +288,58 @@ const char *hm2_get_general_function_name(int gtag) {
         case HM2_GTAG_MUXED_ENCODER_SEL: return "Muxed Encoder Select";
         case HM2_GTAG_SMARTSERIAL:     return "Smart Serial Interface";
         case HM2_GTAG_BSPI:            return "Buffered SPI Interface";
+        case HM2_GTAG_UART_RX:         return "UART Receive Channel";
+        case HM2_GTAG_UART_TX:         return "UART Transmit Channel";
+        case HM2_GTAG_PKTUART_RX:      return "PktUART Receive Channel";
+        case HM2_GTAG_PKTUART_TX:      return "PktUART Transmit Channel";
+        case HM2_GTAG_HM2DPLL:         return "Hostmot2 DPLL";
+        case HM2_GTAG_SSR:             return "SSR";
         default: {
             static char unknown[100];
             rtapi_snprintf(unknown, 100, "(unknown-gtag-%d)", gtag);
-            HM2_ERR_NO_LL("Firmware contains unknown function (gtag-%d)/n", gtag);
+            HM2_ERR_NO_LL("Firmware contains unknown function (gtag-%d)\n", gtag);
             return unknown;
         }
     }
 }
 
+int hm2_fabs_parse(hostmot2_t *hm2, char *token, int gtag){ 
+    //adds the absolute encoder format strings to a list
+    hm2_absenc_format_t *def;
+    struct rtapi_list_head *ptr;
+    int i = simple_strtol(token, &token, 0);
+    if (i >= MAX_ABSENCS){
+        HM2_ERR("Currently only %i absolute encoders are supported"
+                " and you referred to an index of %i\n", MAX_ABSENCS, i);
+        return -1;
+    }
+    if (*token != '='){
+        HM2_ERR("The absolute encoder tag must be in the form "
+                "[ssi / biss / fanuc]_chan_N=abcdefg where N is a number"
+                " less than %i and abcdefg is a string specifying the "
+                "bit fields\n",
+                MAX_ABSENCS);
+        return -1;
+    }
+    rtapi_list_for_each(ptr, &hm2->config.absenc_formats){
+        def = rtapi_list_entry(ptr, hm2_absenc_format_t, list);
+        if (i == def->index && gtag == def->gtag){
+            HM2_ERR("Duplicate SSI/BISS/Fanuc definition. {Index %i for GTAG %i)"
+                    "exiting\n", i, gtag);
+            return -1;
+        }
+    }
+    def = rtapi_kzalloc(sizeof(hm2_absenc_format_t), RTAPI_GFP_KERNEL);
+    if (def == NULL){
+        HM2_ERR("out of memory!\n");
+        return -ENOMEM;
+    }
+    def->gtag = gtag;
+    def->index = i;
+    strncpy(def->string, ++token, MAX_ABSENC_LEN);
+    rtapi_list_add(&def->list, &hm2->config.absenc_formats);
+    return 0;
+}
 
 static int hm2_parse_config_string(hostmot2_t *hm2, char *config_string) {
     char **argv;
@@ -235,14 +348,24 @@ static int hm2_parse_config_string(hostmot2_t *hm2, char *config_string) {
 
     // default is to enable everything in the firmware
     hm2->config.num_encoders = -1;
+    hm2->config.num_absencs = -1;
+    hm2->absenc.chans = NULL;
+    hm2->absenc.num_chans = 0;
+    RTAPI_INIT_LIST_HEAD(&hm2->config.absenc_formats);
     hm2->config.num_resolvers = -1;
     hm2->config.num_pwmgens = -1;
     hm2->config.num_tp_pwmgens = -1;
     hm2->config.num_sserials = -1;
     for(i=0;i<4;i++) for(j=0;j<8;j++) hm2->config.sserial_modes[i][j]='0';
+    hm2->sserial.instance = NULL;
     hm2->config.num_stepgens = -1;
+    hm2->config.stepgen_width = 2; // To avoid nasty surprises with table mode
     hm2->config.num_bspis = -1;
+    hm2->config.num_uarts = -1;
+    hm2->config.num_pktuarts = -1;
+    hm2->config.num_dplls = -1;
     hm2->config.num_leds = -1;
+    hm2->config.num_ssrs = -1;
     hm2->config.enable_raw = 0;
     hm2->config.firmware = NULL;
 
@@ -250,7 +373,7 @@ static int hm2_parse_config_string(hostmot2_t *hm2, char *config_string) {
 
     HM2_DBG("parsing config string \"%s\"\n", config_string);
 
-    argv = argv_split(GFP_KERNEL, config_string, &argc);
+    argv = rtapi_argv_split(RTAPI_GFP_KERNEL, config_string, &argc);
     if (argv == NULL) {
         HM2_ERR("out of memory while parsing config string\n");
         return -ENOMEM;
@@ -264,6 +387,18 @@ static int hm2_parse_config_string(hostmot2_t *hm2, char *config_string) {
         if (strncmp(token, "num_encoders=", 13) == 0) {
             token += 13;
             hm2->config.num_encoders = simple_strtol(token, NULL, 0);
+
+        } else if (strncmp(token, "ssi_chan_", 9) == 0) {
+            token += 9;
+            if (hm2_fabs_parse(hm2, token, HM2_GTAG_SSI) )goto fail;
+            
+        } else if (strncmp(token, "biss_chan_", 10) == 0) {
+            token += 10;
+            if (hm2_fabs_parse(hm2, token, HM2_GTAG_BISS)) goto fail;
+            
+        } else if (strncmp(token, "fanuc_chan_", 11) == 0) {
+            token += 11;
+            if (hm2_fabs_parse(hm2, token, HM2_GTAG_FABS)) goto fail;
 
         } else if (strncmp(token, "num_resolvers=", 14) == 0) {
             token += 14;
@@ -280,6 +415,7 @@ static int hm2_parse_config_string(hostmot2_t *hm2, char *config_string) {
         } else if (strncmp(token, "sserial_port_", 13) == 0) {
             int i;
             int c = 0;
+            int flag = 0;
             token += 13;
             i = *token - '0';
             token += 1;
@@ -289,12 +425,20 @@ static int hm2_parse_config_string(hostmot2_t *hm2, char *config_string) {
                 goto fail;
             }
             for (token += 1 ; *token != 0; token++) {
-                if (((*token >= '0' && *token <= '9') || *token == 'x')
-                    && c < 8) {
+                if ((*token >= '0' && *token <= '9') && c < 8) {
+                    hm2->config.sserial_modes[i][c++] = *token;
+                    flag = 1;
+                }
+                else if (*token == 'x' && c < 8) {
                     hm2->config.sserial_modes[i][c++] = *token;
                 }
             }
-            if (i >= hm2->config.num_sserials){
+            
+            if (hm2->config.num_sserials == -1){
+                hm2->config.num_sserials = 0;
+            }
+                
+            if (i >= hm2->config.num_sserials && flag){
                 hm2->config.num_sserials = i + 1;
             }
 
@@ -302,20 +446,36 @@ static int hm2_parse_config_string(hostmot2_t *hm2, char *config_string) {
             token += 13;
             hm2->config.num_stepgens = simple_strtol(token, NULL, 0);
 
+        } else if (strncmp(token, "stepgen_width=", 14) == 0) {
+            token += 14;
+            hm2->config.stepgen_width = simple_strtol(token, NULL, 0);
+
         } else if (strncmp(token, "num_bspis=", 10) == 0) {
             token += 10;
             hm2->config.num_bspis = simple_strtol(token, NULL, 0);
- 
+
+        } else if (strncmp(token, "num_uarts=", 10) == 0) {
+            token += 10;
+            hm2->config.num_uarts = simple_strtol(token, NULL, 0);
+
+        } else if (strncmp(token, "num_pktuarts=", 13) == 0) {
+            token += 13;
+            hm2->config.num_pktuarts = simple_strtol(token, NULL, 0);
+
         } else if (strncmp(token, "num_leds=", 9) == 0) {
             token += 9;
             hm2->config.num_leds = simple_strtol(token, NULL, 0);
+            
+        } else if (strncmp(token, "num_dplls=", 10) == 0) {
+            token += 10;
+            hm2->config.num_dplls = simple_strtol(token, NULL, 0);
 
         } else if (strncmp(token, "enable_raw", 10) == 0) {
             hm2->config.enable_raw = 1;
 
         } else if (strncmp(token, "firmware=", 9) == 0) {
             // FIXME: we leak this in hm2_register
-            hm2->config.firmware = kstrdup(token + 9, GFP_KERNEL);
+            hm2->config.firmware = rtapi_kstrdup(token + 9, RTAPI_GFP_KERNEL);
             if (hm2->config.firmware == NULL) {
                 goto fail;
             }
@@ -328,6 +488,7 @@ static int hm2_parse_config_string(hostmot2_t *hm2, char *config_string) {
 
     HM2_DBG("final config:\n");
     HM2_DBG("    num_encoders=%d\n", hm2->config.num_encoders);
+    HM2_DBG("    num_absencs=%d\n", hm2->config.num_absencs);
     HM2_DBG("    num_resolvers=%d\n", hm2->config.num_resolvers);
     HM2_DBG("    num_pwmgens=%d\n",  hm2->config.num_pwmgens);
     HM2_DBG("    num_3pwmgens=%d\n", hm2->config.num_tp_pwmgens);
@@ -341,14 +502,16 @@ static int hm2_parse_config_string(hostmot2_t *hm2, char *config_string) {
             hm2->config.sserial_modes[3]);
     HM2_DBG("    num_stepgens=%d\n", hm2->config.num_stepgens);
     HM2_DBG("    num_bspis=%d\n", hm2->config.num_bspis);
+    HM2_DBG("    num_uarts=%d\n", hm2->config.num_uarts);
+    HM2_DBG("    num_pktuarts=%d\n", hm2->config.num_pktuarts);
     HM2_DBG("    enable_raw=%d\n",   hm2->config.enable_raw);
     HM2_DBG("    firmware=%s\n",   hm2->config.firmware ? hm2->config.firmware : "(NULL)");
 
-    argv_free(argv);
+    rtapi_argv_free(argv);
     return 0;
 
 fail:
-    argv_free(argv);
+    rtapi_argv_free(argv);
     return -EINVAL;
 }
 
@@ -411,16 +574,17 @@ static void hm2_print_idrom(hostmot2_t *hm2) {
 
 
 static int hm2_read_idrom(hostmot2_t *hm2) {
+    rtapi_u32 read_data;
 
     //
     // find the idrom offset
     //
 
-    if (!hm2->llio->read(hm2->llio, HM2_ADDR_IDROM_OFFSET, &hm2->idrom_offset, 2)) {
+    if (!hm2->llio->read(hm2->llio, HM2_ADDR_IDROM_OFFSET, &read_data, 4)) {
         HM2_ERR("error reading IDROM Offset\n");
         return -EIO;
     }
-
+    hm2->idrom_offset = read_data & 0xFFFF;
 
     //
     // first read in the idrom type to make sure we know how to deal with it
@@ -525,7 +689,7 @@ static int hm2_read_module_descriptors(hostmot2_t *hm2) {
         hm2->num_mds < HM2_MAX_MODULE_DESCRIPTORS;
         hm2->num_mds ++, addr += 12
     ) {
-        u32 d[3];
+        rtapi_u32 d[3];
         hm2_module_descriptor_t *md = &hm2->md[hm2->num_mds];
 
         if (!hm2->llio->read(hm2->llio, addr, d, 12)) {
@@ -616,10 +780,10 @@ static int hm2_read_module_descriptors(hostmot2_t *hm2) {
 int hm2_md_is_consistent_or_complain(
     hostmot2_t *hm2,
     int md_index,
-    u8 version,
-    u8 num_registers,
-    u32 instance_stride,
-    u32 multiple_registers
+    rtapi_u8 version,
+    rtapi_u8 num_registers,
+    rtapi_u32 instance_stride,
+    rtapi_u32 multiple_registers
 ) {
     hm2_module_descriptor_t *md = &hm2->md[md_index];
 
@@ -661,10 +825,10 @@ int hm2_md_is_consistent_or_complain(
 int hm2_md_is_consistent(
     hostmot2_t *hm2,
     int md_index,
-    u8 version,
-    u8 num_registers,
-    u32 instance_stride,
-    u32 multiple_registers
+    rtapi_u8 version,
+    rtapi_u8 num_registers,
+    rtapi_u32 instance_stride,
+    rtapi_u32 multiple_registers
 ) {
     hm2_module_descriptor_t *md = &hm2->md[md_index];
 
@@ -686,6 +850,18 @@ int hm2_md_is_consistent(
 static int hm2_parse_module_descriptors(hostmot2_t *hm2) {
     int md_index, md_accepted;
     
+    hm2->dpll_module_present = 0;
+    for (md_index = 0; md_index < hm2->num_mds; md_index ++) {
+        hm2_module_descriptor_t *md = &hm2->md[md_index];
+
+        if (md->gtag == HM2_GTAG_HM2DPLL) {
+            hm2->dpll_module_present = 1;
+            break;
+        } else if (md->gtag == 0) {
+            break;
+        }
+    }
+
     // Run through once looking for IO Ports in case other modules
     // need them
     for (md_index = 0; md_index < hm2->num_mds; md_index ++) {
@@ -730,11 +906,22 @@ static int hm2_parse_module_descriptors(hostmot2_t *hm2) {
 
         switch (md->gtag) {
 
+            case HM2_GTAG_IOPORT:
+                // We silently ignore IOPorts here because we already
+                // handled them above.
+                continue;
+
             case HM2_GTAG_ENCODER:
             case HM2_GTAG_MUXED_ENCODER:
                 md_accepted = hm2_encoder_parse_md(hm2, md_index);
                 break;
             
+            case HM2_GTAG_SSI:
+            case HM2_GTAG_BISS:
+            case HM2_GTAG_FABS:
+                md_accepted = hm2_absenc_parse_md(hm2, md_index);
+                break;
+                
             case HM2_GTAG_RESOLVER:
                 md_accepted = hm2_resolver_parse_md(hm2, md_index);
                 break;
@@ -762,9 +949,27 @@ static int hm2_parse_module_descriptors(hostmot2_t *hm2) {
             case HM2_GTAG_BSPI:
                 md_accepted = hm2_bspi_parse_md(hm2, md_index);
                 break;
+                
+            case HM2_GTAG_UART_RX:
+            case HM2_GTAG_UART_TX:
+                md_accepted = hm2_uart_parse_md(hm2, md_index);
+                break;
 
+            case HM2_GTAG_PKTUART_RX:
+            case HM2_GTAG_PKTUART_TX:
+                md_accepted = hm2_pktuart_parse_md(hm2, md_index);
+                break;
+
+            case HM2_GTAG_HM2DPLL:
+                md_accepted = hm2_dpll_parse_md(hm2, md_index);
+                break;
+                
             case HM2_GTAG_LED:
                 md_accepted = hm2_led_parse_md(hm2, md_index);
+                break;
+
+            case HM2_GTAG_SSR:
+                md_accepted = hm2_ssr_parse_md(hm2, md_index);
                 break;
 
             default:
@@ -799,6 +1004,16 @@ static int hm2_parse_module_descriptors(hostmot2_t *hm2) {
         }
 
     }    
+    
+    // on any one run throught the absenc driver there is no way to know if 
+    // it is the last time, so we need to  trigger this from somewhere that 
+    // does know that it has stopped calling the sub-driver. 
+    if (hm2->absenc.num_chans > 0){
+         if (hm2_absenc_register_tram(hm2)){
+             HM2_ERR("Failed to register TRAM for absolute encoders\n");
+             return -EINVAL;
+         }
+    }
                                            
     return 0;  // success!
 }
@@ -807,16 +1022,17 @@ static int hm2_parse_module_descriptors(hostmot2_t *hm2) {
 
 
 //
-// These functions free all the memory kmalloc'ed in hm2_parse_module_descriptors()
+// These functions free all the memory rtapi_kmalloc'ed in hm2_parse_module_descriptors()
 //
 
 static void hm2_cleanup(hostmot2_t *hm2) {
     // clean up the Pins, if they're initialized
-    if (hm2->pin != NULL) kfree(hm2->pin);
+    if (hm2->pin != NULL) rtapi_kfree(hm2->pin);
 
     // clean up the Modules
     hm2_ioport_cleanup(hm2);
     hm2_encoder_cleanup(hm2);
+    hm2_absenc_cleanup(hm2);
     hm2_resolver_cleanup(hm2);
     hm2_watchdog_cleanup(hm2);
     hm2_pwmgen_cleanup(hm2);
@@ -824,6 +1040,7 @@ static void hm2_cleanup(hostmot2_t *hm2) {
     hm2_led_cleanup(hm2);
     hm2_sserial_cleanup(hm2);
     hm2_bspi_cleanup(hm2);
+    hm2_ssr_cleanup(hm2);
 
     // free all the tram entries
     hm2_tram_cleanup(hm2);
@@ -834,6 +1051,7 @@ static void hm2_cleanup(hostmot2_t *hm2) {
 
 void hm2_print_modules(hostmot2_t *hm2) {
     hm2_encoder_print_module(hm2);
+    hm2_absenc_print_module(hm2);
     hm2_resolver_print_module(hm2);
     hm2_pwmgen_print_module(hm2);
     hm2_tp_pwmgen_print_module(hm2);
@@ -841,6 +1059,7 @@ void hm2_print_modules(hostmot2_t *hm2) {
     hm2_stepgen_print_module(hm2);
     hm2_bspi_print_module(hm2);
     hm2_ioport_print_module(hm2);
+    hm2_ssr_print_module(hm2);
     hm2_watchdog_print_module(hm2);
 }
 
@@ -852,10 +1071,21 @@ void hm2_print_modules(hostmot2_t *hm2) {
 //
 
 
-static void hm2_release_device(struct device *dev) {
+static void hm2_release_device(struct rtapi_device *dev) {
     // nothing to do here
 }
 
+static int dummy_queue_write(hm2_lowlevel_io_t *this, rtapi_u32 addr,
+        const void *buffer, int size) {
+    if(size >= 0) return this->write(this, addr, buffer, size);
+    return 1; // success
+}
+
+static int dummy_queue_read(hm2_lowlevel_io_t *this, rtapi_u32 addr,
+        void *buffer, int size) {
+    if(size >= 0) return this->read(this, addr, buffer, size);
+    return 1; // success
+}
 
 EXPORT_SYMBOL_GPL(hm2_register);
 
@@ -952,19 +1182,19 @@ int hm2_register(hm2_lowlevel_io_t *llio, char *config_string) {
         return -EINVAL;
     }
 
-    // NOTE: reset and program_fpga are allowed be NULL
-
-
-    if (config_string == NULL) {
-        HM2_PRINT_NO_LL("no firmware specified in config modparam!  the board had better have firmware configured already, or this won't work\n");
+    if (!llio->queue_write) {
+        llio->queue_write = dummy_queue_write;
     }
 
+    if (!llio->queue_read) {
+        llio->queue_read = dummy_queue_read;
+    }
 
     //
     // make a hostmot2_t struct to represent this device
     //
 
-    hm2 = kmalloc(sizeof(hostmot2_t), GFP_KERNEL);
+    hm2 = rtapi_kmalloc(sizeof(hostmot2_t), RTAPI_GFP_KERNEL);
     if (hm2 == NULL) {
         HM2_PRINT_NO_LL("out of memory!\n");
         return -ENOMEM;
@@ -973,12 +1203,14 @@ int hm2_register(hm2_lowlevel_io_t *llio, char *config_string) {
     memset(hm2, 0, sizeof(hostmot2_t));
 
     hm2->llio = llio;
+    hm2->use_serial_numbers = use_serial_numbers;
+    hm2->sserial.baudrate = sserial_baudrate;
 
-    INIT_LIST_HEAD(&hm2->tram_read_entries);
-    INIT_LIST_HEAD(&hm2->tram_write_entries);
+    RTAPI_INIT_LIST_HEAD(&hm2->tram_read_entries);
+    RTAPI_INIT_LIST_HEAD(&hm2->tram_write_entries);
 
     // tentatively add it to the hm2 list
-    list_add_tail(&hm2->list, &hm2_list);
+    rtapi_list_add_tail(&hm2->list, &hm2_list);
 
 
     //
@@ -991,6 +1223,15 @@ int hm2_register(hm2_lowlevel_io_t *llio, char *config_string) {
     }
 
 
+
+    // NOTE: program_fpga will be NULL for 6i25 and 5i25 (and future cards 
+    // with EPROM firmware, probably. 
+
+    if ((llio->program_fpga != NULL) && (hm2->config.firmware == NULL)) {
+        HM2_PRINT_NO_LL("no firmware specified in config modparam!  the board had better have firmware configured already, or this won't work\n");
+    }
+
+    
     //
     // if programming of the fpga is supported by the board and the user
     // requested a firmware file, fetch it from userspace and program
@@ -998,9 +1239,9 @@ int hm2_register(hm2_lowlevel_io_t *llio, char *config_string) {
     //
 
     if ((llio->program_fpga != NULL) && (hm2->config.firmware != NULL)) {
-        const struct firmware *fw;
+        const struct rtapi_firmware *fw;
         bitfile_t bitfile;
-        struct device dev;
+        struct rtapi_device dev;
 
         // check firmware name length
         if (strlen(hm2->config.firmware) > FIRMWARE_NAME_MAX) {
@@ -1010,21 +1251,16 @@ int hm2_register(hm2_lowlevel_io_t *llio, char *config_string) {
         }
 
         memset(&dev, '\0', sizeof(dev));
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,30)
-        strncpy(dev.bus_id, hm2->llio->name, BUS_ID_SIZE);
-        dev.bus_id[BUS_ID_SIZE - 1] = '\0';
-#else
-        dev_set_name(&dev, hm2->llio->name);
-#endif
+        rtapi_dev_set_name(&dev, "%s", hm2->llio->name);
         dev.release = hm2_release_device;
-        r = device_register(&dev);
+        r = rtapi_device_register(&dev);
         if (r != 0) {
             HM2_ERR("error with device_register\n");
             goto fail0;
         }
 
-        r = request_firmware(&fw, hm2->config.firmware, &dev);
-        device_unregister(&dev);
+        r = rtapi_request_firmware(&fw, hm2->config.firmware, &dev);
+        rtapi_device_unregister(&dev);
         if (r == -ENOENT) {
             HM2_ERR("firmware %s not found\n", hm2->config.firmware);
             HM2_ERR("install the package containing the firmware.\n");
@@ -1038,7 +1274,7 @@ int hm2_register(hm2_lowlevel_io_t *llio, char *config_string) {
         r = bitfile_parse_and_verify(fw, &bitfile);
         if (r != 0) {
             HM2_ERR("firmware %s fails verification, aborting hm2_register\n", hm2->config.firmware);
-            release_firmware(fw);
+            rtapi_release_firmware(fw);
             goto fail0;
         }
 
@@ -1050,14 +1286,14 @@ int hm2_register(hm2_lowlevel_io_t *llio, char *config_string) {
         if (llio->fpga_part_number == NULL) {
             HM2_ERR("llio did not provide an FPGA part number, cannot verify firmware part number\n");
         } else {
-            if (strcmp(llio->fpga_part_number, bitfile.b.data) != 0) {
+            if (strcmp(llio->fpga_part_number, (char*)bitfile.b.data) != 0) {
                 HM2_ERR(
                     "board has FPGA '%s', but the firmware in %s is for FPGA '%s'\n",
                     llio->fpga_part_number,
                     hm2->config.firmware,
                     bitfile.b.data
                 );
-                release_firmware(fw);
+                rtapi_release_firmware(fw);
                 r = -EINVAL;
                 goto fail0;
             }
@@ -1066,14 +1302,14 @@ int hm2_register(hm2_lowlevel_io_t *llio, char *config_string) {
         if (llio->reset != NULL) {
             r = llio->reset(llio);
             if (r != 0) {
-                release_firmware(fw);
+                rtapi_release_firmware(fw);
                 HM2_ERR("failed to reset fpga, aborting hm2_register\n");
                 goto fail0;
             }
         }
 
         r = llio->program_fpga(llio, &bitfile);
-        release_firmware(fw);
+        rtapi_release_firmware(fw);
         if (r != 0) {
             HM2_ERR("failed to program fpga, aborting hm2_register\n");
             goto fail0;
@@ -1146,6 +1382,12 @@ int hm2_register(hm2_lowlevel_io_t *llio, char *config_string) {
         name[8] = '\0';
 
         if (strncmp(name, HM2_CONFIGNAME, 9) != 0) {
+            int i;
+            // Prevent non-printable characters messing up the terminal
+            for (i = 0; i < 8; i++) {
+                if (!isprint(name[i]))
+                    name[i] = '?';
+            }
             HM2_ERR("invalid config name, got '%s', expected '%s'\n", name, HM2_CONFIGNAME);
             r = -EINVAL;
             goto fail0;
@@ -1255,6 +1497,16 @@ int hm2_register(hm2_lowlevel_io_t *llio, char *config_string) {
         goto fail1;
     }
 
+    hm2_queue_read(hm2);
+    if (r != 0) {
+        goto fail1;
+    }
+
+    r = hm2_finish_read(hm2);
+    if (r != 0) {
+        goto fail1;
+    }
+
     // set HAL gpio input pins based on FPGA pins
     hm2_ioport_gpio_process_tram_read(hm2);
 
@@ -1287,6 +1539,10 @@ int hm2_register(hm2_lowlevel_io_t *llio, char *config_string) {
         goto fail1;
     }
 
+    r = hm2_finish_write(hm2);
+    if (r != 0) {
+        goto fail1;
+    }
 
     //
     // final check for comm errors
@@ -1317,6 +1573,15 @@ int hm2_register(hm2_lowlevel_io_t *llio, char *config_string) {
     {
         char name[HAL_NAME_LEN + 1];
 
+        if(hm2->llio->split_read) {
+            rtapi_snprintf(name, sizeof(name), "%s.read-request", hm2->llio->name);
+            r = hal_export_funct(name, hm2_read_request, hm2, 1, 0, hm2->llio->comp_id);
+            if (r != 0) {
+                HM2_ERR("error %d exporting read function %s\n", r, name);
+                r = -EINVAL;
+                goto fail1;
+            }
+        }
         rtapi_snprintf(name, sizeof(name), "%s.read", hm2->llio->name);
         r = hal_export_funct(name, hm2_read, hm2, 1, 0, hm2->llio->comp_id);
         if (r != 0) {
@@ -1370,11 +1635,11 @@ int hm2_register(hm2_lowlevel_io_t *llio, char *config_string) {
 
 
 fail1:
-    hm2_cleanup(hm2);  // undoes the kmallocs from hm2_parse_module_descriptors()
+    hm2_cleanup(hm2);  // undoes the rtapi_kmallocs from hm2_parse_module_descriptors()
 
 fail0:
-    list_del(&hm2->list);
-    kfree(hm2);
+    rtapi_list_del(&hm2->list);
+    rtapi_kfree(hm2);
     return r;
 }
 
@@ -1383,10 +1648,10 @@ fail0:
 
 EXPORT_SYMBOL_GPL(hm2_unregister);
 void hm2_unregister(hm2_lowlevel_io_t *llio) {
-    struct list_head *ptr;
+    struct rtapi_list_head *ptr;
 
-    list_for_each(ptr, &hm2_list) {
-        hostmot2_t *hm2 = list_entry(ptr, hostmot2_t, list);
+    rtapi_list_for_each(ptr, &hm2_list) {
+        hostmot2_t *hm2 = rtapi_list_entry(ptr, hostmot2_t, list);
         if (hm2->llio != llio) continue;
 
         // if there's a watchdog, set it to safe the board right away
@@ -1400,8 +1665,8 @@ void hm2_unregister(hm2_lowlevel_io_t *llio) {
 
         hm2_cleanup(hm2);
 
-        list_del(ptr);
-        kfree(hm2);
+        rtapi_list_del(ptr);
+        rtapi_kfree(hm2);
 
         return;
     }
@@ -1422,7 +1687,7 @@ int rtapi_app_main(void) {
 
     comp_id = hal_init("hostmot2");
     if(comp_id < 0) return comp_id;
-    INIT_LIST_HEAD(&hm2_list);
+    RTAPI_INIT_LIST_HEAD(&hm2_list);
 
     hal_ready(comp_id);
 
@@ -1448,5 +1713,10 @@ void hm2_force_write(hostmot2_t *hm2) {
     hm2_tp_pwmgen_force_write(hm2);
     hm2_sserial_force_write(hm2);
     hm2_bspi_force_write(hm2);
+
+    // NOTE: It's important that the SSR is written *after* the
+    // ioport is written.  Initialization of the SSR requires that
+    // the IO Port pin directions is set appropriately.
+    hm2_ssr_force_write(hm2);
 }
 

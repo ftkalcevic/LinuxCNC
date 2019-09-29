@@ -1,6 +1,6 @@
-= Kinematics
+[[cha:kinematics]]
 
-[[cha:kinematics]] (((Kinematics)))
+= Kinematics
 
 == Introduction
 
@@ -40,6 +40,11 @@ Kinematics)))Trivial Kinematics). These are the most common machines
 used in milling, but are not very common in other domains of machine
 control (e.g. welding: puma-typed robots).
 
+LinuxCNC supports axes with names: X Y Z A B C U V W.  The X Y Z axes
+typically refer to the usual Cartesian coordinates. The A B C axes refer to
+rotational coordinates about the X Y Z axes respectively.  The U V W axes refer to
+additional coordinates that are commonly made colinear to the X Y Z axes respectively.
+
 == Trivial Kinematics
 
 The simplest machines are those in which which each joint is placed
@@ -48,41 +53,91 @@ Cartesian space (the G-code program) to the joint space (the actual
 actuators of the machine) is trivial. It is a simple 1:1 mapping:
 
 ----
-pos\->tran.x = joints[0]; 
-pos\->tran.y = joints[1]; 
-pos\->tran.z = joints[2]; 
-pos\->a = joints[3]; 
-pos\->b = joints[4]; 
-pos\->c = joints[5];
+pos->tran.x = joints[0];
+pos->tran.y = joints[1];
+pos->tran.z = joints[2];
 ----
 
 In the above code snippet one can see how the mapping is done: the X
-position is identical with the joint 0, the Y posittion with with 
-joint 1, etc. The above refers to the direct kinematics (one 
-direction of the transformation). 
-The next code snippet refers to the inverse kinematics (or the 
+position is identical with the joint 0, the Y position with
+joint 1, etc. The above refers to the direct kinematics (one
+direction of the transformation).
+The next code snippet refers to the inverse kinematics (or the
 inverse direction of the transformation):
 
 ----
-joints[0] = pos\->tran.x; 
-joints[1] = pos\->tran.y; 
-joints[2] = pos\->tran.z; 
-joints[3] = pos\->a; 
-joints[4] = pos\->b; 
-joints[5] = pos\->c;
+joints[0] = pos->tran.x;
+joints[1] = pos->tran.y;
+joints[2] = pos->tran.z;
 ----
 
-As one can see, it's pretty straightforward to do the transformation
-for a trivial "kins" (kinematics) or Cartesian machine. It gets a bit more
-complicated if the machine is missing one of the axes.footnote:[If a
-machine (e.g. a lathe) is set up with only the axes X,Z & A, and
-the LinuxCNC inifile holds only these 3 joints defined, then the above
-matching will be faulty. That is because we actually have (joint0=x,
-joint1=Z, joint2=A) whereas the above assumes joint1=Y. To make it
-easily work in LinuxCNC one needs to define all axes (XYZA), then use a
-simple loopback in HAL for the unused Y axis.] footnote:[One other 
-way of making it work, is by changing the matching code and 
-recompiling the software.]
+In LinuxCNC, the identity kinematics are implemented with the
+'trivkins' kinematics module and extended to 9 axes.  The default
+relationships between axis coordinates and joint numbers are:
+
+----
+pos->tran.x = joints[0];
+pos->tran.y = joints[1];
+pos->tran.z = joints[2];
+pos->a      = joints[3];
+pos->b      = joints[4];
+pos->c      = joints[5];
+pos->u      = joints[6];
+pos->v      = joints[7];
+pos->w      = joints[8];
+----
+
+Similarly, the default relationships for inverse kinematics for trivkins
+are:
+
+----
+joints[0] = pos->tran.x;
+joints[1] = pos->tran.y;
+joints[2] = pos->tran.z;
+joints[3] = pos->a;
+joints[4] = pos->b;
+joints[5] = pos->c;
+joints[6] = pos->u;
+joints[7] = pos->v;
+joints[8] = pos->w;
+----
+
+It is straightforward to do the transformation for a trivial "kins" ('trivkins'
+kinematics) or Cartesian machine provided that there are no omissions in the
+axis letters used.
+
+It gets a bit more complicated if the machine is missing one or more of the
+axis letters.  The problems of omitted axis letters is addressed by using the
+'coordinates=' module parameter with the trivkins module.  Joint numbers are
+assigned consecutively to each coordinate specified.  A lathe can be described
+with 'coordinates=xz' The joint assignments will then be:
+
+----
+joints[0] = pos->tran.x
+joints[1] = pos->tran.z
+----
+
+Use of the 'coordinates=' parameter is recommended for configurations that omit
+axis letters. footnote:[ Historically, the trivkins module did not support the
+'coordinates=' parameter so lathe configs were often configured as XYZ
+machines.  The unused Y axis was configured to 1) home immediately, 2) use a
+simple loopback to connect its position command hal pin to its position
+feedback hal pin, and 3) hidden in gui displays.   Numerous sim configs use
+these methods in order to share common hal files.]
+
+The 'trivkins' kinematics module also allows the same coordinate to be specified
+for more than one joint.  This feature can be useful on machines like a gantry
+having two independent motors for the y coordinate.  Such a machine could use
+'coordinates=xyyz' resulting in joint assignments:
+
+----
+joints[0] = pos->tran.x
+joints[1] = pos->tran.y
+joints[2] = pos->tran.y
+joints[3] = pos->tran.z
+----
+
+See the trivkins man pages for more information.
 
 == Non-trivial kinematics
 
@@ -97,9 +152,9 @@ To illustrate the above, we will analyze a simple kinematics called
 bipod (a simplified version of the tripod, which is a simplified
 version of the hexapod).
 
-.Bipod setup[[cap:Bipod-setup]]
+.Bipod setup
 
-image::images/bipod.png[]
+image::images/bipod.png[alt="Bipod setup"]
 
 The Bipod we are talking about is a device that consists of 2 motors
 placed on a wall, from which a device is hung using some wire. The
@@ -117,7 +172,6 @@ and BD, and by the Cartesian coordinates Dx, Dy.
 The job of the kinematics is to transform from joint lengths (AD, BD)
 to Cartesian coordinates (Dx, Dy) and vice-versa.
 
-[[sub:Forward-transformation]]
 === Forward transformation
 
 To transform from joint space into Cartesian space we will use some
@@ -165,17 +219,16 @@ return -1.
 Translated to actual code:
 
 ----
-double AD2 = joints[0] * joints[0]; 
-double BD2 = joints[1] * joints[1]; 
-double x = (AD2 - BD2 + Bx * Bx) / (2 * Bx); 
-double y2 = AD2 - x * x; 
-if(y2 < 0) return -1; 
-pos\->tran.x = x; 
-pos\->tran.y = sqrt(y2); 
+double AD2 = joints[0] * joints[0];
+double BD2 = joints[1] * joints[1];
+double x = (AD2 - BD2 + Bx * Bx) / (2 * Bx);
+double y2 = AD2 - x * x;
+if(y2 < 0) return -1;
+pos->tran.x = x;
+pos->tran.y = sqrt(y2);
 return 0;
-----    
+----
 
-[[sub:Inverse-transformation]]
 === Inverse transformation
 
 The inverse kinematics is lots easier in our example, as we can write
@@ -194,10 +247,10 @@ latexmath::[\[BD=\sqrt{(Bx-x)^{2}+y^{2}}\]]
 or translated to actual code:
 
 ----
-double x2 = pos\->tran.x * pos\->tran.x; 
-double y2 = pos\->tran.y * pos\->tran.y; 
-joints[0] = sqrt(x2 + y2); 
-joints[1] = sqrt((Bx - pos\->tran.x)*(Bx - pos\->tran.x) + y2); 
+double x2 = pos->tran.x * pos->tran.x;
+double y2 = pos->tran.y * pos->tran.y;
+joints[0] = sqrt(x2 + y2);
+joints[1] = sqrt((Bx - pos->tran.x)*(Bx - pos->tran.x) + y2);
 return 0;
 ----
 
@@ -208,31 +261,31 @@ permitted to export pins and parameters. It consists of several “C”
 functions (as opposed to HAL functions):
 
 ----
-int kinematicsForward(const double *joint, EmcPose *world, 
-const KINEMATICS_FORWARD_FLAGS *fflags, 
-KINEMATICS_INVERSE_FLAGS *iflags) 
+int kinematicsForward(const double *joint, EmcPose *world,
+const KINEMATICS_FORWARD_FLAGS *fflags,
+KINEMATICS_INVERSE_FLAGS *iflags)
 ----
 
 Implements the forward kinematics function.
 
 ----
-int kinematicsInverse(const EmcPose * world, double *joints, 
-const KINEMATICS_INVERSE_FLAGS *iflags, 
-KINEMATICS_FORWARD_FLAGS *fflags) 
+int kinematicsInverse(const EmcPose * world, double *joints,
+const KINEMATICS_INVERSE_FLAGS *iflags,
+KINEMATICS_FORWARD_FLAGS *fflags)
 ----
 
 Implements the inverse kinematics function.
 
 ----
-KINEMATICS_TYPE kinematicsType(void) 
+KINEMATICS_TYPE kinematicsType(void)
 ----
 
 Returns the kinematics type identifier, typically 'KINEMATICS_BOTH'.
 
 ----
-int kinematicsHome(EmcPose *world, double *joint, 
-KINEMATICS_FORWARD_FLAGS *fflags, 
-KINEMATICS_INVERSE_FLAGS *iflags) 
+int kinematicsHome(EmcPose *world, double *joint,
+KINEMATICS_FORWARD_FLAGS *fflags,
+KINEMATICS_INVERSE_FLAGS *iflags)
 ----
 
 The home kinematics function sets all its arguments to their proper
@@ -242,14 +295,14 @@ kinematics can accept arbitrary starting points, these initial values
 should be used.
 
 ----
-int rtapi_app_main(void) 
-void rtapi_app_exit(void) 
+int rtapi_app_main(void)
+void rtapi_app_exit(void)
 ----
 
 These are the standard setup and tear-down functions of RTAPI modules.
 
 When they are contained in a single source file, kinematics modules
-may be compiled and installed by 'comp'. See the 'comp(1)' manpage or
+may be compiled and installed by 'halcompile'. See the 'halcompile(1)' manpage or
 the HAL manual for more information.
 
 

@@ -5,8 +5,7 @@ rtapi \- Introduction to the RTAPI API
 
 .SH DESCRIPTION
 RTAPI is a library providing a uniform API for several real time operating
-systems.  As of ver 2.1, RTLinux, RTAI, and a pure userspace simulator are
-supported.
+systems.  As of LinuxCNC 2.7, POSIX threads and RTAI are supported.
 
 .SH HEADER FILES
 .SS rtapi.h
@@ -30,6 +29,11 @@ This file defines the preprocessor macros RTAPI_BIG_ENDIAN,
 RTAPI_LITTLE_ENDIAN, and RTAPI_FLOAT_BIG_ENDIAN as true or false depending on
 the characteristics of the target system.  It should be used instead of
 \fB<endian.h>\fR (userspace) or \fB<linux/byteorder.h>\fR (kernel space).
+
+.SS rtapi_limits.h
+This file defines the minimum and maximum value of some fundamental integral
+types, such as INT_MIN and INT_MAX.  This should be used instead of
+\fB<limits.h>\fR because that header file is not available to kernel modules.
 
 .SH REALTIME CONSIDERATIONS
 .SS Userspace code

@@ -137,7 +137,7 @@
 
 	You should have received a copy of the GNU General Public
 	License along with this library; if not, write to the Free Software
-	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111 USA
+	Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 	THE AUTHORS OF THIS LIBRARY ACCEPT ABSOLUTELY NO LIABILITY FOR
 	ANY HARM OR LOSS RESULTING FROM ITS USE.  IT IS _EXTREMELY_ UNWISE
@@ -822,8 +822,9 @@ static int vti_init_card()
 /* scans possible addresses for vti cards */
 static int vti_autodetect()
 {
-    dev = pci_find_device(VENDOR, DEVICE, dev);
+    dev = pci_get_device(VENDOR, DEVICE, dev);
     if (dev) {
+       pci_dev_put(dev);
 	rtapi_print_msg(RTAPI_MSG_INFO,
 	    "VTI: Card detected in slot: %2x\n", PCI_SLOT(dev->devfn));
 	return (0);

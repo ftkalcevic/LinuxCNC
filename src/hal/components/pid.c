@@ -64,7 +64,7 @@
     All of the limits (max____) are implemented such that if the
     parameter value is zero, there is no limit.
 
-    A number of internal values which may be usefull for testing
+    A number of internal values which may be useful for testing
     and tuning are also available as parameters.  To avoid cluttering
     the parameter list, these are only exported if "debug=1" is
     specified on the insmod command line.
@@ -112,7 +112,7 @@
 
     You should have received a copy of the GNU General Public
     License along with this library; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111 USA
+    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
     THE AUTHORS OF THIS LIBRARY ACCEPT ABSOLUTELY NO LIABILITY FOR
     ANY HARM OR LOSS RESULTING FROM ITS USE.  IT IS _EXTREMELY_ UNWISE
@@ -198,6 +198,7 @@ typedef struct {
 			       /* pin: the time the output has been saturated */
     hal_bit_t *index_enable;   /* pin: to monitor for step changes that would
                                        otherwise screw up FF */
+    hal_bit_t *error_previous_target; /* pin: measure error as new position vs previous command, to match motion's ideas */
     char prev_ie;
 } hal_pid_t;
 
@@ -232,7 +233,13 @@ int rtapi_app_main(void)
     if(num_chan) {
         howmany = num_chan;
     } else {
-        for(i=0; names[i]; i++) {howmany = i+1;}
+        howmany = 0;
+        for (i = 0; i < MAX_CHAN; i++) {
+            if ( (names[i] == NULL) || (*names[i] == 0) ){
+                break;
+            }
+            howmany = i + 1;
+        }
     }
 
     /* test for number of channels */
@@ -306,7 +313,18 @@ static void calc_pid(void *arg, long period)
     command = *(pid->command);
     feedback = *(pid->feedback);
     /* calculate the error */
-    tmp1 = command - feedback;
+    if((!(pid->prev_ie && !*(pid->index_enable))) && 
+       (*(pid->error_previous_target))) {
+        // the user requests ferror against prev_cmd, and we can honor
+        // that request because we haven't just had an index reset that
+        // screwed it up.  Otherwise, if we did just have an index
+        // reset, we will present an unwanted ferror proportional to
+        // velocity for this period, but velocity is usually very small
+        // during index search.
+        tmp1 = pid->prev_cmd - feedback;
+    } else {
+        tmp1 = command - feedback;
+    }
     /* store error to error pin */
     *(pid->error) = tmp1;
     /* apply error limits */
@@ -360,18 +378,9 @@ static void calc_pid(void *arg, long period)
 	    *(pid->error_d) = -*(pid->maxerror_d);
 	}
     }
-    /* calculate derivative of command */
     /* save old value for 2nd derivative calc later */
     tmp2 = *(pid->cmd_d);
-    if(!(pid->prev_ie && !*(pid->index_enable))) {
-        // not falling edge of index_enable: the normal case
-        *(pid->cmd_d) = (command - pid->prev_cmd) * periodrecip;
-    }
-    // else: leave cmd_d alone and use last period's.  prev_cmd
-    // shouldn't be trusted because index homing has caused us to have
-    // a step in position.  Using the previous period's derivative is
-    // probably a decent approximation since index search is usually a
-    // slow steady speed.
+    *(pid->cmd_d) = *(pid->commandv);
 
     // save ie for next time
     pid->prev_ie = *(pid->index_enable);
@@ -510,79 +519,84 @@ static int export_pid(hal_pid_t * addr, char * prefix)
     if (retval != 0) {
 	return retval;
     }
-    retval = hal_pin_float_newf(HAL_IO, &(addr->pgain), comp_id,
+    retval = hal_pin_float_newf(HAL_IN, &(addr->pgain), comp_id,
 				"%s.Pgain", prefix);
     if (retval != 0) {
 	return retval;
     }
-    retval = hal_pin_float_newf(HAL_IO, &(addr->igain), comp_id,
+    retval = hal_pin_float_newf(HAL_IN, &(addr->igain), comp_id,
 				"%s.Igain", prefix);
     if (retval != 0) {
 	return retval;
     }
-    retval = hal_pin_float_newf(HAL_IO, &(addr->dgain), comp_id,
+    retval = hal_pin_float_newf(HAL_IN, &(addr->dgain), comp_id,
 				"%s.Dgain", prefix);
     if (retval != 0) {
 	return retval;
     }
-    retval = hal_pin_float_newf(HAL_IO, &(addr->ff0gain), comp_id,
+    retval = hal_pin_float_newf(HAL_IN, &(addr->ff0gain), comp_id,
 				"%s.FF0", prefix);
     if (retval != 0) {
 	return retval;
     }
-    retval = hal_pin_float_newf(HAL_IO, &(addr->ff1gain), comp_id,
+    retval = hal_pin_float_newf(HAL_IN, &(addr->ff1gain), comp_id,
 				"%s.FF1", prefix);
     if (retval != 0) {
 	return retval;
     }
-    retval = hal_pin_float_newf(HAL_IO, &(addr->ff2gain), comp_id,
+    retval = hal_pin_float_newf(HAL_IN, &(addr->ff2gain), comp_id,
 				"%s.FF2", prefix);
     if (retval != 0) {
 	return retval;
     }
     /* export pins (previously parameters) */
-    retval = hal_pin_float_newf(HAL_IO, &(addr->deadband), comp_id,
+    retval = hal_pin_float_newf(HAL_IN, &(addr->deadband), comp_id,
 				"%s.deadband", prefix);
     if (retval != 0) {
 	return retval;
     }
-    retval = hal_pin_float_newf(HAL_IO, &(addr->maxerror), comp_id,
+    retval = hal_pin_float_newf(HAL_IN, &(addr->maxerror), comp_id,
 				"%s.maxerror", prefix);
     if (retval != 0) {
 	return retval;
     }
-    retval = hal_pin_float_newf(HAL_IO, &(addr->maxerror_i), comp_id,
+    retval = hal_pin_float_newf(HAL_IN, &(addr->maxerror_i), comp_id,
 				"%s.maxerrorI", prefix);
     if (retval != 0) {
 	return retval;
     }
-    retval = hal_pin_float_newf(HAL_IO, &(addr->maxerror_d), comp_id,
+    retval = hal_pin_float_newf(HAL_IN, &(addr->maxerror_d), comp_id,
 				"%s.maxerrorD", prefix);
     if (retval != 0) {
 	return retval;
     }
-    retval = hal_pin_float_newf(HAL_IO, &(addr->maxcmd_d), comp_id,
+    retval = hal_pin_float_newf(HAL_IN, &(addr->maxcmd_d), comp_id,
 				"%s.maxcmdD", prefix);
     if (retval != 0) {
 	return retval;
     }
-    retval = hal_pin_float_newf(HAL_IO, &(addr->maxcmd_dd), comp_id,
+    retval = hal_pin_float_newf(HAL_IN, &(addr->maxcmd_dd), comp_id,
 				"%s.maxcmdDD", prefix);
     if (retval != 0) {
 	return retval;
     }
-    retval = hal_pin_float_newf(HAL_IO, &(addr->bias), comp_id,
+    retval = hal_pin_float_newf(HAL_IN, &(addr->bias), comp_id,
 				"%s.bias", prefix);
     if (retval != 0) {
 	return retval;
     }
-    retval = hal_pin_float_newf(HAL_IO, &(addr->maxoutput), comp_id,
+    retval = hal_pin_float_newf(HAL_IN, &(addr->maxoutput), comp_id,
 				"%s.maxoutput", prefix);
     if (retval != 0) {
 	return retval;
     }
     retval = hal_pin_bit_newf(HAL_IN, &(addr->index_enable), comp_id,
 			      "%s.index-enable", prefix);
+    if (retval != 0) {
+	return retval;
+    }
+    retval = hal_pin_bit_newf(HAL_IN, &(addr->error_previous_target), comp_id,
+			      "%s.error-previous-target", prefix);
     if (retval != 0) {
 	return retval;
     }
@@ -621,6 +635,7 @@ static int export_pid(hal_pid_t * addr, char * prefix)
     *(addr->cmd_dd) = 0.0;
     /* init all structure members */
     *(addr->enable) = 0;
+    *(addr->error_previous_target) = 1;
     *(addr->command) = 0;
     *(addr->feedback) = 0;
     *(addr->error) = 0;

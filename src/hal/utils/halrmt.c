@@ -40,7 +40,7 @@
   
   ==> HELLO <==
   
-  Hello <password> <cleint> <version>
+  Hello <password> <client> <version>
   If a valid password was entered the server will respond with
   
   HELLO ACK <Server Name> <Server Version>
@@ -299,6 +299,7 @@
 #include <getopt.h>
 
 #include "rtapi.h"		/* RTAPI realtime OS API */
+#include <rtapi_mutex.h>
 #include "hal.h"		/* HAL public API decls */
 #include "../hal_priv.h"	/* private HAL decls */
 /* non-EMC related uses of halrmt may want to avoid libnml dependency */
@@ -467,11 +468,8 @@ static int initSockets()
 
 static int sockWrite(connectionRecType *context)
 {
-   int ret;
    strcat(context->outBuf, "\r\n");
-   ret = write(context->cliSock, context->outBuf, strlen(context->outBuf));
-   //FIXME return error based on ret, probably return (ret >= 0);
-   return 0;
+   return write(context->cliSock, context->outBuf, strlen(context->outBuf));
 }
 
 static void sockWriteError(const char *nakStr, connectionRecType *context)
@@ -480,7 +478,7 @@ static void sockWriteError(const char *nakStr, connectionRecType *context)
     sprintf(context->outBuf, "%s %s", nakStr, errorStr);
   else
     sprintf(context->outBuf, "%s", nakStr);
-  sockWrite(context);
+  if(sockWrite(context) < 0) perror("sockWrite");
 }
 
 pid_t hal_systemv_nowait(char *const argv[], connectionRecType *context) {
@@ -697,7 +695,7 @@ static int doLinkpp(char *first_pin_name, char *second_pin_name, connectionRecTy
     rtapi_mutex_give(&(hal_data->mutex));
     
     /* check that both pins have the same type, 
-       don't want ot create a sig, which after that won't be usefull */
+       don't want ot create a sig, which after that won't be useful */
     if (first_pin->type != second_pin->type) {
       sprintf(errorStr, "HAL:%d: ERROR: pins '%s' and '%s' not of the same type", 
 	  linenumber, first_pin_name, second_pin_name);
@@ -1129,13 +1127,13 @@ static int doStop(connectionRecType *context)
 static int doLoadRt(char *mod_name, char *args[], connectionRecType *context)
 {
     char arg_string[MAX_CMD_LEN+1];
-    int m=0, n=0, retval=0;
+    int n=0, retval=0;
     hal_comp_t *comp;
-    char *argv[MAX_TOK+3];
     char *cp1;
     const char *nakStr = "SET LOADRT NAK";
 
-#if defined(RTAPI_SIM)
+#if defined(RTAPI_USPACE)
+#if 0
     argv[m++] = "-Wn";
     argv[m++] = mod_name;
     argv[m++] = EMC2_BIN_DIR "/rtapi_app";
@@ -1147,7 +1145,10 @@ static int doLoadRt(char *mod_name, char *args[], connectionRecType *context)
     }
     argv[m++] = NULL;
 //    retval = do_loadusr_cmd(argv);
+#endif
 #else
+    int m=0;
+    char *argv[MAX_TOK+3];
     static char *rtmod_dir = EMC2_RTLIB_DIR;
     struct stat stat_buf;
     char mod_path[MAX_CMD_LEN+1];
@@ -1272,7 +1273,7 @@ static int doDelsig(char *mod_name, connectionRecType *context)
       rtapi_mutex_give(&(hal_data->mutex));
       sigs[n][0] = '\0';
 
-      if ((sigs[0][0] == '\0')) {
+      if (sigs[0][0] == '\0') {
         /* desired signals not found */
         sprintf(errorStr, "HAL:%d: ERROR: no signals found to be deleted", linenumber);
         sockWriteError(nakStr, context);
@@ -1847,11 +1848,34 @@ static void getThreadInfo(char *pattern, connectionRecType *context)
     while (next_thread != 0) {
       tptr = SHMPTR(next_thread);
       if (strncmp(pattern, tptr->name, len) == 0) {
+        char name[HAL_NAME_LEN+1];
+        hal_pin_t* pin;
+        hal_sig_t* sig;
+        void* dptr;
+        unsigned int runtime_pin_value;
+
+        snprintf(name, sizeof(name), "%s.time",tptr->name);
+        pin = halpr_find_pin_by_name(name);
+        if (pin) {
+            if (pin->signal != 0) {
+                sig = SHMPTR(pin->signal);
+                dptr = SHMPTR(sig->data_ptr);
+            } else {
+                sig = 0;
+                dptr = &(pin->dummysig);
+            }
+            runtime_pin_value = (int)*(int*)dptr;
+        } else {
+            runtime_pin_value = 0;
+            rtapi_print_msg(RTAPI_MSG_ERR,
+                 "unexpected: cannot find time pin for %s thread",tptr->name);
+        }
+
         sprintf(context->outBuf, "THREAD %s %11d %s %d %d",
 	  tptr->name, 
 	  (unsigned int)tptr->period, 
 	  (tptr->uses_fp ? "YES" : "NO "),  
-	  (unsigned int)tptr->runtime, 
+	  runtime_pin_value,
 	  (unsigned int)tptr->maxtime);
 	sockWrite(context);
         list_root = &(tptr->funct_list);
@@ -2662,13 +2686,11 @@ int commandGet(connectionRecType *context)
   static char *setCmdNakStr = "GET %s NAK\r\n";
   halCommandType cmd;
   char *pch;
-  int retval;
   cmdResponseType ret = rtNoError;
   
   pch = strtok(NULL, delims);
   if (pch == NULL) {
-    retval = write(context->cliSock, setNakStr, strlen(setNakStr));
-    return 0;
+    return write(context->cliSock, setNakStr, strlen(setNakStr));
     }
   strupr(pch);
   cmd = lookupHalCommand(pch);
@@ -2837,7 +2859,7 @@ static cmdResponseType setLoadRt(char *s, connectionRecType *context)
     pch = strtok(NULL, delims);
     i++;
     } 
-  args[i] = '\0';
+  args[i] = NULL;
   if (doLoadRt(s, args, context) == 0)
     return rtNoError;
   else
@@ -3032,20 +3054,18 @@ int commandSet(connectionRecType *context)
   int i;
   char *pch;
   char *pcmd;
-  int retval;
+  int retval = 0;
   cmdResponseType ret = rtNoError;
   
   pcmd = strtok(NULL, delims);
   if (pcmd == NULL) {
-    retval = write(context->cliSock, setNakStr, strlen(setNakStr));
-    return 0;
+    return write(context->cliSock, setNakStr, strlen(setNakStr));
     }
   strupr(pcmd);
   cmd = lookupHalCommand(pcmd);
   if ((cmd >= hcCommProt) && (context->cliSock != enabledConn)) {
     sprintf(context->outBuf, setCmdNakStr, pcmd);
-    retval = write(context->cliSock, context->outBuf, strlen(context->outBuf));
-    return 0;
+    return write(context->cliSock, context->outBuf, strlen(context->outBuf));
     }
   pch = strtok(NULL, delims);
   i = 0;
@@ -3118,7 +3138,7 @@ int commandSet(connectionRecType *context)
       break;
     case rtCustomHandledError: ;// Custom error respose handled, take no action
     }
-  return 0;
+  return retval;
 }
 
 int commandQuit(connectionRecType *context)
@@ -3164,7 +3184,7 @@ static int helpHello(connectionRecType *context)
   strcat(context->outBuf, "  Hello Ack <Server Name> <Protocol Version>\n\rWhere:\n\r");
   strcat(context->outBuf, "  Ack is acknowledging the connection has been made.\n\r");
   strcat(context->outBuf, "  Server Name is the name of the EMC Server to which the client has connected.\n\r");
-  strcat(context->outBuf, "  Protocol Version is the cleint requested version or latest version support by server if");
+  strcat(context->outBuf, "  Protocol Version is the client requested version or latest version support by server if");
   strcat(context->outBuf, "  the client requests a version later than that supported by the server.\n\r\n\r");
   strcat(context->outBuf, "  With invalid password, the server responds with:\n\r");
   strcat(context->outBuf, "  Hello Nak\n\r");
@@ -3375,26 +3395,29 @@ void *readClient(void *arg)
     str[len] = 0;
     strcat(buf, str);
     if (!memchr(str, 0x0d, strlen(str))) continue;
-    if ((context->echo == 1) && (context->linked) == 1)
+    if ((context->echo == 1) && (context->linked == 1)) {
       ret = write(context->cliSock, &buf, strlen(buf));
+      if (ret < 0) {
+        goto finished;
+      }
+    }
     i = 0;
     j = 0;
     while (i <= strlen(buf)) {
       if ((buf[i] != '\n') && (buf[i] != '\r')) {
         context->inBuf[j] = buf[i];
 	j++;
-	}
-      else
-        if (j > 0)
-          {
-  	    context->inBuf[j] = 0;
-            if (parseCommand(context) == -1) goto finished;
-	    j = 0;
-	}
-        i++;	
       }
+      else if (j > 0)
+      {
+	context->inBuf[j] = 0;
+        if (parseCommand(context) == -1) goto finished;
+	j = 0;
+      }
+      i++;
+    }
     buf[0] = 0;
-    } 
+  }
 
 finished:
   close(context->cliSock);

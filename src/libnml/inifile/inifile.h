@@ -13,13 +13,12 @@
 //
 //    You should have received a copy of the GNU General Public License
 //    along with this program; if not, write to the Free Software
-//    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+//    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 #ifndef LINUXCNC_INIFILE_H
 #define LINUXCNC_INIFILE_H
 
 #include <stdio.h>
-#include <fcntl.h>
 
 #ifdef __cplusplus
 extern "C"
@@ -27,6 +26,8 @@ extern "C"
 #endif
 
 extern const char *iniFind(FILE *fp, const char *tag, const char *section);
+extern const int iniFindInt(FILE *fp, const char *tag, const char *section, int *result);
+extern const int iniFindDouble(FILE *fp, const char *tag, const char *section, double *result);
 extern int TildeExpansion(const char *file, char *path, size_t size);
 
 #ifdef __cplusplus

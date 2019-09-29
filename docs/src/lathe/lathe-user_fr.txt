@@ -3,7 +3,7 @@
 
 = Particularités des tours
 
-[[cha:Tour-Specifiques]] (((Particularités des tours)))
+[[cha:Tour-Specifiques]]
 
 Ce chapitre va regrouper les informations spécifiques aux tours, il
 est encore en cours de rédaction.
@@ -50,10 +50,10 @@ Les versions antérieures de LinuxCNC avaient deux différents formats de table
 d'outils pour les fraiseuses et les tours, mais depuis la version 2.4.x,
 un format de table d'outil unique est utilisé. Il faut juste ignorer les parties
 de la table d'outils qui ne concernent pas la machine.
-Plus <<sec:Tool-Table-Format, d'informations ici>>, sur les spécificités du
-format de la table d'outils.
+Plus d'informations <<sec:Tool-Table-Format, ici sur le format de la table
+d'outils>>.
 
-[[cap:Orientations-des-outils-de-tour]]
+[[sec:Orientations-des-outils-de-tour]]
 == Orientations des outils de tournage
 (((Orientations des outils de tour)))
 
@@ -65,7 +65,7 @@ parallèle à l'axe Z, le zéro étant côté Z+.
 
 .Orientations des outils de tournage
 
-image::images/tool_positions_fr.png[]
+image::images/tool_positions_fr.png[alt="Orientations des outils de tournage"]
 
 
 Les images ci-dessous montrent la représentation qu'Axis donne des orientations
@@ -74,18 +74,18 @@ de l'outil, en se référant à la figure ci-dessus.
 .Outil dans les positions 1, 2, 3 et 4[[fig:Outil-Positions-1-2-3-4]]
 (((Outils en positions 1, 2, 3 et 4)))
 
-image::images/tool_pos_1.png[]
-image::images/tool_pos_2.png[]
-image::images/tool_pos_3.png[]
-image::images/tool_pos_4.png[]
+image:images/tool_pos_1.png[alt="Outil dans les position 1"]
+image:images/tool_pos_2.png[alt="Outil dans les position 2"]
+image:images/tool_pos_3.png[alt="Outil dans les position 3"]
+image:images/tool_pos_4.png[alt="Outil dans les position 4"]
 
 .Outil dans les positions 5, 6, 7 et 8[[fig:Outil-Positions-5-6-7-8]]
 (((Outils en positions 5, 6, 7 et 8)))
 
-image::images/tool_pos_5.png[]
-image::images/tool_pos_6.png[]
-image::images/tool_pos_7.png[]
-image::images/tool_pos_8.png[]
+image:images/tool_pos_5.png[alt="Outil dans les position 5"]
+image:images/tool_pos_6.png[alt="Outil dans les position 6"]
+image:images/tool_pos_7.png[alt="Outil dans les position 7"]
+image:images/tool_pos_8.png[alt="Outil dans les position 8"]
 
 == Correction d'outil
 
@@ -176,23 +176,28 @@ du système de coordonnées machine, les résultats ne seraient pas ceux
 attendus... puisque la compensation de l'outil serait ajoutée à l'offset
 courant lorsque l'outil sera utilisé dans le programme.
 
-== Filetage
+== Mouvements avec broche synchronisée
 
-Sur un tour, le filetage nécessite un signal de retour entre la broche et LinuxCNC.
-Généralement, c'est un codeur de position qui fourni ce retour. 
-Le manuel de l'intégrateur donne d'avantage d'informations sur le codeur de
-broche.
+Sur un tour, les mouvements avec broche synchronisée nécessitent un signal de
+retour entre la broche et LinuxCNC. Généralement, c'est un codeur en quadrature
+qui fourni ce retour. Le manuel de l'intégrateur donne des explications sur
+l'utilisation des codeurs de broche.
 
+.Filetage
 Le cycle de filetage préprogrammé G76 est utilisé, tant en filetage intérieur
-qu'en filetage extérieur, <<sec:G76-Filetage, voir G76 dans la section G-code>>.
+qu'en filetage extérieur, voir <<sec:G76-Filetage, la section G76>>.
 
-== Vitesse de coupe à surface constante
-
-La vitesse de coupe à surface constante (G96) utilise l'origine machine X modifiée
+.Vitesse de coupe à surface constante
+La vitesse de coupe à surface constante utilise l'origine machine X modifiée
 par l'offset d'outil X, pour calculer la vitesse de rotation de la broche en tr/mn.
 La vitesse de coupe à surface constante permet de suivre les changements d'offset
 de l'outil. L'emplacement de l'origine machine de l'axe X doit être sur l'axe de
 rotation et doit se faire avec l'outil de référence (celui qui a l'offset à zéro).
+
+.Avance par tour
+L'avance par tour déplace l'axe Z de la valeur de F à chaque tour.
+Ce n'est pas destiné au filetage pour lequel il faut utiliser G76.
+D'autres informations sont dans la section sur <<sec:G93-G94-G95-Modes,G95>>.
 
 == Arcs
 
@@ -249,7 +254,7 @@ comme on pourrait le supposer.
 [[fig:Control-Point]]
 .Point contrôlé
 
-image::images/control_point.png[]
+image::images/control_point.png[alt="Point contrôlé"]
 
 === Tourner les angles sans compensation d'outil
 
@@ -260,7 +265,7 @@ identiques uniquement si les mouvements de tournage suivent les axes X et Z.
 
 .Tournage en rampe
 
-image::images/ramp_entry.png[]
+image::images/ramp_entry.png[alt="Tournage en rampe"]
 
 Le point contrôlé progresse en suivant la trajectoire programmée mais l'arête de
 coupe ne suit pas cette trajectoire comme c'est visible sur la figure suivante.
@@ -269,7 +274,7 @@ et d'ajuster la trajectoire programmée pour compenser le rayon de bec de l'outi
 
 .Trajectoire en rampe
 
-image::images/ramp_cut.png[]
+image::images/ramp_cut.png[alt="Trajectoire en rampe"]
 
 Dans l'exemple ci-dessus, pour suivre la rampe programmée et obtenir la bonne
 trajectoire, il suffi de décaler la trajectoire de la rampe vers la
@@ -285,7 +290,7 @@ pièce.
 
 .Tournage du diamètre
 
-image::images/radius_1.png[]
+image::images/radius_1.png[alt="Tournage du diamètre"]
 
 Sur la figure suivante, on voit que quand l'outil approche la fin la pièce,
 le point contrôlé continue de suivre la trajectoire alors que l'arête de coupe
@@ -294,14 +299,14 @@ a été programmé, la pièce conserve son angle d'extrémité.
 
 .Tournage du rayon
 
-image::images/radius_2.png[]
+image::images/radius_2.png[alt="Tournage du rayon"]
 
 Maintenant, comme on le voit, le point contrôlé suit bien la trajectoire
 programmée mais l'arête de coupe est en dehors de la matière.
 
 .Tournage du rayon
 
-image::images/radius_3.png[]
+image::images/radius_3.png[alt="Tournage du rayon"]
 
 Sur la figure finale, on voit que l'arête de coupe a terminé le dressage de la
 face mais en laissant un coin carré à la place du beau rayon attendu. Noter aussi
@@ -311,7 +316,7 @@ valeur d'un rayon de bec de l'outil.
 
 .Dressage de la face
 
-image::images/radius_4.png[]
+image::images/radius_4.png[alt="Dressage de la face"]
 
 === Utiliser la compensation d'outil
 
