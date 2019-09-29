@@ -1,0 +1,14 @@
+Path Turn
+S|X Start|Start X coordinate of facing travel|12
+S|X End|End X coordinate of facing travel|10.0
+S|Z Start|Z coordinate start|0.0
+S|Z End|Z coordinate end|-20.0
+U|Plunge Feed rate|Feed rate for plunging into work piece|50.0
+U|Rough Feed rate|Feed rate for roughing pass|100.0
+U|Rough Cut Depth|Roughing depth of cut per pass|0.5
+U|Finish Feed rate|Feed rate for finish pass|100.0
+U|Finish Cut Depth|Finishing pass depth of cut. Set to 0 for no finishing pass.|0.1
+U|Clearance|Relative distance to retract  X for rapid traverse for next pass|2
+U|Approach Angle|Angle plunges into the piece are staggered to prevent tool from gouging. 0 degrees is a perpendicular plunge.|0
+U|Clearance Angle|Angle cuts are staggered in retraction to prevent tool from gouging|45
+

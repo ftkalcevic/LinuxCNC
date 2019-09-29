@@ -911,15 +911,23 @@ void MainWindow::UpdateButtonState()
 
 - Build gcode...
     - todo - clean up % use in wiz
-- Command line interface to generate code
+    - Better error line detection
+        - map line number to .wiz file, or o<word> file.
+    - Add log/msg window
+        - show gcode errors.
+        - msgs
 - support script (external ex) commnds.
+    - Can just be a "comment" format, eg
+        - (GWizardExternalCommand: COMMAND arg1 arg2 arg3)
+        - COMMAND must be unique like oword wizards are.
+    - When building the gcode, we..
+        - execute the command, 
+        - capture stdout
+        - wrap stdout in o<word> function 
+        - and call from GCODE.
 - Preview
     - Measure?
     - axis labels
     - adjust grid as zoom
         - adjust axis and axis labels too
-- Add log/msg window
-    - show gcode errors.
-    - msgs
-    - map line number to -> ?
  */
