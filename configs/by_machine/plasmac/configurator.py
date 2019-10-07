@@ -54,8 +54,9 @@ class configurator:
         if 'configs/by_machine/plasmac' not in os.path.realpath(sys.argv[0]):
             if self.dialog_ok(
                     'PATH ERROR',
-                    '\nThe plasmac configurator must be run from the original source directory\n'
-                    '\ne.g. ~/linuxcnc-dev/configs/by_machine/plasmac/configurator.py\n\n'):
+                    '\nThe plasmac configurator must be run from the original source directory\n\n'
+                    'e.g. python /usr/share/doc/linuxcnc/examples/sample-configs/by_machine/plasmac/configurator.py\n\n'
+                    'e.g. python ~/linuxcnc-dev/configs/by_machine/plasmac/configurator.py\n\n'):
                 quit()
 
     def on_selection(self, button, event, selection):
@@ -92,7 +93,6 @@ class configurator:
         else:
             quit()
         self.W = gtk.Window()
-#        self.W.set_title('PlasmaC Configurator')
         self.W.connect('delete_event', self.on_window_delete_event)
         self.W.set_position(gtk.WIN_POS_CENTER)
         self.create_widgets()
@@ -121,21 +121,6 @@ class configurator:
             self.plasmacIniFile = self.copyPath + '/metric_plasmac.ini'
             self.inPlace = False
             self.set_mode()
-
-    # def start_dialog(self):
-    #     dialog = gtk.Dialog('SELECT',
-    #                         self.W,
-    #                         gtk.DIALOG_MODAL | gtk.DIALOG_DESTROY_WITH_PARENT,
-    #                         ('New', 0, 
-    #                          'Upgrade', 1,
-    #                          'Reconfigure', 2,
-    #                          'Exit', 3,))
-    #     label = gtk.Label('Is this a new config, an upgrade or a reconfiguration?')
-    #     dialog.vbox.add(label)
-    #     label.show()
-    #     response = dialog.run()
-    #     dialog.destroy()
-    #     return response
 
     def dialog_ok_cancel(self,title,text,name1,name2):
         dialog = gtk.Dialog(title,
@@ -291,12 +276,33 @@ class configurator:
                 return True
 
     def b4_air_scribe(self):
-        inFile = open('{}/{}_connections.hal'.format(self.configDir,self.machineName.lower()),'r')
-        for line in inFile:
-            if 'air-scribe' in line:
+        inFile = open(self.orgIniFile,'r')
+        while 1:
+            line = inFile.readline()
+            if line.startswith('[TRAJ]'): break
+        while 1:
+            line = inFile.readline()
+            if line.startswith('SPINDLES'):
                 inFile.close()
                 return False
-        return True
+            elif line.startswith('[') or not line:
+                inFile.close()
+                return True
+
+    def b4_centre_spot(self):
+        inFile = open(self.orgIniFile,'r')
+        while 1:
+            line = inFile.readline()
+            if line.startswith('[TRAJ]'): break
+        while 1:
+            line = inFile.readline()
+            if line.startswith('SPINDLES'):
+                if int(line.split('=')[1].strip()) < 3:
+                    inFile.close()
+                    return True
+            elif line.startswith('[') or not line:
+                inFile.close()
+                return False
 
     def set_mode(self):
         if self.mode == 0:
@@ -329,9 +335,12 @@ class configurator:
         # if version before adding air scribe
         elif self.b4_air_scribe():
             return 0.2
+        # if version before adding centre spot
+        elif self.b4_centre_spot():
+            return 0.3
         # must be the latest version
         else:
-            return 0.3
+            return 0.4
 
     def on_create_clicked(self,button):
         if not self.check_entries():
@@ -356,6 +365,7 @@ class configurator:
             return
         if not self.copy_ini_and_hal_files(): return
         if not self.get_traj_info(self.readIniFile,display): return
+        if not self.get_kins_info(self.readIniFile): return
         if not self.get_joint_info(self.readIniFile): return
         if not self.write_new_hal_file(): return
         if not self.write_connections_hal_file(): return
@@ -591,31 +601,44 @@ class configurator:
             inFile.close()
             outFile.close()
         # add air scibe for an upgrade from 0.2 or earlier
-        if version <= 0.2 and display == 'axis':
+        if version <= 0.2:
             shutil.copy(self.orgIniFile,'{}.old02'.format(self.orgIniFile))
             inFile = open('{}.old02'.format(self.orgIniFile), 'r')
             outFile = open('{}'.format(self.orgIniFile), 'w')
-            display = False
+            displaySect = False
             tooledit = False
             for line in inFile:
                 if line.startswith('[TRAJ]'):
                     outFile.write(line)
-                    outFile.write('SPINDLES                = 2\n')
+                    outFile.write('SPINDLES = 2\n')
                 elif line.startswith('HALFILE'):
                     outFile.write(line)
                     halFile = line.split('=')[1].strip()
                     if halFile != 'plasmac.hal' and 'connections.hal' not in line:
                         self.add_spindle_to_halfile(halFile)
-                elif line.startswith('[DISPLAY]'):
+                elif line.startswith('[DISPLAY]') and display == 'axis':
                     outFile.write(line)
-                    display = True
-                elif line.startswith('TOOL_EDITOR'):
-                    outFile.write('TOOL_EDITOR             = tooledit x y\n')
+                    displaySect = True
+                elif line.startswith('TOOL_EDITOR') and displaySect:
+                    outFile.write('TOOL_EDITOR = tooledit x y\n')
                     tooledit = True
-                elif (line.startswith('[') or line.strip() == '') and display and not tooledit:
-                    outFile.write('TOOL_EDITOR             = tooledit x y\n\n')
+                elif (line.startswith('[') or line.strip() == '') and displaySect and not tooledit:
+                    outFile.write('TOOL_EDITOR = tooledit x y\n\n')
                     outFile.write(line)
                     tooledit = True
+                else:
+                    outFile.write(line)
+            inFile.close()
+            outFile.close()
+        # add centre spot for an upgrade from 0.3 or earlier
+        if version <= 0.3:
+            shutil.copy(self.orgIniFile,'{}.old03'.format(self.orgIniFile))
+            inFile = open('{}.old03'.format(self.orgIniFile), 'r')
+            outFile = open('{}'.format(self.orgIniFile), 'w')
+            traj = False
+            for line in inFile:
+                if line.startswith('SPINDLES') and int(line.split('=')[1].strip()) < 3:
+                    outFile.write('SPINDLES = 3\n')
                 else:
                     outFile.write(line)
             inFile.close()
@@ -664,7 +687,9 @@ class configurator:
             inFile = open('{}.old2'.format(halFile), 'r')
             outFile = open(halFile, 'w')
             for line in inFile:
-                if line.startswith('loadrt motmod') :
+                if line.replace(' ','').startswith('loadrtmotmod') or line.replace(' ','').startswith('loadrt[EMCMOT]EMCMOT'):
+                    if 'num_spindles' in line:
+                        line = line.split('num_spindles')[0].strip()
                     line = '{} num_spindles=[TRAJ]SPINDLES\n'.format(line.strip())
                 elif 'hal_manualtoolchange' in line or 'iocontrol.0.tool-prepare' in line:
                     line = '# {}'.format(line)
@@ -712,24 +737,47 @@ class configurator:
             if 'LINEAR_UNITS' in line:
                 result += 1
                 a,b = line.strip().replace(' ','').split('=')
-                if b.lower() == 'mm':
-                    self.plasmacIniFile = '{}/{}/metric_plasmac.ini'.format(self.copyPath,display)
-                else:
+                if b.lower() == 'inch':
                     self.plasmacIniFile = '{}/{}/imperial_plasmac.ini'.format(self.copyPath,display)
-            elif 'COORDINATES' in line:
-                result += 10
-                a,b = line.strip().replace(' ','').split('=')
-                self.zJoint = b.lower().index('z')
-                self.numJoints = len(b.strip())
+                else:
+                    self.plasmacIniFile = '{}/{}/metric_plasmac.ini'.format(self.copyPath,display)
             if line.startswith('[') or not line:
-                if result == 11:
+                if result == 1:
                     break
                 else:
                     inFile.close()
-                    if result == 1:
-                        self.dialog_ok('ERROR','Could not find COORDINATES in [TRAJ] section of INI file')
-                    else:
-                        self.dialog_ok('ERROR','Could not find LINEAR_UNITS in [TRAJ] section of INI file')
+                    self.dialog_ok('ERROR','Could not find LINEAR_UNITS in [TRAJ] section of INI file')
+                    return False
+        inFile.close()
+        return True
+
+    def get_kins_info(self,readFile):
+        # get some info from [KINS] section of INI file copy
+        inFile = open(readFile,'r')
+        while 1:
+            line = inFile.readline()
+            if '[KINS]' in line:
+                break
+            if not line:
+                inFile.close()
+                self.dialog_ok('ERROR','Cannot find [TRAJ] section in INI file')
+                return False
+        result = 0
+        while 1:
+            line = inFile.readline()
+            if 'KINEMATICS' in line:
+                result += 1
+                a,b = line.lower().strip().replace(' ','').split('coordinates=')
+                if 'kinstype' in b:
+                    b = b.split('kinstype')[0]
+                self.zJoint = b.index('z')
+                self.numJoints = len(b.strip())
+            if line.startswith('[') or not line:
+                if result == 1:
+                    break
+                else:
+                    inFile.close()
+                    self.dialog_ok('ERROR','Could not find KINEMATICS in [KINS] section of INI file')
                     return False
         inFile.close()
         return True
@@ -775,10 +823,42 @@ class configurator:
         newHalFile = open('{}/{}{}'.format(self.configDir,self.machineName.lower(),self.halExt),'w')
         inHal = open(self.readHalFile,'r')
         for line in inHal:
-            if line.startswith('loadrt motmod'):
+            # add spindles to motmod
+            if line.replace(' ','').startswith('loadrtmotmod') or line.replace(' ','').startswith('loadrt[EMCMOT]EMCMOT'):
+                if 'num_spindles' in line:
+                    line = line.split('num_spindles')[0].strip()
                 line = '{} num_spindles=[TRAJ]SPINDLES\n'.format(line.strip())
+            # reformat lines from 7i96 config tool to run with twopass
+            elif line.replace(' ','').startswith('loadrt[HOSTMOT2]DRIVER') or \
+                 line.replace(' ','').startswith('loadrt[HOSTMOT2](DRIVER)'):
+                if line.replace(' ','').startswith('loadrt[HOSTMOT2](DRIVER)'):
+                 for r in (('(',''), (')','')):
+                     line = line.replace(*r)
+                hostmot = {}
+                inFile = open('{}'.format(self.orgIniFile), 'r')
+                while 1:
+                    inf = inFile.readline()
+                    if inf.startswith('[HOSTMOT2]'):
+                        break
+                    if not inf:
+                        inFile.close()
+                        self.dialog_ok('ERROR','Cannot find [HOSTMOT2] section in INI file')
+                        return None
+                while 1:
+                    inf = inFile.readline()
+                    if inf.startswith('[') or not inf:
+                        break
+                    elif '=' in inf:
+                        a,b = inf.strip().split('=')
+                        hostmot[a.strip()] = b.strip()
+                line = line.replace('[HOSTMOT2]DRIVER',hostmot['DRIVER'])
+                for param in ['IPADDRESS','ENCODERS','STEPGENS','PWMGENS','SSERIAL_PORT']:
+                    if param in hostmot:
+                        line = line.replace('[HOSTMOT2]' + param,hostmot[param])
+            # comment out old spindle lines
             elif 'spindle.0.on' in line:
                 line = '# {}'.format(line)
+            # comment out old toolchange lines
             elif 'hal_manualtoolchange' in line or 'iocontrol.0.tool-prepare' in line:
                 line = '# {}'.format(line)
             newHalFile.write(line)
@@ -913,6 +993,7 @@ class configurator:
                 break
         openFile = False
         toolFile = False
+        cycleTime = False
         while 1:
             line = inFile.readline()
             if not line.startswith('['):
@@ -922,7 +1003,12 @@ class configurator:
                 elif line.startswith('TOOL_EDITOR'):
                     outFile.write('TOOL_EDITOR = tooledit x y\n')
                     toolFile = True
-                else:
+                elif line.startswith('CYCLE_TIME'):
+                    outFile.write('CYCLE_TIME = 0.1\n')
+                    cycleTime = True
+                elif line.startswith('PYVCP') or line.startswith('GLADEVCP'):
+                    pass
+                elif line.strip():
                     outFile.write(line)
             else:
                 inFile.close()
@@ -930,7 +1016,14 @@ class configurator:
         if not openFile and display == 'axis':
             outFile.write('OPEN_FILE = \"\"\n')
         if not toolFile and display == 'axis':
-            outFile.write('TOOL_EDITOR = tooledit x y\n\n')
+            outFile.write('TOOL_EDITOR = tooledit x y\n')
+        if not cycleTime and display == 'axis':
+            outFile.write('CYCLE_TIME = 0.1\n')
+        outFile.write('\n')
+        if display == 'axis':
+            outFile.write(\
+                '# required\n'\
+                'USER_COMMAND_FILE = plasmac_axis.py\n\n')
         while 1:        
             line = plasmacIni.readline()
             if line.startswith('EMBED'):
@@ -967,10 +1060,6 @@ class configurator:
                     outFile.write(line)
             else:
                 break
-        if display == 'axis':
-            outFile.write(\
-                '# required\n'\
-                'USER_COMMAND_FILE       = plasmac_axis.py\n\n')
         inFile.close()
         plasmacIni.close()
         done = ['[APPLICATIONS]',\
@@ -1240,8 +1329,6 @@ class configurator:
                         outFile.write(line)
                     else:
                         outFile.write('# {}'.format(line))
-
-
                 elif 'scribe-arm' in line:
                     if self.scribeArmPin.get_text():
                         if self.oldScribeArmPin != self.scribeArmPin.get_text():
@@ -1253,8 +1340,6 @@ class configurator:
                         outFile.write(line)
                     else:
                         outFile.write('# {}'.format(line))
-
-
                 elif 'scribe-start' in line:
                     if self.scribeStartPin.get_text():
                         if self.oldScribeStartPin != self.scribeStartPin.get_text():
@@ -1266,8 +1351,6 @@ class configurator:
                         outFile.write(line)
                     else:
                         outFile.write('# {}'.format(line))
-
-
                 else:
                     outFile.write(line)
         if arcVoltMissing:
@@ -1316,16 +1399,10 @@ class configurator:
         self.oldMoveUpPin = ''
         self.moveDownPin.set_text('')
         self.oldMoveDownPin = ''
-
-
         self.scribeArmPin.set_text('')
         self.oldScribeArmPin = ''
-
-
         self.scribeStartPin.set_text('')
         self.oldScribeStartPin = ''
-
-
         try:
             with open('{}/{}_connections.hal'.format(self.configDir,self.machineName.lower()), 'r') as inFile:
                 for line in inFile:
@@ -1365,20 +1442,14 @@ class configurator:
                         self.oldMoveDownPin = (line.split('move-down', 1)[1].strip().split(' ', 1)[0].strip())
                         if not line.strip().startswith('#'):
                             self.moveDownPin.set_text(self.oldMoveDownPin)
-
-
                     elif 'scribe-arm' in line:
-                        self.oldScribeArmPin = (line.strip().split(' ', -1).strip())
+                        self.oldScribeArmPin = (line.strip().split(' ')[-1].strip())
                         if not line.strip().startswith('#'):
                             self.scribeArmPin.set_text(self.oldScribeArmPin)
-
-
                     elif 'scribe-start' in line:
-                        self.oldScribeStartPin = (line.strip().split(' ', -1).strip())
+                        self.oldScribeStartPin = (line.strip().split(' ')[-1].strip())
                         if not line.strip().startswith('#'):
                             self.scribeStartPin.set_text(self.oldScribeStartPin)
-
-
         except:
             self.iniFile.set_text('')
             self.dialog_ok(
@@ -1408,17 +1479,17 @@ class configurator:
         self.set_mode()
 
     def print_success(self):
+        if '/usr/share/doc' in self.gitPath:
+            cmd = 'linuxcnc'
+        else:
+            cmd = '{}/scripts/linuxcnc'.format(self.gitPath)
         self.dialog_ok(\
             'SUCCESS',\
             '\nConfiguration is complete.\n\n'\
-            'You can run this configuration from a console as follows.\n\n'\
-            'Full installation:\n'\
-            'linuxcnc  '\
-            '{0}/{1}.ini\n\n'\
-            'Run In Place installation:\n'\
-            '{2}/scripts/linuxcnc  '\
-            '{0}/{1}.ini\n\n'\
-            .format(self.configDir,self.machineName.lower(),self.gitPath))
+            'You can run this configuration from a console as follows:\n\n'\
+            ' {} {}/{}.ini \n\n'\
+            'Then adjust required settings on the Config tab\n\n'\
+            .format(cmd,self.configDir,self.machineName.lower()))
 
     def create_widgets(self):
         self.VB = gtk.VBox()
@@ -1552,7 +1623,7 @@ class configurator:
             self.torchVBox.pack_start(torchBlank)
             self.VB.pack_start(self.torchVBox,expand=False)
             self.moveUpVBox = gtk.VBox()
-            self.moveUpLabel = gtk.Label('Move Up HAL pin: (bit out)')
+            self.moveUpLabel = gtk.Label('Move Up HAL pin: (bit in)')
             self.moveUpLabel.set_alignment(0,0)
             self.moveUpPin = gtk.Entry()
             self.moveUpPin.set_width_chars(60)
@@ -1562,7 +1633,7 @@ class configurator:
             self.moveUpVBox.pack_start(moveUpBlank)
             self.VB.pack_start(self.moveUpVBox,expand=False)
             self.moveDownVBox = gtk.VBox()
-            self.moveDownLabel = gtk.Label('Move Down HAL pin: (bit out)')
+            self.moveDownLabel = gtk.Label('Move Down HAL pin: (bit in)')
             self.moveDownLabel.set_alignment(0,0)
             self.moveDownPin = gtk.Entry()
             self.moveDownPin.set_width_chars(60)
