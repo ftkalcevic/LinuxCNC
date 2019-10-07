@@ -1,12 +1,11 @@
 # do not change the contents of this file as it will be overwiten by updates
-# make custom changes in {machinename}_connections.hal
+# make custom changes in <machinename>_connections.hal
 
 #***** PLASMAC COMPONENT *****
 loadrt  plasmac
 addf    plasmac  servo-thread
 
 # inputs
-net plasmac:air-scribe-on        spindle.1.on                    =>  plasmac.air-scribe-on
 net plasmac:axis-x-position      axis.x.pos-cmd                  =>  plasmac.axis-x-position
 net plasmac:axis-y-position      axis.y.pos-cmd                  =>  plasmac.axis-y-position
 net plasmac:breakaway-switch-out debounce.0.1.out                =>  plasmac.breakaway

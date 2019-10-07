@@ -56,6 +56,9 @@ class HandlerClass:
         self.builder.get_object('arc-voltage-offset-adj').configure(0,-999999,999999,0.01,0,0)
         self.builder.get_object('arc-voltage-scale').set_digits(6)
         self.builder.get_object('arc-voltage-scale-adj').configure(1,-9999,9999,0.000001,0,0)
+        self.builder.get_object('centre-spot-time').set_digits(0)
+        self.builder.get_object('centre-spot-time-adj').configure(0,0,999,1,0,0)
+        self.builder.get_object('centre-spot-time').set_value(0)
         self.builder.get_object('cornerlock-threshold').set_digits(0)
         self.builder.get_object('cornerlock-threshold-adj').configure(90,1,99,1,0,0)
         self.builder.get_object('kerfcross-override').set_digits(0)
@@ -65,17 +68,19 @@ class HandlerClass:
         self.builder.get_object('ohmic-max-attempts-adj').configure(0,0,10,1,0,0)
         self.builder.get_object('ohmic-max-attempts').set_value(0)
         self.builder.get_object('pid-p-gain').set_digits(0)
-        self.builder.get_object('pid-p-gain-adj').configure(25,0,1000,1,0,0)
+        self.builder.get_object('pid-p-gain-adj').configure(10,0,1000,1,0,0)
         self.builder.get_object('pid-i-gain').set_digits(0)
         self.builder.get_object('pid-i-gain-adj').configure(0,0,1000,1,0,0)
         self.builder.get_object('pid-i-gain').set_value(0)
         self.builder.get_object('pid-d-gain').set_digits(0)
         self.builder.get_object('pid-d-gain-adj').configure(0,0,1000,1,0,0)
         self.builder.get_object('pid-d-gain').set_value(0)
-        self.builder.get_object('air-scribe-delay').set_digits(1)
-        self.builder.get_object('air-scribe-delay-adj').configure(0,0,9,0.1,0,0)
+        self.builder.get_object('scribe-arm-delay').set_digits(1)
+        self.builder.get_object('scribe-arm-delay-adj').configure(0,0,9,0.1,0,0)
+        self.builder.get_object('scribe-start-delay').set_digits(1)
+        self.builder.get_object('scribe-start-delay-adj').configure(0,0,9,0.1,0,0)
         self.builder.get_object('thc-delay').set_digits(1)
-        self.builder.get_object('thc-delay-adj').configure(0,0,9,0.1,0,0)
+        self.builder.get_object('thc-delay-adj').configure(1.5,0,9,0.1,0,0)
         self.builder.get_object('thc-threshold').set_digits(2)
         self.builder.get_object('thc-threshold-adj').configure(1,0.05,9,0.01,0,0)
         self.builder.get_object('torch-off-delay').set_digits(1)
@@ -304,6 +309,18 @@ class HandlerClass:
         else:
             print('*** plasmac run tab configuration file, {} is invalid ***'.format(runFile))
 
+    def check_hal_connections(self):
+        level = int(self.i.find('TRAJ', 'SPINDLES')) or 1
+        if hal.get_value('plasmac.multi-tool'):
+            if level >= 2:
+                hal.new_sig('plasmac:scribe-is-on',hal.HAL_BIT)
+                hal.connect('spindle.1.on','plasmac:scribe-is-on')
+                hal.connect('plasmac.scribe-on','plasmac:scribe-is-on')
+            if level == 3:
+                hal.new_sig('plasmac:centre-spot-is-on',hal.HAL_BIT)
+                hal.connect('spindle.2.on','plasmac:centre-spot-is-on')
+                hal.connect('plasmac.centre-spot-on','plasmac:centre-spot-is-on')
+
     def __init__(self, halcomp,builder,useropts):
         self.halcomp = halcomp
         self.builder = builder
@@ -323,6 +340,7 @@ class HandlerClass:
         self.builder.get_object('probe-feed-rate-adj').set_upper(self.builder.get_object('setup-feed-rate').get_value())
         self.load_settings()
         self.set_theme()
+        self.check_hal_connections()
         gobject.timeout_add(100, self.periodic)
 
 def get_handlers(halcomp,builder,useropts):
