@@ -21,6 +21,7 @@ class _Lcnc_Action(object):
         self.__class__._instanceNum += 1
         self.cmd = linuxcnc.command()
         self.tmp = None
+        self.prefilter_path = None
 
     def SET_ESTOP_STATE(self, state):
         if state:
@@ -49,8 +50,17 @@ class _Lcnc_Action(object):
     def SET_AUTO_MODE(self):
         self.ensure_mode(linuxcnc.MODE_AUTO)
 
-    def SET_LIMITS_OVERRIDE(self):
-        self.cmd.override_limits()
+    # if called while on hard limit will set the flag and allow machine on
+    # if called with flag set and now off hard limits - resets the flag
+    def TOGGLE_LIMITS_OVERRIDE(self):
+        if STATUS.is_limits_override_set() and STATUS.is_hard_limits_tripped():
+            STATUS.emit('error',linuxcnc.OPERATOR_ERROR,'''Can Not Reset Limits Override - Still On Hard Limits''')
+        elif not STATUS.is_limits_override_set() and STATUS.is_hard_limits_tripped():
+            STATUS.emit('error',linuxcnc.OPERATOR_ERROR,'Hard Limits Are Overridden!')
+            self.cmd.override_limits()
+        else:
+            STATUS.emit('error',linuxcnc.OPERATOR_TEXT,'Hard Limits Are Reset To Active!')
+            self.cmd.override_limits()
 
     def SET_MDI_MODE(self):
         self.ensure_mode(linuxcnc.MODE_MDI)
@@ -122,6 +132,7 @@ class _Lcnc_Action(object):
         self.ensure_mode(linuxcnc.MODE_MDI)
 
     def OPEN_PROGRAM(self, fname):
+        self.prefilter_path = str(fname)
         self.ensure_mode(linuxcnc.MODE_AUTO)
         old = STATUS.stat.file
         flt = INFO.get_filter_program(str(fname))
@@ -173,11 +184,21 @@ class _Lcnc_Action(object):
         self.RELOAD_DISPLAY()
 
     def RUN(self, line=0):
-        self.ensure_mode(linuxcnc.MODE_AUTO)
-        if STATUS.is_auto_paused() and line ==0:
+        if not STATUS.is_auto_mode():
+            self.ensure_mode(linuxcnc.MODE_AUTO)
+        if STATUS.is_auto_paused() and line == 0:
             self.cmd.auto(linuxcnc.AUTO_STEP)
             return
-        self.cmd.auto(linuxcnc.AUTO_RUN,line)
+        elif not STATUS.is_auto_running():
+            self.cmd.auto(linuxcnc.AUTO_RUN,line)
+
+    def STEP(self):
+        if STATUS.is_auto_running() and not STATUS.is_auto_paused():
+            self.cmd.auto(linuxcnc.AUTO_PAUSE)
+            return
+        if STATUS.is_auto_paused():
+            self.cmd.auto(linuxcnc.AUTO_STEP)
+            return
 
     def ABORT(self):
         self.ensure_mode(linuxcnc.MODE_AUTO)
@@ -338,8 +359,15 @@ class _Lcnc_Action(object):
             STATUS.emit('view-changed',view)
 
     def SHUT_SYSTEM_DOWN_PROMPT(self):
-        import subprocess
-        subprocess.call('''gnome-session-quit --power-off''', shell=True)
+        from subprocess import Popen, PIPE
+        try:
+            process = Popen(['gnome-session-quit --power-off'], stdout=PIPE, stderr=PIPE).communicate()
+        except:
+            try:
+                process = Popen(['xfce4-session-logout'], stdout=PIPE, stderr=PIPE).communicate()
+            except:
+                import subprocess
+                subprocess.call('systemctl poweroff')
 
     def SHUT_SYSTEM_DOWN_NOW(self):
         import subprocess
@@ -380,7 +408,7 @@ class _Lcnc_Action(object):
             return (truth, premode)
 
     def open_filter_program(self,fname, flt):
-        log.debug('Openning filtering program yellow<{}> for {}'.format(flt,fname))
+        log.debug('Opening filtering program yellow<{}> for {}'.format(flt,fname))
         if not self.tmp:
             self._mktemp()
         tmp = os.path.join(self.tmp, os.path.basename(fname))

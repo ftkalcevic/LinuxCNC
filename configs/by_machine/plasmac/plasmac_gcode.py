@@ -24,7 +24,8 @@ import os
 import sys
 import linuxcnc
 import math
- 
+from subprocess import Popen, PIPE
+
 ini = linuxcnc.ini(os.environ['INI_FILE_NAME'])
 
 codeError = False
@@ -44,6 +45,7 @@ velocity = 60
 pierceOnly = False
 scribing = False
 rapidLine = ''
+cutType = int(Popen('halcmd getp plasmac_run.cut-type', stdout = PIPE, shell = True).communicate()[0])
 
 # check if arc is a hole
 def check_if_hole():
@@ -185,11 +187,11 @@ with open(materialFile, 'r') as f_in:
             if line.startswith('[MATERIAL_NUMBER_') and line.strip().endswith(']'):
                 t_number = int(line.rsplit('_', 1)[1].strip().strip(']'))
                 materialList.append(t_number)
-f = open(infile, 'r')
+fRead = open(infile, 'r')
  
 # first pass, check for valid material numbers and distance modes
 count = 0
-for line in f:
+for line in fRead:
     count += 1
     # convert to lower case and remove whitespace and spaces
     line = line.lower().strip().replace(' ','')
@@ -255,8 +257,7 @@ for line in f:
                 print('*** invalid diameter word\n'
                       'Error in line #{}: {}\n'
                       .format(count, line))
-    if line.startswith('#<pierce-only>') and \
-       line.split('=')[1][0] == '1':
+    if (line.startswith('#<pierce-only>') and line.split('=')[1][0] == '1') or cutType == 1:
         pierceOnly = True
     if line.startswith('m3$1s'):
         scribing = True
@@ -271,8 +272,8 @@ for line in f:
 if not codeError:
     # if full cut
     if not pierceOnly:
-        f = open(infile, 'r')
-        for line in f:
+        fRead = open(infile, 'r')
+        for line in fRead:
             # remove whitespace
             line = line.strip()
             # remove line numbers
@@ -330,10 +331,11 @@ if not codeError:
                     minDiameter = float(line.split('=')[1]) * multiplier
                 print(line)
             # if z axis in line but no other axes comment it
-            elif 'z' in line and 1 not in [c in line for c in 'xyabcuvw']:
+            elif 'z' in line and 1 not in [c in line for c in 'xyabcuvw'] and\
+                 line.split('z')[1][0].isdigit():
                 print('({})'.format(line))
             # if z axis and other axes in line, comment out the Z axis
-            elif 'z' in line:
+            elif 'z' in line and line.split('z')[1][0].isdigit():
                 if holeEnable:
                     lastX, lastY = get_last_position(lastX, lastY)
                 comment_out_z_commands()
@@ -391,9 +393,9 @@ if not codeError:
         print('(Piercing Only)')
         spindleOn = False
         pierces = 0
-        f = open(infile, 'r')
+        fRead = open(infile, 'r')
         # print all lines up to the first spindle on
-        for line in f:
+        for line in fRead:
             # remove whitespace
             line = line.strip()
             # remove line numbers
@@ -412,7 +414,7 @@ if not codeError:
             elif not '#<pierce-only>' in line:
                 print(line)
         #find all other spindle ons
-        for line in f:
+        for line in fRead:
             if spindleOn:
                 pierces += 1
                 print('\n(Pierce #{})'.format(pierces))

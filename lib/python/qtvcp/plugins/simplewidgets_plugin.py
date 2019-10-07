@@ -17,6 +17,7 @@ from qtvcp.widgets.axis_tool_button import AxisToolButton
 from qtvcp.widgets.file_manager import FileManager
 from qtvcp.widgets.image_switcher import ImageSwitcher
 from qtvcp.widgets.image_switcher import StatusImageSwitcher
+from qtvcp.widgets.machine_log import MachineLog
 from qtvcp.widgets.qtvcp_icons import Icon
 ICON = Icon()
 
@@ -459,7 +460,9 @@ class ImageSwitcherPlugin(QPyDesignerCustomWidgetPlugin):
     def isInitialized(self):
         return self.initialized
     def createWidget(self, parent):
-        return ImageSwitcher(parent)
+        w = ImageSwitcher(parent)
+        w._designerInit()
+        return w
     def name(self):
         return "ImageSwitcher"
     def group(self):
@@ -473,7 +476,16 @@ class ImageSwitcherPlugin(QPyDesignerCustomWidgetPlugin):
     def isContainer(self):
         return False
     def domXml(self):
-        return '''<widget class="ImageSwitcher" name="imageswitcher"></widget>'''
+        return '''<widget class="ImageSwitcher" name="imageswitcher">
+       <property name="geometry">
+        <rect>
+         <x>10</x>
+         <y>0</y>
+         <width>50</width>
+         <height>50</height>
+        </rect>
+       </property>
+        </widget>'''
     def includeFile(self):
         return "qtvcp.widgets.image_switcher"
 
@@ -491,7 +503,9 @@ class StatusImageSwitcherPlugin(QPyDesignerCustomWidgetPlugin):
     def isInitialized(self):
         return self.initialized
     def createWidget(self, parent):
-        return StatusImageSwitcher(parent)
+        w = StatusImageSwitcher(parent)
+        w._designerInit()
+        return w
     def name(self):
         return "StatusImageSwitcher"
     def group(self):
@@ -541,3 +555,34 @@ class DialPlugin(QPyDesignerCustomWidgetPlugin):
     def includeFile(self):
         return "qtvcp.widgets.simple_widgets"
 
+####################################
+# MachineLog
+####################################
+class MachineLogPlugin(QPyDesignerCustomWidgetPlugin):
+    def __init__(self, parent = None):
+        super(MachineLogPlugin, self).__init__(parent)
+        self.initialized = False
+    def initialize(self, formEditor):
+        if self.initialized:
+            return
+        self.initialized = True
+    def isInitialized(self):
+        return self.initialized
+    def createWidget(self, parent):
+        return MachineLog(parent)
+    def name(self):
+        return "MachineLog"
+    def group(self):
+        return "Linuxcnc - Controller"
+    def icon(self):
+        return QtGui.QIcon(QtGui.QPixmap(ICON.get_path('machinelog')))
+    def toolTip(self):
+        return "Machine Log Display Widget"
+    def whatsThis(self):
+        return ""
+    def isContainer(self):
+        return False
+    def domXml(self):
+        return '''<widget class="MachineLog" name="machinelog"></widget>'''
+    def includeFile(self):
+        return "qtvcp.widgets.machine_log"
