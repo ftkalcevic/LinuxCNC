@@ -1,0 +1,87 @@
+// Copyright 2015-2016 Sebastian Kuzminsky <seb@highlab.com>
+//
+// This program is free software; you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation; either version 2 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program; if not, write to the Free Software
+// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+// This is a component to managed a robot arm gripper.  It can open/close the gripper.  
+// Report the gripper tip offset.
+
+
+
+component gripper "component for a robot arm gripper";
+
+pin in bit closed "closed = true, open = false";
+pin in bit tip "true = return tip offset, false = return palm offset";
+pin in float torque "grip force";
+
+pin out float position-cmd "drive output servo";
+pin in float position-fb "output servo feedback";
+pin out float position-offset "end effector offset for kinematics";
+
+param rw float open-position-cmd = 0 "open position";
+param rw float close-position-cmd = 0 "close position";
+param rw float open-offset = 0 "open offset";
+param rw float close-offset = 0 "open offset";
+param rw float palm-offset = 0 "palm offset";
+param rw float move-speed = 0.01 "palm to tip end effector motion speed";
+
+variable int first = 0;
+
+function _;
+license "GPL";
+
+;;
+
+FUNCTION(_) {
+
+    if ( closed )
+    {
+        position_cmd = close_position_cmd;
+    }
+    else
+    {
+        position_cmd = open_position_cmd;
+    }
+    if ( first )
+    {
+        first = 0;
+        position_offset = 0;
+    }
+    else 
+    {
+
+        float new_offset;
+        if ( tip  )
+        {
+            new_offset = (position_fb - open_position_cmd)/(close_position_cmd - open_position_cmd) * (close_offset - open_offset) + open_offset;
+        }
+        else // palm
+        {
+            new_offset = 0;
+        }
+        if ( new_offset > position_offset )
+        {
+            position_offset += move_speed;
+            if ( position_offset > new_offset )
+                position_offset = new_offset;
+        }
+        else if ( new_offset < position_offset )
+        {
+            position_offset -= move_speed;
+            if ( position_offset < new_offset )
+                position_offset = new_offset;
+        }
+     }
+
+}

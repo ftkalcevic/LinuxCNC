@@ -83,8 +83,8 @@
     static inline double creal( double complex z) { return __real__ z; }
     static inline double cabs( double complex z) { return __builtin_cabs(z); }
 
-#define INFINITY    CONCAT2(__builtin_inf, CEXT) ()
-#define isfinite(x) __builtin_expect (!isnan((x) - (x)), 1)
+//#define INFINITY    CONCAT2(__builtin_inf, CEXT) ()
+//#define isfinite(x) __builtin_expect (!isnan((x) - (x)), 1)
 
 #define LIBGCC2_LONG_DOUBLE_TYPE_SIZE 64
 

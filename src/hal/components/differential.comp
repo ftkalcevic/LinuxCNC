@@ -29,15 +29,17 @@ pin out float motor1-cmd "position command to motor1 (based on roll & pitch inpu
 pin in float motor0-fb "position feedback from motor0";
 pin in float motor1-fb "position feedback from motor1";
 
+param rw bit roll-reverse = 0 "reverse rolling direction";
+
 function _;
 license "GPL";
 
 ;;
 
 FUNCTION(_) {
-    motor0_cmd = roll_cmd + pitch_cmd;
-    motor1_cmd = roll_cmd - pitch_cmd;
+    motor0_cmd = (roll_reverse ? -1 : 1) * roll_cmd + pitch_cmd;
+    motor1_cmd = (roll_reverse ? -1 : 1) * roll_cmd - pitch_cmd;
 
-    roll_fb = (motor0_fb + motor1_fb)/2;
+    roll_fb = (roll_reverse ? -1 : 1) * (motor0_fb + motor1_fb)/2;
     pitch_fb = (motor0_fb - motor1_fb)/2;
 }
