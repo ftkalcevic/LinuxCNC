@@ -21,13 +21,13 @@
 
 component gripper "component for a robot arm gripper";
 
-pin in bit closed "closed = true, open = false";
 pin in bit tip "true = return tip offset, false = return palm offset";
-pin in float torque "grip force";
+pin in float torque-in "grip force";
 
 pin out float position-cmd "drive output servo";
 pin in float position-fb "output servo feedback";
 pin out float position-offset "end effector offset for kinematics";
+pin out float torque-out "gripper torque";
 
 param rw float open-position-cmd = 0 "open position";
 param rw float close-position-cmd = 0 "close position";
@@ -35,6 +35,7 @@ param rw float open-offset = 0 "open offset";
 param rw float close-offset = 0 "open offset";
 param rw float palm-offset = 0 "palm offset";
 param rw float move-speed = 0.01 "palm to tip end effector motion speed";
+param rw float open-torque = 75 "torque to use when opening the gripper";
 
 variable int first = 0;
 
@@ -45,6 +46,21 @@ license "GPL";
 
 FUNCTION(_) {
 
+    int closed = 0;
+    float grip_torque = 0;
+
+    // Torque input is used to define open/closed
+    if ( torque_in > 0.01 )
+    {
+        closed = 1;
+        grip_torque = torque_in * 1023;
+    }
+    else
+    {
+        closed = 0;
+        grip_torque = open_torque;
+    }
+    torque_out = grip_torque;
     if ( closed )
     {
         position_cmd = close_position_cmd;
