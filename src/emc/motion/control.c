@@ -2334,17 +2334,24 @@ static int update_teleop_with_check(int axis_num,simple_tp_t *the_tp)
         return 0;
     }
     if  ( (axis->ext_offset_tp.curr_pos + axis->teleop_tp.curr_pos)
-          >= axis->max_pos_limit) {
+          > axis->max_pos_limit) {
         // positive error, restore save_curr_pos
         the_tp->curr_pos = save_curr_pos;
         the_tp->curr_vel = 0;
+        // positive error, restore save_curr_pos
+        //rtapi_print_msg(RTAPI_MSG_ERR, "axis +%d is out of range: %f >= %f\n", axis_num,
+        //                (axis->ext_offset_tp.curr_pos + axis->teleop_tp.curr_pos),
+        //                axis->max_pos_limit);
         return 1;
     }
     if  ( (axis->ext_offset_tp.curr_pos + axis->teleop_tp.curr_pos)
-           <= axis->min_pos_limit) {
+           < axis->min_pos_limit) {
         // negative error, restore save_curr_pos
         the_tp->curr_pos = save_curr_pos;
         the_tp->curr_vel = 0;
+        //rtapi_print_msg(RTAPI_MSG_ERR, "axis -%d is out of range: %f <= %f\n", axis_num,
+        //                (axis->ext_offset_tp.curr_pos + axis->teleop_tp.curr_pos),
+        //                axis->min_pos_limit);
         return 1;
     }
     return 0;
