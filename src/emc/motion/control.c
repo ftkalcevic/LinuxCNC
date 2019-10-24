@@ -1367,7 +1367,6 @@ static void get_pos_cmds(long period)
                        reportError(_("kinematicsInverse gave non-finite joint location on joint %d"),
                                   joint_num);
                        SET_MOTION_ERROR_FLAG(1);
-                       SET_MOTION_ENABLE_FLAG(0);
                        emcmotDebug->enabling = 0;
                        break;
 		    }
@@ -1384,7 +1383,6 @@ static void get_pos_cmds(long period)
 	    {
 	       reportError(_("kinematicsInverse failed"));
 	       SET_MOTION_ERROR_FLAG(1);
-	       SET_MOTION_ENABLE_FLAG(0);
 	       emcmotDebug->enabling = 0;
 	       break;
 	    }
@@ -1455,7 +1453,6 @@ static void get_pos_cmds(long period)
 		   reportError(_("kinematicsInverse gave non-finite joint location on joint %d"),
                                  joint_num);
 		   SET_MOTION_ERROR_FLAG(1);
-		   SET_MOTION_ENABLE_FLAG(0);
 		   emcmotDebug->enabling = 0;
 		   break;
 		}
@@ -1474,7 +1471,6 @@ static void get_pos_cmds(long period)
 	{
 	   reportError(_("kinematicsInverse failed"));
 	   SET_MOTION_ERROR_FLAG(1);
-	   SET_MOTION_ENABLE_FLAG(0);
 	   emcmotDebug->enabling = 0;
 	   break;
 	}
