@@ -68,6 +68,7 @@
 #define IKFAST_HAS_LIBRARY
 
 #include "ikfast62.Transform6D.0_1_2_3_4_5_f6.inc"
+//#include "ikfast62.Translation3D.0_1_2_f3_4_5_6.inc"
 
 static IkReal last_eerot[9];
 static int no_result_count;
@@ -346,6 +347,11 @@ RTAPI_PRINT("eetrans: " ); for ( i = 0; i < 3; i++ ) RTAPI_PRINT(""DFMT" ", INTD
     
 	if ( no_result_count == 0 )
     {
+RTAPI_PRINT("ikfastkins::kinematicsInverse(world: "DFMT" "DFMT" "DFMT" "DFMT" "DFMT" "DFMT" "DFMT"\n", INTDOUBLE(world->tran.x), INTDOUBLE(world->tran.y), INTDOUBLE(world->tran.z), INTDOUBLE(world->a), INTDOUBLE(world->b), INTDOUBLE(world->c), INTDOUBLE(world->u) );
+RTAPI_PRINT("beforejoints: " ); for ( i = 0; i < IKFAST_NUM_JOINTS; i++ ) RTAPI_PRINT(""DFMT" ", INTDOUBLE(joints[i]) ); RTAPI_PRINT("\n");
+RTAPI_PRINT("eerot: " ); for ( i = 0; i < 9; i++ ) RTAPI_PRINT(""DFMT" ", INTDOUBLE(eerot[i]) ); RTAPI_PRINT("\n");
+RTAPI_PRINT("eetrans: " ); for ( i = 0; i < 3; i++ ) RTAPI_PRINT(""DFMT" ", INTDOUBLE(eetrans[i]) ); RTAPI_PRINT("\n");
+
         RTAPI_PRINT("ikfastkins: no solution\n");
     }
     no_result_count++;
