@@ -82,7 +82,7 @@ static int no_result_count;
     #define DFMT            "%f"
 #endif
 
-#define MAX_SOLUTION_ERROR  30
+#define MAX_SOLUTION_ERROR  300000
 
 static struct _haldata
 {
