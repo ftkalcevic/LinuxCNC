@@ -15,7 +15,7 @@ except:
 
 INIPATH = os.environ.get('INI_FILE_NAME', '/dev/null')
 
-HOME = os.environ.get('EMC2_HOME', None)
+HOME = os.environ.get('EMC2_HOME', '/usr')
 if HOME is not None:
     IMAGEDIR = os.path.join(HOME, "share","qtvcp","images")
 else:
@@ -27,8 +27,7 @@ class _IStat(object):
         if self.__class__._instanceNum >=1:
             return
         self.__class__._instanceNum += 1
-
-        self.LINUXCNC_IS_RUNNING = bool(INIPATH is None)
+        self.LINUXCNC_IS_RUNNING = bool(INIPATH != '/dev/null')
         if not self.LINUXCNC_IS_RUNNING:
             # Reset the log level for this module
             # Linuxcnc isn't running so we expect INI errors
@@ -36,11 +35,13 @@ class _IStat(object):
         self.LINUXCNC_VERSION = LINUXCNCVERSION
         self.inifile = linuxcnc.ini(INIPATH)
         self.MDI_HISTORY_PATH = '~/.axis_mdi_history'
+        self.QTVCP_LOG_HISTORY_PATH = '~/qtvcp.log'
         self.MACHINE_LOG_HISTORY_PATH = '~/.machine_log_history'
         self.PREFERENCE_PATH = '~/.Preferences'
         self.SUB_PATH = None
         self.IMAGE_PATH = IMAGEDIR
- 
+        self.LIB_PATH = os.path.join(HOME, "share","qtvcp")
+
         self.MACHINE_IS_LATHE = False
         self.MACHINE_IS_METRIC = False
         self.MACHINE_UNIT_CONVERSION = 1
@@ -57,6 +58,7 @@ class _IStat(object):
         self.DEFAULT_LINEAR_VELOCITY = 15.0
 
         self.DEFAULT_SPINDLE_SPEED = 200
+        self.MAX_SPINDLE_SPEED = 2500
         self.MAX_FEED_OVERRIDE = 1.5
         self.MAX_SPINDLE_OVERRIDE = 1.5
         self.MIN_SPINDLE_OVERRIDE = 0.5
@@ -65,7 +67,8 @@ class _IStat(object):
 
     def update(self):
         self.MDI_HISTORY_PATH = self.inifile.find('DISPLAY', 'MDI_HISTORY_FILE') or '~/.axis_mdi_history'
-        self.MACHINE_LOG_HISTORY_PATH = self.inifile.find('DISPLAY', 'MESSAGE_HISTORY_FILE') or '~/.machine_log_history'
+        self.QTVCP_LOG_HISTORY_PATH = self.inifile.find('DISPLAY', 'LOG_FILE') or '~/qtvcp.log'
+        self.MACHINE_LOG_HISTORY_PATH = self.inifile.find('DISPLAY', 'MACHINE_LOG_PATH') or '~/.machine_log_history'
         self.PREFERENCE_PATH = self.inifile.find("DISPLAY","PREFERENCE_FILE_PATH") or None
         self.SUB_PATH = (self.inifile.find("RS274NGC", "SUBROUTINE_PATH")) or None
         if self.SUB_PATH is not None:
@@ -141,6 +144,26 @@ class _IStat(object):
                     log.critical('MISSING [AXIS_{}] MAX VeLOCITY or MAX ACCELERATION entry in INI file.'.format(letter.upper()))
         self.NO_HOME_REQUIRED = int(self.inifile.find("TRAJ", "NO_FORCE_HOMING") or 0)
 
+        # home all check
+        self.HOME_ALL_FLAG = 1
+        # set Home All Flage only if ALL joints specify a HOME_SEQUENCE
+        jointcount = len(self.AVAILABLE_JOINTS)
+        self.JOINTSEQUENCELIST = {}
+        for j in range(jointcount):
+            seq = self.inifile.find("JOINT_"+str(j), "HOME_SEQUENCE")
+            if seq is None:
+                seq = -1
+                self.HOME_ALL_FLAG = 0
+            self.JOINTSEQUENCELIST[j] = seq
+        print 'Joint Sequence =',self.JOINTSEQUENCELIST
+        # joint sequence/type
+        self.JOINT_TYPE = [None] * jointcount
+        self.JOINT_SEQUENCE = [None] * jointcount
+        for j in range(jointcount):
+            section = "JOINT_%d" % j
+            self.JOINT_TYPE[j] = self.inifile.find(section, "TYPE") or "LINEAR"
+            self.JOINT_SEQUENCE[j]  = self.inifile.find(section, "HOME_SEQUENCE") or ""
+
         # jogging increments
         increments = self.inifile.find("DISPLAY", "INCREMENTS")
         if increments:
@@ -180,11 +203,13 @@ class _IStat(object):
         self.MIN_ANGULAR_JOG_VEL = float(self.get_error_safe_setting("DISPLAY","MIN_ANGULAR_VELOCITY",1)) * 60
         self.MAX_ANGULAR_JOG_VEL = float(self.get_error_safe_setting("DISPLAY","MAX_ANGULAR_VELOCITY",60)) * 60
         self.DEFAULT_SPINDLE_SPEED = int(self.get_error_safe_setting("DISPLAY","DEFAULT_SPINDLE_SPEED",200))
+        self.MAX_SPINDLE_SPEED = int(self.get_error_safe_setting("DISPLAY","MAX_SPINDLE_SPEED",2500))
         self.MAX_SPINDLE_OVERRIDE = float(self.get_error_safe_setting("DISPLAY","MAX_SPINDLE_OVERRIDE",1)) * 100
         self.MIN_SPINDLE_OVERRIDE = float(self.get_error_safe_setting("DISPLAY","MIN_SPINDLE_OVERRIDE",0.5)) * 100
         self.MAX_FEED_OVERRIDE = float(self.get_error_safe_setting("DISPLAY","MAX_FEED_OVERRIDE",1.5)) * 100
         self.MAX_TRAJ_VELOCITY = float(self.get_error_safe_setting("TRAJ","MAX_LINEAR_VELOCITY",
                                     self.get_error_safe_setting("AXIS_X","MAX_VELOCITY", 5) )) * 60
+
         # user message dialog system
         self.USRMESS_BOLDTEXT = self.inifile.findall("DISPLAY", "MESSAGE_BOLDTEXT")
         self.USRMESS_TEXT = self.inifile.findall("DISPLAY", "MESSAGE_TEXT")

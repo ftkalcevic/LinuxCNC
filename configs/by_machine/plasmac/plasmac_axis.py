@@ -44,7 +44,7 @@ w('DynamicHelp::configure','-borderwidth','5','-topbackground','yellow','-bg','y
 wsize = inifile.find('PLASMAC','MAXIMISED') or '0'
 if wsize == '0':
     fsizes = ['9','10','11','12','13','14','15','16']
-    heights = ['668','698','736','748','816','858','900','950']
+    heights = ['688','708','736','748','816','858','900','950']
     if (inifile.find('DISPLAY','GLADEVCP') or '0') == '0':
         aspect = 1.5
     else:
@@ -67,7 +67,7 @@ else:
     wxpos = str(pad_width/2)
     wypos = str(pad_height/2)
 w('wm','geometry','.','{0}x{1}-{2}-{3}'.format(width,height,wxpos,wypos))
-print '\nAxis window is {0} x {1}\n'.format(width,height)
+print('\nAxis window is {0} x {1}\n'.format(width,height))
 
 
 ################################################################################
@@ -219,15 +219,15 @@ w('bind',fjogf + '.jog.jogminus','<ButtonRelease-1>','if [is_continuous] {jog_st
 w('button',fjogf + '.jog.jogplus','-command','if ![is_continuous] {jog_plus 1}','-height','1','-text','+')
 w('bind',fjogf + '.jog.jogplus','<Button-1>','if [is_continuous] {jog_plus}')
 w('bind',fjogf + '.jog.jogplus','<ButtonRelease-1>','if [is_continuous] {jog_stop}')
-w('combobox',fjogf + '.jog.jogincr','-editable','0','-textvariable','jogincrement','-value','Continuous','-width','10')
-w(fjogf + '.jog.jogincr','list','insert','end','Continuous')
+w('combobox',fjogf + '.jog.jogincr','-editable','0','-textvariable','jogincrement','-value',_('Continuous'),'-width','10')
+w(fjogf + '.jog.jogincr','list','insert','end',_('Continuous'))
 if increments:
     w(fjogf + '.jog.jogincr','list','insert','end',*increments)
 w('labelframe',fjogf + '.zerohome','-text','Zero','-relief','flat')
 w('button',fjogf + '.zerohome.home','-command','home_joint','-height','1')
-w('setup_widget_accel',fjogf + '.zerohome.home','Home Axis')
+w('setup_widget_accel',fjogf + '.zerohome.home',_('Home Axis'))
 w('button',fjogf + '.zerohome.zero','-command','touch_off_system','-height','1')
-w('setup_widget_accel',fjogf + '.zerohome.zero','Touch Off')
+w('setup_widget_accel',fjogf + '.zerohome.zero',_('Touch Off'))
 # unused, just for tcl hierarchy
 w('button',fjogf + '.zerohome.tooltouch')
 w('checkbutton',fjogf + '.override')
@@ -252,7 +252,7 @@ if homing_order_defined:
         hbName = 'axes'
     else:
         hbName ='joints'
-    widgets.homebutton.configure(text = 'Home All', command = 'home_all_joints')
+    widgets.homebutton.configure(text = _('Home All'), command = 'home_all_joints')
     w('DynamicHelp::add',fjogf + '.zerohome.home','-text','Home all %s [Ctrl-Home]' % hbName)
 else:
     w('DynamicHelp::add',fjogf + '.zerohome.home','-text','Home selected %s [Home]' % ja_name.lower())
@@ -547,7 +547,23 @@ def user_button_pressed(button,commands):
     if w(fbuttons + '.button' + button,'cget','-state') == 'disabled' or \
        not commands: return
     from subprocess import Popen,PIPE
-    if 'ohmic-test' in commands.lower():
+    if 'change-consumables' in commands.lower():
+        if hal.get_value('axis.x.eoffset-counts') or hal.get_value('axis.y.eoffset-counts'):
+            hal.set_p('plasmac.consumable-change', '0')
+        else:
+            global ccX
+            global ccY
+            global ccScale
+            if ccX or ccX == 0:
+                hal.set_p('plasmac.x-offset', '{:.0f}'.format((ccX - s.position[0]) / ccScale, 0))
+            else:
+                hal.set_p('plasmac.x-offset', '0')
+            if ccY or ccY == 0:
+                hal.set_p('plasmac.y-offset', '{:.0f}'.format((ccY - s.position[1]) / ccScale, 0))
+            else:
+                hal.set_p('plasmac.y-offset', '0')
+            hal.set_p('plasmac.consumable-change', '1')
+    elif 'ohmic-test' in commands.lower():
         hal.set_p('plasmac.ohmic-test','1')
     elif 'probe-test' in commands.lower():
         global probePressed
@@ -663,7 +679,12 @@ def user_live_update():
         isIdleOn = False 
     # set buttons state
     for n in range(1,6):
-        if iniButtonCode[n] in ['ohmic-test']:
+        if 'change-consumables' in iniButtonCode[n]:
+            if hal.get_value('halui.program.is-paused'):
+                w(fbuttons + '.button' + str(n),'configure','-state','normal')
+            else:
+                w(fbuttons + '.button' + str(n),'configure','-state','disabled')
+        elif iniButtonCode[n] in ['ohmic-test']:
             if isIdleOn or hal.get_value('halui.program.is-paused'):
                 w(fbuttons + '.button' + str(n),'configure','-state','normal')
             else:
@@ -697,7 +718,14 @@ def user_live_update():
             probeTimer = 0
             if not probePressed:
                 hal.set_p('plasmac.probe-test','0')
-
+    if (hal.get_value('axis.x.eoffset') or hal.get_value('axis.y.eoffset')) and not hal.get_value('halui.program.is-paused'):
+        hal.set_p('plasmac.consumable-change', '0')
+    try:
+        if hal.get_value('plasmac_run.preview-tab'):
+            root_window.tk.call('.pane.top.right','raise','preview')
+            hal.set_p('plasmac_run.preview-tab', '0')
+    except:
+        pass
 def user_hal_pins():
     # create new hal pins
     comp.newpin('arc-voltage', hal.HAL_FLOAT, hal.HAL_IN)
@@ -742,6 +770,57 @@ def configure_widgets():
     w(ftorch + '.torch-pulse-time','configure','-from','0','-to','3','-resolution','0.1')
     w(fpausedmotion + '.paused-motion-speed','configure','-from','0','-to','100','-resolution','1')
 
+def consumable_change_setup(ccParm):
+    global ccX
+    global ccY
+    global ccScale
+    ccX = ccY = ccF = ''
+    X = Y = F = ''
+    ccAxis = [X, Y, F]
+    ccName = ['x', 'y', 'f']
+    for loop in range(3):
+        count = 0
+        if ccName[loop] in ccParm:
+            while 1:
+                if not ccParm[count]: break
+                if ccParm[count] == ccName[loop]:
+                    count += 1
+                    break
+                count += 1
+            while 1:
+                if count == len(ccParm): break
+                if ccParm[count].isdigit() or ccParm[count] in '.-':
+                    ccAxis[loop] += ccParm[count]
+                else:
+                    break
+                count += 1
+            if ccName[loop] == 'x' and ccAxis[loop]:
+                ccX = float(ccAxis[loop])
+            elif ccName[loop] == 'y' and ccAxis[loop]:
+                ccY = float(ccAxis[loop])
+            elif ccName[loop] == 'f' and ccAxis[loop]:
+                ccF = float(ccAxis[loop])
+    if ccX and \
+       (ccX < round(float(inifile.find('AXIS_X', 'MIN_LIMIT')), 6) or \
+       ccX > round(float(inifile.find('AXIS_X', 'MAX_LIMIT')), 6)):
+        print('x out of bounds for consumable change\n')
+        raise SystemExit()
+    if ccY and \
+       (ccY < round(float(inifile.find('AXIS_Y', 'MIN_LIMIT')), 6) or \
+       ccY > round(float(inifile.find('AXIS_Y', 'MAX_LIMIT')), 6)):
+        print('y out of bounds for consumable change\n')
+        raise SystemExit()
+    if not ccF:
+        print('invalid consumable change feed rate\n')
+        raise SystemExit()
+    ccScale = round(hal.get_value('plasmac.offset-scale'), 3) / 100
+    ccVel = int(1 / hal.get_value('halui.machine.units-per-mm') / 60 * ccF * 100)
+    hal.set_p('axis.x.eoffset-scale', str(ccScale))
+    hal.set_p('axis.y.eoffset-scale', str(ccScale))   
+    hal.set_p('plasmac.x-y-velocity', str(ccVel))
+    hal.set_p('axis.x.eoffset-enable', '1')
+    hal.set_p('axis.y.eoffset-enable', '1')
+
 
 
 ################################################################################
@@ -757,6 +836,14 @@ hal.set_p('plasmac.torch-enable','0')
 hal.set_p('plasmac.height-override','%f' % (torch_height))
 w(fbuttons + '.torch-enable','configure','-bg','red','-activebackground','#AA0000','-text','Torch\nDisabled')
 w(foverride + '.height-override','configure','-text','%0.1f V' % (torch_height))
+for button in range(1,6):
+    if 'change-consumables' in inifile.find('PLASMAC', 'BUTTON_' + str(button) + '_CODE'):
+        ccParm = inifile.find('PLASMAC','BUTTON_' + str(button) + '_CODE').replace('change-consumables','').replace(' ','').lower() or None
+        if ccParm:
+            consumable_change_setup(ccParm)
+        else:
+            print('consumable change parameters required\n')
+        break
 wLabels = [\
     fmonitor + '.aVlab',\
     fmonitor + '.lTlab',\

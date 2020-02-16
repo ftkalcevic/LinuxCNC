@@ -87,6 +87,7 @@ class _GStat(gobject.GObject):
         'state-off': (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, ()),
 
         'homed': (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_STRING,)),
+        'unhomed': (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_STRING,)),
         'all-homed': (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, ()),
         'not-all-homed': (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_STRING,)),
         'override-limits-changed': (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_BOOLEAN, gobject.TYPE_PYOBJECT,)),
@@ -442,13 +443,15 @@ class _GStat(gobject.GObject):
                     homed_joints += 1
                     self.emit('homed', joint)
                 else:
+                    self.emit('unhomed', joint)
                     unhomed_joints += str(joint)
             if homed_joints == self.stat.joints:
-                self.emit('all-homed')
                 self._is_all_homed = True
+                self.emit('all-homed')
             else:
-                self.emit('not-all-homed', unhomed_joints)
                 self._is_all_homed = False
+                self.emit('not-all-homed', unhomed_joints)
+
         # override limts
         or_limits_old = old.get('override-limits', None)
         or_limits_new = self.old['override-limits']
@@ -890,6 +893,10 @@ class _GStat(gobject.GObject):
 
     def is_hard_limits_tripped(self):
         return self.old['hard-limits-tripped']
+
+    def get_current_tool(self):
+        self.stat.poll()
+        return self.stat.tool_in_spindle
 
     def set_tool_touchoff(self,tool,axis,value):
         premode = None

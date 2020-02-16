@@ -121,7 +121,7 @@ os.system("xhost -SI:localuser:gdm -SI:localuser:root > /dev/null 2>&1")
 root_window = Tkinter.Tk(className="Axis")
 dpi_value = root_window.winfo_fpixels('1i')
 root_window.tk.call('tk', 'scaling', '-displayof', '.', dpi_value / 72.0)
-root_window.iconify()
+root_window.withdraw()
 nf.start(root_window)
 nf.makecommand(root_window, "_", _)
 rs274.options.install(root_window)
@@ -2625,6 +2625,8 @@ class TclCommands(nf.TclCommands):
             jnum = trajcoordinates.index(jora)
         else:
             jnum = int(jora)
+        if lathe_historical_config():
+            jnum = "xyz".index(jora)
         doHoming=True
         if s.homed[jnum]:
             doHoming=prompt_areyousure(_("Warning"),_("This joint is already homed, are you sure you want to re-home?"))
