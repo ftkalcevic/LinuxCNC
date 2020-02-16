@@ -6,15 +6,15 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>602</width>
-    <height>673</height>
+    <width>747</width>
+    <height>640</height>
    </rect>
   </property>
   <property name="windowTitle">
    <string>MainWindow</string>
   </property>
   <widget class="QWidget" name="centralwidget">
-   <layout class="QVBoxLayout" name="verticalLayout">
+   <layout class="QHBoxLayout" name="horizontalLayout_15">
     <property name="leftMargin">
      <number>0</number>
     </property>
@@ -48,6 +48,9 @@
        <bool>true</bool>
       </property>
       <property name="originOffsetDialog_option" stdset="0">
+       <bool>true</bool>
+      </property>
+      <property name="calculatorDialog_option" stdset="0">
        <bool>true</bool>
       </property>
       <property name="machineLogDialog_option" stdset="0">
@@ -506,16 +509,22 @@
                    <number>0</number>
                   </property>
                   <item row="1" column="0">
-                   <widget class="ActionButton" name="actionbutton_3">
+                   <widget class="ActionButton" name="actionButton_home">
+                    <property name="sizePolicy">
+                     <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+                      <horstretch>0</horstretch>
+                      <verstretch>0</verstretch>
+                     </sizepolicy>
+                    </property>
                     <property name="minimumSize">
                      <size>
-                      <width>75</width>
+                      <width>108</width>
                       <height>0</height>
                      </size>
                     </property>
                     <property name="maximumSize">
                      <size>
-                      <width>75</width>
+                      <width>108</width>
                       <height>20</height>
                      </size>
                     </property>
@@ -555,55 +564,6 @@
                     <property name="ini_mdi_number" stdset="0">
                      <number>0</number>
                     </property>
-                   </widget>
-                  </item>
-                  <item row="2" column="1">
-                   <widget class="StateEnableGridLayout" name="state_enable_gridLayout_2">
-                    <property name="sizePolicy">
-                     <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
-                      <horstretch>0</horstretch>
-                      <verstretch>0</verstretch>
-                     </sizepolicy>
-                    </property>
-                    <property name="is_on_status" stdset="0">
-                     <bool>true</bool>
-                    </property>
-                    <property name="is_idle_status" stdset="0">
-                     <bool>true</bool>
-                    </property>
-                    <property name="is_homed_status" stdset="0">
-                     <bool>true</bool>
-                    </property>
-                    <layout class="QVBoxLayout" name="verticalLayout_7">
-                     <property name="spacing">
-                      <number>0</number>
-                     </property>
-                     <property name="leftMargin">
-                      <number>0</number>
-                     </property>
-                     <property name="topMargin">
-                      <number>0</number>
-                     </property>
-                     <property name="rightMargin">
-                      <number>0</number>
-                     </property>
-                     <property name="bottomMargin">
-                      <number>0</number>
-                     </property>
-                     <item>
-                      <widget class="QPushButton" name="pushButton">
-                       <property name="maximumSize">
-                        <size>
-                         <width>100</width>
-                         <height>25</height>
-                        </size>
-                       </property>
-                       <property name="text">
-                        <string>Set Tool Offets</string>
-                       </property>
-                      </widget>
-                     </item>
-                    </layout>
                    </widget>
                   </item>
                   <item row="0" column="0">
@@ -762,6 +722,16 @@
                     </property>
                     <property name="limits_override_action" stdset="0">
                      <bool>true</bool>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="2" column="1">
+                   <widget class="OffsetToolButton" name="offsettoolbutton">
+                    <property name="text">
+                     <string>Set Tool Offset</string>
+                    </property>
+                    <property name="popupMode">
+                     <enum>QToolButton::InstantPopup</enum>
                     </property>
                    </widget>
                   </item>
@@ -1044,59 +1014,7 @@
              </spacer>
             </item>
             <item>
-             <layout class="QHBoxLayout" name="horizontalLayout_13">
-              <item>
-               <widget class="QLabel" name="label">
-                <property name="text">
-                 <string>Spindle Output</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="StatusLabel" name="statuslabel_9">
-                <property name="maximumSize">
-                 <size>
-                  <width>16777215</width>
-                  <height>35</height>
-                 </size>
-                </property>
-                <property name="alignment">
-                 <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-                </property>
-                <property name="textTemplate" stdset="0">
-                 <string>%d RPM</string>
-                </property>
-                <property name="actual_spindle_speed_status" stdset="0">
-                 <bool>true</bool>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <widget class="StatusLabel" name="statuslabel_10">
-                <property name="maximumSize">
-                 <size>
-                  <width>16777215</width>
-                  <height>35</height>
-                 </size>
-                </property>
-                <property name="alignment">
-                 <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-                </property>
-                <property name="textTemplate" stdset="0">
-                 <string>%.2f SFPM</string>
-                </property>
-                <property name="alt_textTemplate" stdset="0">
-                 <string>%.2fSMPM</string>
-                </property>
-                <property name="actual_spindle_speed_status" stdset="0">
-                 <bool>false</bool>
-                </property>
-                <property name="actual_surface_speed_status" stdset="0">
-                 <bool>true</bool>
-                </property>
-               </widget>
-              </item>
-             </layout>
+             <layout class="QHBoxLayout" name="horizontalLayout_13"/>
             </item>
             <item>
              <layout class="QHBoxLayout" name="horizontalLayout_3">
@@ -1394,7 +1312,7 @@
             </size>
            </property>
            <property name="currentIndex">
-            <number>1</number>
+            <number>0</number>
            </property>
            <widget class="QWidget" name="tab">
             <attribute name="title">
@@ -1503,13 +1421,13 @@
                <item row="8" column="0">
                 <widget class="StatusLabel" name="statuslabel_17">
                  <property name="text">
-                  <string>TLO X:   200.000</string>
+                  <string>TLO X: 100.0000</string>
                  </property>
                  <property name="textFormat">
                   <enum>Qt::PlainText</enum>
                  </property>
                  <property name="textTemplate" stdset="0">
-                  <string>TLO X:%10.3f</string>
+                  <string>TLO X:%9.4f</string>
                  </property>
                  <property name="alt_textTemplate" stdset="0">
                   <string>TLO Y:%10.3f</string>
@@ -1647,13 +1565,13 @@
                <item row="9" column="0">
                 <widget class="StatusLabel" name="statuslabel_18">
                  <property name="text">
-                  <string>TLO Y:   200.000</string>
+                  <string>TLO Y: 100.0000</string>
                  </property>
                  <property name="textFormat">
                   <enum>Qt::PlainText</enum>
                  </property>
                  <property name="textTemplate" stdset="0">
-                  <string>TLO Y:%10.3f</string>
+                  <string>TLO Y:%9.4f</string>
                  </property>
                  <property name="alt_textTemplate" stdset="0">
                   <string>TLO Y:%10.3f</string>
@@ -1704,13 +1622,13 @@
                <item row="10" column="0">
                 <widget class="StatusLabel" name="statuslabel_19">
                  <property name="text">
-                  <string>TLO Z:   200.000</string>
+                  <string>TLO Z: 100.0000</string>
                  </property>
                  <property name="textFormat">
                   <enum>Qt::PlainText</enum>
                  </property>
                  <property name="textTemplate" stdset="0">
-                  <string>TLO Z:%10.3f</string>
+                  <string>TLO Z:%9.4f</string>
                  </property>
                  <property name="alt_textTemplate" stdset="0">
                   <string>TLO Z:%10.3f</string>
@@ -1760,8 +1678,8 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>602</width>
-     <height>20</height>
+     <width>747</width>
+     <height>27</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuFile">
@@ -2237,12 +2155,6 @@
    <header>qtvcp.widgets.axis_tool_button</header>
   </customwidget>
   <customwidget>
-   <class>StateEnableGridLayout</class>
-   <extends>QWidget</extends>
-   <header>qtvcp.widgets.container_widgets</header>
-   <container>1</container>
-  </customwidget>
-  <customwidget>
    <class>RadioAxisSelector</class>
    <extends>QRadioButton</extends>
    <header>qtvcp.widgets.radio_axis_selector</header>
@@ -2270,6 +2182,11 @@
    <container>1</container>
   </customwidget>
   <customwidget>
+   <class>OffsetToolButton</class>
+   <extends>QToolButton</extends>
+   <header>qtvcp.widgets.offset_tool_button</header>
+  </customwidget>
+  <customwidget>
    <class>GcodeEditor</class>
    <extends>QWidget</extends>
    <header>qtvcp.widgets.gcode_editor</header>
@@ -2287,8 +2204,26 @@
   </customwidget>
  </customwidgets>
  <resources/>
- <connections/>
+ <connections>
+  <connection>
+   <sender>leftTab</sender>
+   <signal>currentChanged(int)</signal>
+   <receiver>MainWindow</receiver>
+   <slot>leftTabChanged()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>36</x>
+     <y>132</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>15</x>
+     <y>-1</y>
+    </hint>
+   </hints>
+  </connection>
+ </connections>
  <slots>
   <slot>tool_offset_clicked()</slot>
+  <slot>leftTabChanged()</slot>
  </slots>
 </ui>

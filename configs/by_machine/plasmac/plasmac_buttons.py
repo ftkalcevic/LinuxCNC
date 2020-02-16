@@ -56,7 +56,20 @@ class HandlerClass:
 
     def user_button_pressed(self, button, commands):
         if not commands: return
-        if commands.lower() == 'ohmic-test':
+        if 'change-consumables' in commands.lower():
+            if hal.get_value('axis.x.eoffset-counts') or hal.get_value('axis.y.eoffset-counts'):
+                hal.set_p('plasmac.consumable-change', '0')
+            else:
+                if self.ccX or self.ccX == 0:
+                    hal.set_p('plasmac.x-offset', '{:.0f}'.format((self.ccX - self.s.position[0]) / self.ccScale, 0))
+                else:
+                    hal.set_p('plasmac.x-offset', '0')
+                if self.ccY or self.ccY == 0:
+                    hal.set_p('plasmac.y-offset', '{:.0f}'.format((self.ccY - self.s.position[1]) / self.ccScale, 0))
+                else:
+                    hal.set_p('plasmac.y-offset', '0')
+                hal.set_p('plasmac.consumable-change', '1')
+        elif commands.lower() == 'ohmic-test':
             hal.set_p('plasmac.ohmic-test','1')
         elif 'probe-test' in commands.lower():
             self.probePressed = True
@@ -169,7 +182,12 @@ class HandlerClass:
             isIdleHomed = False
             isIdleOn = False 
         for n in range(1,5):
-            if 'ohmic-test' in self.iniButtonCode[n]:
+            if 'change-consumables' in self.iniButtonCode[n]:
+                if hal.get_value('halui.program.is-paused'):
+                    self.builder.get_object('button' + str(n)).set_sensitive(True)
+                else:
+                    self.builder.get_object('button' + str(n)).set_sensitive(False)
+            elif 'ohmic-test' in self.iniButtonCode[n]:
                 if isIdleOn or hal.get_value('halui.program.is-paused'):
                     self.builder.get_object('button' + str(n)).set_sensitive(True)
                 else:
@@ -193,9 +211,70 @@ class HandlerClass:
                 self.builder.get_object(self.cutButton).set_style(self.buttonOrange)
                 self.builder.get_object(self.cutButton).set_label('Pierce Only')
                 self.cutType = 1
+        if (hal.get_value('axis.x.eoffset') or hal.get_value('axis.y.eoffset')) and not hal.get_value('halui.program.is-paused'):
+            hal.set_p('plasmac.consumable-change', '0')
         return True
 
+    def consumable_change_setup(self, ccParm):
+        self.ccX = self.ccY = ccF = ''
+        X = Y = F = ''
+        ccAxis = [X, Y, F]
+        ccName = ['x', 'y', 'f']
+        for loop in range(3):
+            count = 0
+            if ccName[loop] in ccParm:
+                while 1:
+                    if not ccParm[count]: break
+                    if ccParm[count] == ccName[loop]:
+                        count += 1
+                        break
+                    count += 1
+                while 1:
+                    if count == len(ccParm): break
+                    if ccParm[count].isdigit() or ccParm[count] in '.-':
+                        ccAxis[loop] += ccParm[count]
+                    else:
+                        break
+                    count += 1
+                if ccName[loop] == 'x' and ccAxis[loop]:
+                    self.ccX = float(ccAxis[loop])
+                elif ccName[loop] == 'y' and ccAxis[loop]:
+                    self.ccY = float(ccAxis[loop])
+                elif ccName[loop] == 'f' and ccAxis[loop]:
+                    ccF = float(ccAxis[loop])
+        if self.ccX and \
+           (self.ccX < round(float(self.i.find('AXIS_X', 'MIN_LIMIT')), 6) or \
+           self.ccX > round(float(self.i.find('AXIS_X', 'MAX_LIMIT')), 6)):
+            self.dialog_error('X out of limits for consumable change\n\nCheck .ini file settings\n')
+            print('x out of bounds for consumable change\n')
+            raise SystemExit()
+        if self.ccY and \
+           (self.ccY < round(float(self.i.find('AXIS_Y', 'MIN_LIMIT')), 6) or \
+           self.ccY > round(float(self.i.find('AXIS_Y', 'MAX_LIMIT')), 6)):
+            self.dialog_error('Y out of limits for consumable change\n\nCheck .ini file settings\n')
+            print('y out of bounds for consumable change\n')
+            raise SystemExit()
+        if not ccF:
+            self.dialog_error('invalid feed rate for consumable change\n\nCheck .ini file settings\n')
+            print('invalid consumable change feed rate\n')
+            raise SystemExit()
+        self.ccScale = round(hal.get_value('plasmac.offset-scale'), 3) / 100
+        ccVel = int(1 / hal.get_value('halui.machine.units-per-mm') / 60 * ccF * 100)
+        hal.set_p('axis.x.eoffset-scale', str(self.ccScale))
+        hal.set_p('axis.y.eoffset-scale', str(self.ccScale))   
+        hal.set_p('plasmac.x-y-velocity', str(ccVel))
+        hal.set_p('axis.x.eoffset-enable', '1')
+        hal.set_p('axis.y.eoffset-enable', '1')
+
+    def dialog_error(self, error):
+        md = gtk.MessageDialog(self.W, 
+            gtk.DIALOG_DESTROY_WITH_PARENT, gtk.MESSAGE_ERROR, 
+            gtk.BUTTONS_CLOSE, error)
+        md.run()
+        md.destroy()
+
     def __init__(self, halcomp,builder,useropts):
+        self.W = gtk.Window()
         self.halcomp = halcomp
         self.builder = builder
         self.i = linuxcnc.ini(os.environ['INI_FILE_NAME'])
@@ -225,6 +304,12 @@ class HandlerClass:
                     blabel = bname[0]
                 self.builder.get_object('button' + str(button)).set_label(blabel)
                 self.builder.get_object('button' + str(button)).children()[0].set_justify(gtk.JUSTIFY_CENTER)
+            if 'change-consumables' in code:
+                ccParm = self.i.find('PLASMAC','BUTTON_' + str(button) + '_CODE').replace('change-consumables','').replace(' ','').lower() or None
+                if ccParm:
+                    self.consumable_change_setup(ccParm)
+                else:
+                    self.dialog_error('Parameters required for consumable change\n\nCheck .ini file settings\n')
         self.set_theme()
         self.builder.get_object('button1').connect('realize', self.set_style)
         gobject.timeout_add(100, self.periodic)

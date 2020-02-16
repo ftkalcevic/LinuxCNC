@@ -22,6 +22,7 @@ class _Lcnc_Action(object):
         self.cmd = linuxcnc.command()
         self.tmp = None
         self.prefilter_path = None
+        self.home_all_warning_flag = False
 
     def SET_ESTOP_STATE(self, state):
         if state:
@@ -36,10 +37,55 @@ class _Lcnc_Action(object):
             self.cmd.state(linuxcnc.STATE_OFF)
 
     def SET_MACHINE_HOMING(self, joint):
-        log.info('Homing Joint: {}'.format(joint))
         self.ensure_mode(linuxcnc.MODE_MANUAL)
         self.cmd.teleop_enable(False)
-        self.cmd.home(joint)
+        if not INFO.HOME_ALL_FLAG and joint == -1:
+            if not self.home_all_warning_flag == True:
+                self.home_all_warning_flag = True
+                STATUS.emit('error',linuxcnc.NML_ERROR,
+                    ''''Home-all not available according to INI Joint Home sequence
+         Set the joint sequence in the INI or
+         modify the screen for individual home buttons
+         to avoid this warning
+         Press again to home Z axis Joint''')
+            else:
+                if STATUS.is_all_homed():
+                    self.home_all_warning_flag = False
+                    return
+                # so linuxcnc is misonfigured or the Screen is built wrong (needs individual home buttons)
+                # now we will fake individual home buttons by homing joints one at a time
+                # but always start will Z - on a mill it's safer
+                zj = INFO.GET_JOG_FROM_NAME['Z']
+                if not STATUS.stat.homed[zj]:
+                    log.info('Homing Joint: {}'.format(zj))
+                    self.cmd.home(zj)
+                    STATUS.emit('error',linuxcnc.NML_ERROR,
+                        ''''Home-all not available according to INI Joint Home sequence
+             Press again to home next Joint''')
+                    return
+                length = len(INFO.JOINTSEQUENCELIST)
+                for num,j in enumerate(INFO.JOINTSEQUENCELIST):
+                    print j, num, len(INFO.JOINTSEQUENCELIST)
+                    # at the end so all homed
+                    if num == length -1:
+                        self.home_all_warning_flag = False
+                    # one from end but end is already homed
+                    if num == length -2 and STATUS.stat.homed[zj]:
+                        self.home_all_warning_flag = False
+                    # Z joint is homed first outside this for loop
+                    if j == zj : continue
+                    # ok home it then stop and wait for next button push
+                    if not STATUS.stat.homed[j]:
+                        log.info('Homing Joint: {}'.format(j))
+                        self.cmd.home(j)
+                        if self.home_all_warning_flag:
+                            STATUS.emit('error',linuxcnc.NML_ERROR,
+                                ''''Home-all not available according to INI Joint Home sequence
+                     Press again to home next Joint''')
+                        break
+        else:
+            log.info('Homing Joint: {}'.format(joint))
+            self.cmd.home(joint)
 
     def SET_MACHINE_UNHOMED(self, joint):
         self.ensure_mode(linuxcnc.MODE_MANUAL)
@@ -72,18 +118,26 @@ class _Lcnc_Action(object):
         self.ensure_mode(linuxcnc.MODE_MDI)
         self.cmd.mdi('%s'%code)
 
-    def CALL_MDI_WAIT(self, code):
-        log.debug('MDI_WAIT_COMMAND= {}'.format(code))
+    def CALL_MDI_WAIT(self, code, time = 5):
+        log.debug('MDI_WAIT_COMMAND= {}, maxt = {}'.format(code, time))
         self.ensure_mode(linuxcnc.MODE_MDI)
         for l in code.split("\n"):
+            log.debug('MDI_COMMAND: {}'.format(l))
             self.cmd.mdi( l )
-            result = self.cmd.wait_complete()
-            if result == -1 or result == linuxcnc.RCS_ERROR:
+            result = self.cmd.wait_complete(time)
+            if result == -1:
+                log.debug('MDI_COMMAND_WAIT timeout past {} sec. Error: {}'.format( time, result))
+                #STATUS.emit('MDI time out error',)
+                self.ABORT()
+                return -1
+            elif result == linuxcnc.RCS_ERROR:
+                log.debug('MDI_COMMAND_WAIT RCS error: {}'.format( time, result))
+                #STATUS.emit('MDI time out error',)
                 return -1
             result = linuxcnc.error_channel().poll()
             if result:
                 STATUS.emit('error',result[0],result[1])
-                log.error('MDI_COMMAND_WAIT Error: {}'.format(result[1]))
+                log.error('MDI_COMMAND_WAIT Error channel: {}'.format(result[1]))
                 return -1
         return 0
 
@@ -98,15 +152,19 @@ class _Lcnc_Action(object):
         for code in(mdi_list):
             self.cmd.mdi('%s'% code)
 
-    def CALL_OWORD(self, code):
+    def CALL_OWORD(self, code, time=5 ):
         log.debug('OWORD_COMMAND= {}'.format(code))
         self.ensure_mode(linuxcnc.MODE_MDI)
         self.cmd.mdi(code)
         STATUS.stat.poll()
         while STATUS.stat.exec_state == linuxcnc.EXEC_WAITING_FOR_MOTION_AND_IO or \
                         STATUS.stat.exec_state == linuxcnc.EXEC_WAITING_FOR_MOTION:
-            result = self.cmd.wait_complete()
-            if result == -1 or result == linuxcnc.RCS_ERROR :
+            result = self.cmd.wait_complete(time)
+            if result == -1:
+                log.error('Oword timeout oast () Error = # {}'.format(time, result))
+                self.ABORT()
+                return -1
+            elif result == linuxcnc.RCS_ERROR:
                 log.error('Oword RCS Error = # {}'.format(result))
                 return -1
             result = linuxcnc.error_channel().poll()
@@ -115,7 +173,7 @@ class _Lcnc_Action(object):
                 log.error('Oword Error: {}'.format(result[1]))
                 return -1
             STATUS.stat.poll()
-        result = self.cmd.wait_complete()
+        result = self.cmd.wait_complete(time)
         if result == -1 or result == linuxcnc.RCS_ERROR or linuxcnc.error_channel().poll():
             log.error('Oword RCS Error = # {}'.format(result))
             return -1
@@ -172,9 +230,21 @@ class _Lcnc_Action(object):
         self.ensure_mode(premode)
         self.RELOAD_DISPLAY()
 
+    # Adjust tool offsets so current position ends up the given value
     def SET_TOOL_OFFSET(self,axis,value,fixture = False):
         lnum = 10+int(fixture)
         m = "G10 L%d P%d %s%f"%(lnum, STATUS.stat.tool_in_spindle, axis, value)
+        fail, premode = self.ensure_mode(linuxcnc.MODE_MDI)
+        self.cmd.mdi(m)
+        self.cmd.wait_complete()
+        self.cmd.mdi("G43")
+        self.cmd.wait_complete()
+        self.ensure_mode(premode)
+        self.RELOAD_DISPLAY()
+
+    # Set actual tool offset in tool table to the given value
+    def SET_DIRECT_TOOL_OFFSET(self,axis,value):
+        m = "G10 L1 P%d %s%f"%( STATUS.get_current_tool(), axis, value)
         fail, premode = self.ensure_mode(linuxcnc.MODE_MDI)
         self.cmd.mdi(m)
         self.cmd.wait_complete()
@@ -359,15 +429,20 @@ class _Lcnc_Action(object):
             STATUS.emit('view-changed',view)
 
     def SHUT_SYSTEM_DOWN_PROMPT(self):
-        from subprocess import Popen, PIPE
+        import subprocess
         try:
-            process = Popen(['gnome-session-quit --power-off'], stdout=PIPE, stderr=PIPE).communicate()
-        except:
             try:
-                process = Popen(['xfce4-session-logout'], stdout=PIPE, stderr=PIPE).communicate()
+                subprocess.call('gnome-session-quit --power-off',shell=True)
             except:
-                import subprocess
-                subprocess.call('systemctl poweroff')
+                try:
+                    subprocess.call('xfce4-session-logout', shell=True)
+                except:
+                    try:
+                        subprocess.call('systemctl poweroff', shell=True)
+                    except:
+                        raise
+        except Exception as e:
+            log.warning("Couldn't shut system down: {}".format(e))
 
     def SHUT_SYSTEM_DOWN_NOW(self):
         import subprocess
